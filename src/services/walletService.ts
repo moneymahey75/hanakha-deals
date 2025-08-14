@@ -35,6 +35,7 @@ export class WalletService {
   private static instance: WalletService;
   private provider: ethers.BrowserProvider | null = null;
   private signer: ethers.JsonRpcSigner | null = null;
+  private isConnecting: boolean = false;
 
   static getInstance(): WalletService {
     if (!WalletService.instance) {
@@ -90,7 +91,52 @@ export class WalletService {
   }
 
   async connectWallet(walletProvider: any): Promise<WalletState> {
+    // Prevent multiple simultaneous connection attempts
+    if (this.isConnecting) {
+      throw new Error('Connection already in progress. Please wait...');
+    }
+
+    this.isConnecting = true;
+
     try {
+      // First, check if MetaMask has any pending requests and clear them
+      if (walletProvider.isMetaMask) {
+        try {
+          // Check current accounts first
+          const currentAccounts = await walletProvider.request({ 
+            method: 'eth_accounts' 
+          });
+          
+          // If already connected, just proceed with existing connection
+          if (currentAccounts && currentAccounts.length > 0) {
+            console.log('✅ MetaMask already connected, using existing connection');
+            this.provider = new ethers.BrowserProvider(walletProvider);
+            await this.switchToBSCTestnet(walletProvider);
+            this.signer = await this.provider.getSigner();
+            const address = await this.signer.getAddress();
+            const network = await this.provider.getNetwork();
+            
+            // Get balances
+            const balance = await this.getBNBBalance(address);
+            const usdtBalance = await this.getUSDTBalance(address);
+            
+            return {
+              isConnected: true,
+              address,
+              chainId: Number(network.chainId),
+              balance,
+              usdtBalance,
+              walletName: this.getWalletName(walletProvider),
+            };
+          }
+        } catch (checkError) {
+          console.log('Could not check existing accounts, proceeding with fresh connection');
+        }
+      }
+
+      // Add a small delay to prevent rapid successive requests
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       this.provider = new ethers.BrowserProvider(walletProvider);
       
       // Request account access
@@ -117,12 +163,28 @@ export class WalletService {
       };
     } catch (error) {
       console.error('Wallet connection failed:', error);
+      
+      // Handle specific MetaMask errors with better messaging
+      if (error.code === -32002) {
+        throw new Error('MetaMask is busy. Please open MetaMask, reject any pending requests, and try again.');
+      } else if (error.code === 4001) {
+        throw new Error('Connection cancelled by user');
+      } else if (error.message?.includes('already pending')) {
+        throw new Error('Please check MetaMask for pending requests. Close and reopen MetaMask if needed.');
+      }
+      
       throw error;
+    } finally {
+      // Always reset the connecting flag
+      this.isConnecting = false;
     }
   }
 
   async switchToBSCTestnet(provider: any): Promise<void> {
     try {
+      // Add delay before network switch
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: BSC_TESTNET_CONFIG.chainId }],
@@ -130,10 +192,17 @@ export class WalletService {
     } catch (switchError: any) {
       // Chain not added, try to add it
       if (switchError.code === 4902) {
+        // Add delay before adding network
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         await provider.request({
           method: 'wallet_addEthereumChain',
           params: [BSC_TESTNET_CONFIG],
         });
+      } else if (switchError.code === -32002) {
+        throw new Error('MetaMask is busy. Please check for pending requests and try again.');
+      } else {
+        throw switchError;
       }
     }
   }

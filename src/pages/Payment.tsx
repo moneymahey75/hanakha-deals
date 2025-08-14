@@ -46,6 +46,16 @@ const Payment: React.FC = () => {
   useEffect(() => {
     // Clear any pending states on component mount
     setIsConnecting(false);
+    
+    // Clear any stale wallet state
+    setWalletState({
+      isConnected: false,
+      address: null,
+      chainId: null,
+      balance: '0.00',
+      usdtBalance: '0.00',
+      walletName: null,
+    });
 
     // Re-detect wallets periodically in case they get installed
     const interval = setInterval(() => {
@@ -60,7 +70,7 @@ const Payment: React.FC = () => {
     };
   }, []);
 
-  // Temporary direct MetaMask connection for debugging
+  // Enhanced MetaMask connection with better error handling
   const handleDirectMetaMaskConnect = async () => {
     if (isConnecting) return;
 
@@ -71,6 +81,38 @@ const Payment: React.FC = () => {
       if (!window.ethereum) {
         throw new Error('MetaMask not installed');
       }
+
+      // Check for pending requests first
+      try {
+        const currentAccounts = await window.ethereum.request({
+          method: 'eth_accounts',
+        });
+        
+        if (currentAccounts.length > 0) {
+          console.log('✅ MetaMask already connected:', currentAccounts[0]);
+          // Use existing connection
+          const chainId = await window.ethereum.request({
+            method: 'eth_chainId',
+          });
+
+          setWalletState({
+            isConnected: true,
+            address: currentAccounts[0],
+            chainId: chainId,
+            balance: '0.00',
+            usdtBalance: '0.00',
+            walletName: 'MetaMask',
+          });
+
+          toast.success(`Connected to MetaMask: ${currentAccounts[0].substring(0, 6)}...${currentAccounts[0].substring(38)}`);
+          return;
+        }
+      } catch (checkError) {
+        console.log('Could not check existing accounts, proceeding with fresh connection');
+      }
+
+      // Add delay before requesting new connection
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       const accounts = await window.ethereum.request({
         method: 'eth_requestAccounts',
@@ -98,11 +140,29 @@ const Payment: React.FC = () => {
 
     } catch (error: any) {
       console.error('Direct connection error:', error);
-      toast.error(`Direct connection failed: ${error.message}`);
+      
+      // Enhanced error handling
+      if (error.code === -32002) {
+        toast.error('MetaMask is busy. Please open MetaMask, check for pending requests, and try again.', {
+          duration: 6000,
+        });
+      } else if (error.code === 4001) {
+        toast.error('Connection cancelled by user');
+      } else if (error.message?.includes('already pending') || error.message?.includes('pending')) {
+        toast.error('Please check MetaMask for pending requests. Close and reopen MetaMask if needed.', {
+          duration: 6000,
+        });
+      } else {
+        toast.error(`Connection failed: ${error.message}`);
+      }
     } finally {
-      setIsConnecting(false);
+      // Add delay before allowing next attempt
+      setTimeout(() => {
+        setIsConnecting(false);
+      }, 1000);
     }
   };
+  
   const handleConnectWallet = async (provider: any) => {
     // Prevent multiple simultaneous connections
     if (isConnecting) {
@@ -112,19 +172,8 @@ const Payment: React.FC = () => {
 
     setIsConnecting(true);
     try {
-      // Check if already connected first
-      const accounts = await provider.request({ method: 'eth_accounts' });
-      if (accounts.length > 0) {
-        // Already connected, just update state
-        const walletService = WalletService.getInstance();
-        const newWalletState = await walletService.connectWallet(provider);
-        setWalletState(newWalletState);
-        toast.success(`Connected to ${newWalletState.walletName}`);
-        return;
-      }
-
       // Add delay to prevent rapid requests
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Request connection
       const walletService = WalletService.getInstance();
@@ -137,20 +186,12 @@ const Payment: React.FC = () => {
 
       // Handle specific MetaMask errors
       if (error.code === -32002) {
-        toast.error('Please open MetaMask and approve/reject any pending requests first', {
+        toast.error('MetaMask is busy. Please open MetaMask, check for pending requests, and try again.', {
           duration: 6000,
-          style: {
-            background: '#f59e0b',
-            color: '#000',
-          },
         });
       } else if (error.message?.includes('already pending') || error.message?.includes('pending')) {
         toast.error('Please check MetaMask for pending requests. Close and reopen MetaMask if needed.', {
           duration: 6000,
-          style: {
-            background: '#f59e0b',
-            color: '#000',
-          },
         });
       } else if (error.code === 4001) {
         toast.error('Connection cancelled by user');
@@ -161,7 +202,7 @@ const Payment: React.FC = () => {
       // Add delay before allowing next connection attempt
       setTimeout(() => {
         setIsConnecting(false);
-      }, 1000);
+      }, 1500);
     }
   };
 
@@ -421,6 +462,36 @@ const Payment: React.FC = () => {
                   <div className="space-y-2">
                     <button
                         onClick={async () => {
+                          try {
+                            // Clear any pending requests by refreshing MetaMask state
+                            if (window.ethereum) {
+                              console.log('🔄 Refreshing MetaMask state...');
+                              
+                              // Try to clear any pending state
+                              try {
+                                await window.ethereum.request({ 
+                                  method: 'wallet_getPermissions' 
+                                });
+                              } catch (e) {
+                                console.log('Permissions check completed');
+                              }
+                              
+                              toast.success('MetaMask state refreshed. Try connecting again.');
+                            } else {
+                              toast.error('MetaMask not found!');
+                            }
+                          } catch (error) {
+                            console.error('Refresh error:', error);
+                            toast.error(`Refresh failed: ${error.message}`);
+                          }
+                        }}
+                        className="bg-green-100 text-green-800 px-3 py-1 rounded text-xs hover:bg-green-200 mr-2"
+                    >
+                      Refresh MetaMask State
+                    </button>
+                    
+                    <button
+                        onClick={async () => {
                           console.log('=== MetaMask Debug Info ===');
                           console.log('window.ethereum exists:', !!window.ethereum);
                           console.log('MetaMask installed:', !!window.ethereum?.isMetaMask);
@@ -432,11 +503,26 @@ const Payment: React.FC = () => {
                               console.log('Current accounts:', accounts);
                               const chainId = await window.ethereum.request({ method: 'eth_chainId' });
                               console.log('Current chain:', chainId);
+                              
+                              // Check for pending requests
+                              try {
+                                const permissions = await window.ethereum.request({ 
+                                  method: 'wallet_getPermissions' 
+                                });
+                                console.log('Current permissions:', permissions);
+                              } catch (permError) {
+                                console.log('Permissions check:', permError.message);
+                              }
 
-                              toast.success(`MetaMask: ${window.ethereum.isMetaMask ? 'Detected' : 'Not detected'}\nAccounts: ${accounts.length}`);
+                              toast.success(`MetaMask: ${window.ethereum.isMetaMask ? 'Detected' : 'Not detected'}\nAccounts: ${accounts.length}\nChain: ${chainId}`);
                             } catch (error) {
                               console.error('MetaMask check error:', error);
-                              toast.error(`Error: ${error.message}`);
+                              
+                              if (error.code === -32002) {
+                                toast.error('MetaMask has pending requests. Please open MetaMask and clear them.');
+                              } else {
+                                toast.error(`Error: ${error.message}`);
+                              }
                             }
                           } else {
                             toast.error('MetaMask not found!');
@@ -452,13 +538,16 @@ const Payment: React.FC = () => {
                         disabled={isConnecting}
                         className="bg-purple-100 text-purple-800 px-3 py-1 rounded text-xs hover:bg-purple-200 disabled:opacity-50"
                     >
-                      Bypass WalletService
+                      Direct Connect (Bypass)
                     </button>
                   </div>
                   <div className="mt-2 text-xs text-yellow-700">
                     <p>Wallets detected: {wallets.length}</p>
                     <p>Is connecting: {isConnecting ? 'Yes' : 'No'}</p>
                     <p>Wallet connected: {walletState.isConnected ? 'Yes' : 'No'}</p>
+                    <p className="mt-1 text-yellow-600">
+                      <strong>Tip:</strong> If you get "pending requests" error, open MetaMask extension and check for any pending popups or notifications.
+                    </p>
                   </div>
                 </div>
 
