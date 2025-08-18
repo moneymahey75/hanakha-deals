@@ -654,7 +654,7 @@ const Payment: React.FC = () => {
                       
                       {/* Enhanced WalletSelector with better visibility */}
                       <div className="space-y-4">
-                        <h4 className="text-lg font-bold text-gray-900 mb-4 text-center">Available Wallets</h4>
+                        
                         <WalletSelector
                             wallets={wallets}
                             onConnect={handleConnectWallet}
