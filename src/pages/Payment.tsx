@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Shield, CheckCircle, DollarSign } from 'lucide-react';
+import { Shield, CheckCircle, DollarSign, Wallet, CreditCard, Zap, Lock } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 
@@ -330,8 +330,8 @@ const Payment: React.FC = () => {
   }
 
   return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
-        {/* Toast notifications - from App.tsx */}
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 py-8 px-4 sm:px-6 lg:px-8">
+        {/* Toast notifications - enhanced styling */}
         <Toaster
             position="top-right"
             toastOptions={{
@@ -339,135 +339,201 @@ const Payment: React.FC = () => {
                 background: '#1f2937',
                 color: '#f9fafb',
                 border: '1px solid #374151',
+                borderRadius: '12px',
+                fontSize: '14px',
+                fontWeight: '500',
+              },
+              success: {
+                style: {
+                  background: '#065f46',
+                  color: '#ecfdf5',
+                  border: '1px solid #10b981',
+                },
+              },
+              error: {
+                style: {
+                  background: '#7f1d1d',
+                  color: '#fef2f2',
+                  border: '1px solid #ef4444',
+                },
               },
             }}
         />
 
-        <div className="max-w-4xl mx-auto">
-          {/* Header section - enhanced from App.tsx style */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center space-x-3 mb-4">
-              <DollarSign className="w-8 h-8 text-indigo-600" />
-              <h1 className="text-3xl font-bold text-gray-900">Complete Your Payment</h1>
+        <div className="max-w-7xl mx-auto">
+          {/* Enhanced Header section */}
+          <div className="text-center mb-12">
+            <div className="flex items-center justify-center space-x-4 mb-6">
+              <div className="p-3 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-lg">
+                <CreditCard className="w-10 h-10 text-white" />
+              </div>
+              <div className="text-left">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  Complete Your Payment
+                </h1>
+                <p className="text-lg text-gray-600 mt-1">Secure blockchain-based payment with smart contracts</p>
+              </div>
             </div>
-            <p className="text-gray-600">Secure blockchain-based payment with smart contracts</p>
-            {/* Total distribution info - from App.tsx */}
-            <div className="bg-indigo-50 rounded-lg p-4 inline-block border border-indigo-200 mt-4">
-              <p className="text-lg font-semibold text-indigo-900">USDT Smart Contract Payment</p>
-              <p className="text-sm text-indigo-700">Powered by BNB Smart Chain • Total Distribution: 0.30 USDT</p>
+            
+            {/* Enhanced payment info banner */}
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl max-w-2xl mx-auto">
+              <div className="flex items-center justify-center space-x-3 mb-3">
+                <Zap className="w-6 h-6 text-yellow-300" />
+                <h3 className="text-xl font-bold">USDT Smart Contract Payment</h3>
+                <Zap className="w-6 h-6 text-yellow-300" />
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
+                  <Shield className="w-5 h-5 mx-auto mb-1 text-green-300" />
+                  <p className="text-sm font-medium">BNB Smart Chain</p>
+                </div>
+                <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
+                  <Lock className="w-5 h-5 mx-auto mb-1 text-blue-300" />
+                  <p className="text-sm font-medium">Total: 0.30 USDT</p>
+                </div>
+                <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
+                  <CheckCircle className="w-5 h-5 mx-auto mb-1 text-emerald-300" />
+                  <p className="text-sm font-medium">Instant Settlement</p>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Order Summary - from original Payment.tsx */}
-            <div className="bg-white rounded-2xl shadow-lg p-8">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h2>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            {/* Enhanced Order Summary */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-white/50">
+              <div className="flex items-center space-x-3 mb-8">
+                <div className="p-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl">
+                  <DollarSign className="w-6 h-6 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">Order Summary</h2>
+              </div>
 
-              <div className="border border-gray-200 rounded-lg p-6 mb-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{selectedPlan.tsp_name}</h3>
-                    <p className="text-sm text-gray-600">{selectedPlan.tsp_duration_days} days subscription</p>
+              {/* Plan details card */}
+              <div className="bg-gradient-to-r from-gray-50 to-blue-50 border-2 border-gray-200 rounded-2xl p-6 mb-8">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">{selectedPlan.tsp_name}</h3>
+                    <div className="flex items-center space-x-2">
+                      <span className="bg-indigo-100 text-indigo-800 text-sm font-medium px-3 py-1 rounded-full">
+                        {selectedPlan.tsp_duration_days} days subscription
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xl font-bold text-gray-900">${selectedPlan.tsp_price}</span>
+                  <div className="text-right">
+                    <span className="text-3xl font-bold text-gray-900">${selectedPlan.tsp_price}</span>
+                    <p className="text-sm text-gray-500">USD</p>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* Features list */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-gray-800 mb-3">Included Features:</h4>
                   {selectedPlan.tsp_features.map((feature, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span className="text-sm text-gray-600">{feature}</span>
+                      <div key={index} className="flex items-center space-x-3 bg-white/50 rounded-lg p-3">
+                        <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        <span className="text-gray-700 font-medium">{feature}</span>
                       </div>
                   ))}
                 </div>
               </div>
 
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="text-gray-900">${selectedPlan.tsp_price}</span>
+              {/* Pricing breakdown */}
+              <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Subtotal</span>
+                  <span className="text-gray-900 font-semibold">${selectedPlan.tsp_price}</span>
                 </div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-600">Processing Fee</span>
-                  <span className="text-gray-900">$0.00</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Processing Fee</span>
+                  <span className="text-green-600 font-semibold">$0.00</span>
                 </div>
-                <div className="flex justify-between items-center text-lg font-bold">
-                  <span>Total</span>
-                  <span>${selectedPlan.tsp_price}</span>
+                <div className="border-t-2 border-gray-200 pt-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xl font-bold text-gray-900">Total</span>
+                    <span className="text-2xl font-bold text-indigo-600">${selectedPlan.tsp_price}</span>
+                  </div>
                 </div>
               </div>
 
               {/* Enhanced security section */}
-              <div className="mt-6 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-4 border border-green-200">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <Shield className="h-5 w-5 text-green-600" />
-                    <span className="text-sm font-semibold text-green-900">Blockchain Protected</span>
+              <div className="mt-8 bg-gradient-to-r from-green-50 via-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-green-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <Shield className="h-6 w-6 text-green-600" />
+                    <span className="text-lg font-bold text-green-900">Blockchain Protected</span>
                   </div>
-                  <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
-                  USDT BEP-20
-                </span>
+                  <span className="bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-bold px-4 py-2 rounded-full">
+                    USDT BEP-20
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-center space-x-1">
-                    <CheckCircle className="h-3 w-3 text-green-500" />
-                    <span className="text-green-700">Smart Contract Verified</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white/60 rounded-lg p-3 text-center">
+                    <CheckCircle className="h-5 w-5 mx-auto mb-2 text-green-500" />
+                    <span className="text-sm font-medium text-green-800">Smart Contract Verified</span>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <CheckCircle className="h-3 w-3 text-blue-500" />
-                    <span className="text-blue-700">Instant Settlement</span>
+                  <div className="bg-white/60 rounded-lg p-3 text-center">
+                    <Zap className="h-5 w-5 mx-auto mb-2 text-blue-500" />
+                    <span className="text-sm font-medium text-blue-800">Instant Settlement</span>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <CheckCircle className="h-3 w-3 text-green-500" />
-                    <span className="text-green-700">Zero Hidden Fees</span>
+                  <div className="bg-white/60 rounded-lg p-3 text-center">
+                    <DollarSign className="h-5 w-5 mx-auto mb-2 text-green-500" />
+                    <span className="text-sm font-medium text-green-800">Zero Hidden Fees</span>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <CheckCircle className="h-3 w-3 text-blue-500" />
-                    <span className="text-blue-700">BSC Network</span>
+                  <div className="bg-white/60 rounded-lg p-3 text-center">
+                    <Lock className="h-5 w-5 mx-auto mb-2 text-purple-500" />
+                    <span className="text-sm font-medium text-purple-800">BSC Network</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Smart Contract Payment Section - from App.tsx structure */}
-            <div className="bg-white rounded-2xl shadow-lg p-8">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Smart Contract Payment</h2>
+            {/* Enhanced Smart Contract Payment Section */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-white/50">
+              <div className="flex items-center space-x-3 mb-8">
+                <div className="p-2 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-xl">
+                  <Wallet className="w-6 h-6 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">Smart Contract Payment</h2>
+              </div>
 
               <div className="space-y-6">
-                {/* Value proposition */}
-                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <DollarSign className="h-5 w-5 text-indigo-600" />
-                    <span className="text-sm font-semibold text-indigo-900">Why Choose Crypto Payment?</span>
+                {/* Enhanced value proposition */}
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-2xl p-6">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="p-2 bg-indigo-600 rounded-lg">
+                      <Zap className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-lg font-bold text-indigo-900">Why Choose Crypto Payment?</span>
                   </div>
-                  <div className="text-xs space-y-1 text-indigo-700">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-1 h-1 bg-indigo-400 rounded-full"></span>
-                      <span>Instant global transactions with USDT</span>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3 bg-white/60 rounded-lg p-3">
+                      <div className="w-2 h-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"></div>
+                      <span className="text-indigo-800 font-medium">Instant global transactions with USDT</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="w-1 h-1 bg-indigo-400 rounded-full"></span>
-                      <span>Lower fees than traditional payment methods</span>
+                    <div className="flex items-center space-x-3 bg-white/60 rounded-lg p-3">
+                      <div className="w-2 h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full"></div>
+                      <span className="text-indigo-800 font-medium">Lower fees than traditional payment methods</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="w-1 h-1 bg-indigo-400 rounded-full"></span>
-                      <span>Transparent & verifiable on blockchain</span>
+                    <div className="flex items-center space-x-3 bg-white/60 rounded-lg p-3">
+                      <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"></div>
+                      <span className="text-indigo-800 font-medium">Transparent & verifiable on blockchain</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Enhanced Debug section */}
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                  <h4 className="text-sm font-medium text-yellow-800 mb-3">Debug MetaMask Connection</h4>
-                  <div className="space-y-2">
+                {/* Enhanced Debug section with better visibility */}
+                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-2xl p-6">
+                  <h4 className="text-lg font-bold text-yellow-900 mb-4 flex items-center space-x-2">
+                    <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                    <span>Debug MetaMask Connection</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                     <button
                         onClick={async () => {
                           try {
-                            // Clear any pending requests by refreshing MetaMask state
                             if (window.ethereum) {
                               console.log('🔄 Refreshing MetaMask state...');
-                              
-                              // Try to clear any pending state
                               try {
                                 await window.ethereum.request({ 
                                   method: 'wallet_getPermissions' 
@@ -475,7 +541,6 @@ const Payment: React.FC = () => {
                               } catch (e) {
                                 console.log('Permissions check completed');
                               }
-                              
                               toast.success('MetaMask state refreshed. Try connecting again.');
                             } else {
                               toast.error('MetaMask not found!');
@@ -485,9 +550,9 @@ const Payment: React.FC = () => {
                             toast.error(`Refresh failed: ${error.message}`);
                           }
                         }}
-                        className="bg-green-100 text-green-800 px-3 py-1 rounded text-xs hover:bg-green-200 mr-2"
+                        className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 shadow-lg"
                     >
-                      Refresh MetaMask State
+                      🔄 Refresh State
                     </button>
                     
                     <button
@@ -504,7 +569,6 @@ const Payment: React.FC = () => {
                               const chainId = await window.ethereum.request({ method: 'eth_chainId' });
                               console.log('Current chain:', chainId);
                               
-                              // Check for pending requests
                               try {
                                 const permissions = await window.ethereum.request({ 
                                   method: 'wallet_getPermissions' 
@@ -528,53 +592,117 @@ const Payment: React.FC = () => {
                             toast.error('MetaMask not found!');
                           }
                         }}
-                        className="bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs hover:bg-blue-200 mr-2"
+                        className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 shadow-lg"
                     >
-                      Check MetaMask Status
+                      🔍 Check Status
                     </button>
 
                     <button
                         onClick={handleDirectMetaMaskConnect}
                         disabled={isConnecting}
-                        className="bg-purple-100 text-purple-800 px-3 py-1 rounded text-xs hover:bg-purple-200 disabled:opacity-50"
+                        className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 shadow-lg"
                     >
-                      Direct Connect (Bypass)
+                      ⚡ Direct Connect
                     </button>
                   </div>
-                  <div className="mt-2 text-xs text-yellow-700">
-                    <p>Wallets detected: {wallets.length}</p>
-                    <p>Is connecting: {isConnecting ? 'Yes' : 'No'}</p>
-                    <p>Wallet connected: {walletState.isConnected ? 'Yes' : 'No'}</p>
-                    <p className="mt-1 text-yellow-600">
-                      <strong>Tip:</strong> If you get "pending requests" error, open MetaMask extension and check for any pending popups or notifications.
-                    </p>
+                  
+                  {/* Enhanced debug info */}
+                  <div className="bg-white/80 rounded-xl p-4 space-y-2">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="bg-gray-100 rounded-lg p-3">
+                        <span className="font-bold text-gray-700">Wallets Detected:</span>
+                        <span className="ml-2 text-gray-900 font-medium">{wallets.length}</span>
+                      </div>
+                      <div className="bg-gray-100 rounded-lg p-3">
+                        <span className="font-bold text-gray-700">Is Connecting:</span>
+                        <span className={`ml-2 font-medium ${isConnecting ? 'text-orange-600' : 'text-green-600'}`}>
+                          {isConnecting ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div className="bg-gray-100 rounded-lg p-3">
+                        <span className="font-bold text-gray-700">Wallet Connected:</span>
+                        <span className={`ml-2 font-medium ${walletState.isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                          {walletState.isConnected ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div className="bg-gray-100 rounded-lg p-3">
+                        <span className="font-bold text-gray-700">Network:</span>
+                        <span className="ml-2 text-gray-900 font-medium">BSC Testnet</span>
+                      </div>
+                    </div>
+                    <div className="bg-yellow-100 rounded-lg p-3 mt-4">
+                      <p className="text-sm font-medium text-yellow-800">
+                        <span className="font-bold">💡 Tip:</span> If you get "pending requests" error, open MetaMask extension and check for any pending popups or notifications.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
                 {/* Trust Indicators */}
                 <TrustIndicators />
 
-                {/* Wallet Connection or Payment - exactly from App.tsx */}
+                {/* Enhanced Wallet Connection or Payment Section */}
                 {!walletState.isConnected ? (
-                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-indigo-200">
-                      <WalletSelector
-                          wallets={wallets}
-                          onConnect={handleConnectWallet}
-                          isConnecting={isConnecting}
-                      />
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-8 border-2 border-indigo-200">
+                      <div className="text-center mb-6">
+                        <div className="p-4 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-2xl inline-block mb-4">
+                          <Wallet className="w-8 h-8 text-white" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">Connect Your Wallet</h3>
+                        <p className="text-gray-600">Choose your preferred wallet to continue with the payment</p>
+                      </div>
+                      
+                      {/* Enhanced WalletSelector with better visibility */}
+                      <div className="space-y-4">
+                        <h4 className="text-lg font-bold text-gray-900 mb-4 text-center">Available Wallets</h4>
+                        <WalletSelector
+                            wallets={wallets}
+                            onConnect={handleConnectWallet}
+                            isConnecting={isConnecting}
+                        />
+                        
+                        {/* Fallback message if no wallets detected */}
+                        {wallets.length === 0 && (
+                          <div className="bg-white/80 border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
+                            <Wallet className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                            <h4 className="text-lg font-semibold text-gray-700 mb-2">No Wallets Detected</h4>
+                            <p className="text-gray-600 mb-4">Please install MetaMask or another compatible wallet to continue.</p>
+                            <a 
+                              href="https://metamask.io/download/" 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg inline-block"
+                            >
+                              Install MetaMask
+                            </a>
+                          </div>
+                        )}
+                      </div>
                     </div>
                 ) : (
-                    <div className="space-y-4">
-                      {/* Wallet Info */}
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                    <div className="space-y-6">
+                      {/* Enhanced Wallet Info */}
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
+                        <div className="flex items-center space-x-3 mb-4">
+                          <div className="p-2 bg-green-500 rounded-lg">
+                            <CheckCircle className="h-5 w-5 text-white" />
+                          </div>
+                          <h3 className="text-lg font-bold text-green-900">Wallet Connected</h3>
+                        </div>
                         <WalletInfo
                             wallet={walletState}
                             onDisconnect={handleDisconnectWallet}
                         />
                       </div>
 
-                      {/* Payment Section */}
-                      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+                      {/* Enhanced Payment Section */}
+                      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-6 border-2 border-purple-200">
+                        <div className="flex items-center space-x-3 mb-4">
+                          <div className="p-2 bg-purple-500 rounded-lg">
+                            <CreditCard className="h-5 w-5 text-white" />
+                          </div>
+                          <h3 className="text-lg font-bold text-purple-900">Execute Payment</h3>
+                        </div>
                         <PaymentSection
                             onPayment={handleSmartContractPayment}
                             transaction={transactionState}
@@ -584,21 +712,78 @@ const Payment: React.FC = () => {
                     </div>
                 )}
 
-                {/* Footer note - from App.tsx */}
-                <div className="text-center">
-                  <p className="text-xs text-gray-500">
+                {/* Enhanced Footer note */}
+                <div className="bg-gradient-to-r from-gray-100 to-blue-100 rounded-2xl p-6 text-center border-2 border-gray-200">
+                  <div className="flex items-center justify-center space-x-2 mb-3">
+                    <Shield className="w-5 h-5 text-blue-600" />
+                    <Lock className="w-5 h-5 text-green-600" />
+                    <Zap className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">
                     This uses BNB Smart Chain Testnet. No real funds are involved.
-                    <br />
-                    USDT Distribution • Secure • Encrypted
                   </p>
+                  <div className="flex items-center justify-center space-x-4 text-xs text-gray-600">
+                    <span className="bg-white/70 px-3 py-1 rounded-full font-medium">USDT Distribution</span>
+                    <span className="bg-white/70 px-3 py-1 rounded-full font-medium">Secure</span>
+                    <span className="bg-white/70 px-3 py-1 rounded-full font-medium">Encrypted</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-6 text-center">
-                <p className="text-xs text-gray-500">
-                  By completing this payment, you agree to our Terms of Service and Privacy Policy.
-                  Your subscription will be activated immediately upon successful payment.
-                </p>
+              {/* Enhanced Terms section */}
+              <div className="mt-8 bg-gray-50 rounded-2xl p-6 border-2 border-gray-200">
+                <div className="flex items-start space-x-3">
+                  <div className="p-1 bg-blue-500 rounded-full mt-1">
+                    <CheckCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-700 leading-relaxed">
+                      By completing this payment, you agree to our{' '}
+                      <a href="/terms" className="text-blue-600 hover:text-blue-800 font-semibold underline">
+                        Terms of Service
+                      </a>{' '}
+                      and{' '}
+                      <a href="/privacy" className="text-blue-600 hover:text-blue-800 font-semibold underline">
+                        Privacy Policy
+                      </a>.
+                      Your subscription will be activated immediately upon successful payment.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Enhanced Bottom Banner */}
+          <div className="mt-12 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-8 text-white text-center shadow-2xl">
+            <div className="flex items-center justify-center space-x-4 mb-4">
+              <Shield className="w-8 h-8 text-green-300" />
+              <h3 className="text-2xl font-bold">Secure & Transparent Payment</h3>
+              <Lock className="w-8 h-8 text-blue-300" />
+            </div>
+            <p className="text-lg text-white/90 mb-6 max-w-3xl mx-auto">
+              Experience the future of payments with blockchain technology. Every transaction is recorded on the blockchain for complete transparency and security.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                <Zap className="w-6 h-6 mx-auto mb-2 text-yellow-300" />
+                <h4 className="font-semibold mb-1">Lightning Fast</h4>
+                <p className="text-sm text-white/80">Instant transactions</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                <Shield className="w-6 h-6 mx-auto mb-2 text-green-300" />
+                <h4 className="font-semibold mb-1">Bank-Grade Security</h4>
+                <p className="text-sm text-white/80">Military encryption</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                <DollarSign className="w-6 h-6 mx-auto mb-2 text-blue-300" />
+                <h4 className="font-semibold mb-1">Low Fees</h4>
+                <p className="text-sm text-white/80">Minimal transaction costs</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                <CheckCircle className="w-6 h-6 mx-auto mb-2 text-purple-300" />
+                <h4 className="font-semibold mb-1">100% Verified</h4>
+                <p className="text-sm text-white/80">Smart contract audited</p>
               </div>
             </div>
           </div>
