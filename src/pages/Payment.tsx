@@ -42,7 +42,7 @@ const Payment: React.FC = () => {
     distributionSteps: [],
   });
 
-  // Wallet detection effect - optimized with dynamic intervals and cleanup
+  // Wallet detection effect - enhanced with cleanup
   useEffect(() => {
     // Clear any pending states on component mount
     setIsConnecting(false);
@@ -57,52 +57,18 @@ const Payment: React.FC = () => {
       walletName: null,
     });
 
-    let detectionInterval: NodeJS.Timeout;
-    let hasWallet = false;
-
-    const detectWallets = () => {
-      const currentWallets = WalletService.getInstance().detectWallets();
-      const newHasWallet = currentWallets.length > 0;
-      
-      // Only update state if wallet count changed
-      if (currentWallets.length !== wallets.length) {
-        setWallets(currentWallets);
-        console.log(`🔍 Wallet detection update: ${currentWallets.length} wallets found`);
-      }
-      
-      // Adjust detection frequency based on wallet presence
-      if (hasWallet !== newHasWallet) {
-        hasWallet = newHasWallet;
-        
-        // Clear existing interval
-        if (detectionInterval) {
-          clearInterval(detectionInterval);
-        }
-        
-        // Set new interval - faster when no wallets, slower when wallets detected
-        const intervalMs = hasWallet ? 5000 : 2000; // 5s when wallets exist, 2s when none
-        console.log(`🔄 Adjusting wallet detection interval to ${intervalMs}ms`);
-        
-        detectionInterval = setInterval(detectWallets, intervalMs);
-      }
-    };
-
-    // Initial detection
-    detectWallets();
-    
-    // Start with more frequent detection (2s) for new installations
-    detectionInterval = setInterval(detectWallets, 2000);
+    // Re-detect wallets periodically in case they get installed
+    const interval = setInterval(() => {
+      setWallets(WalletService.getInstance().detectWallets());
+    }, 2000);
 
     // Cleanup function
     return () => {
-      if (detectionInterval) {
-        clearInterval(detectionInterval);
-      }
+      clearInterval(interval);
       // Reset connecting state on unmount
       setIsConnecting(false);
-      console.log('🧹 Wallet detection cleanup completed');
     };
-  }, []); // Empty dependency to avoid re-running
+  }, []);
 
   // Enhanced MetaMask connection with comprehensive error handling
   const handleDirectMetaMaskConnect = async () => {
@@ -363,44 +329,13 @@ const Payment: React.FC = () => {
     }
   };
 
-  // Enhanced wallet disconnection with proper listener cleanup
+  // Enhanced wallet disconnection with cleanup
   const handleDisconnectWallet = () => {
     try {
       console.log('🔌 Disconnecting wallet...');
       
       // Clean up wallet service
       WalletService.getInstance().disconnect();
-      
-      // Clean up event listeners properly
-      if (window.ethereum && window.ethereum._connectedListeners) {
-        console.log('🧹 Removing wallet event listeners...');
-        
-        const listeners = window.ethereum._connectedListeners;
-        
-        try {
-          window.ethereum.removeListener('accountsChanged', listeners.accountsChanged);
-          window.ethereum.removeListener('chainChanged', listeners.chainChanged);  
-          window.ethereum.removeListener('disconnect', listeners.disconnect);
-          
-          // Clear the stored references
-          delete window.ethereum._connectedListeners;
-          
-          console.log('✅ Event listeners cleaned up successfully');
-        } catch (error) {
-          console.log('📝 Event listener cleanup completed with minor issues');
-        }
-      }
-      
-      // Alternative cleanup method for broader compatibility
-      if (window.ethereum && window.ethereum.removeAllListeners) {
-        try {
-          window.ethereum.removeAllListeners('accountsChanged');
-          window.ethereum.removeAllListeners('chainChanged');
-          window.ethereum.removeAllListeners('disconnect');
-        } catch (error) {
-          console.log('📝 Alternative listener cleanup completed');
-        }
-      }
       
       // Reset all states
       setWalletState({
@@ -422,30 +357,22 @@ const Payment: React.FC = () => {
       
       setIsConnecting(false);
       
+      // Remove event listeners if they exist
+      if (window.ethereum && window.ethereum.removeAllListeners) {
+        try {
+          window.ethereum.removeAllListeners('accountsChanged');
+          window.ethereum.removeAllListeners('chainChanged');
+          window.ethereum.removeAllListeners('disconnect');
+        } catch (error) {
+          console.log('Event listener cleanup completed');
+        }
+      }
+      
       toast.success('✅ Wallet disconnected successfully', { duration: 3000 });
       
     } catch (error) {
       console.error('Disconnect error:', error);
-      
-      // Force reset state even if cleanup failed
-      setWalletState({
-        isConnected: false,
-        address: null,
-        chainId: null,
-        balance: '0.00',
-        usdtBalance: '0.00',
-        walletName: null,
-      });
-      setTransactionState({
-        isProcessing: false,
-        hash: null,
-        status: 'idle',
-        error: null,
-        distributionSteps: [],
-      });
-      setIsConnecting(false);
-      
-      toast.success('✅ Wallet disconnected (with cleanup issues resolved)', { duration: 3000 });
+      toast.error('⚠️ Error during disconnect, but state has been reset');
     }
   };
 
