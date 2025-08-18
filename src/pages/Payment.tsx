@@ -42,7 +42,7 @@ const Payment: React.FC = () => {
     distributionSteps: [],
   });
 
-  // Wallet detection effect - enhanced with cleanup
+  // Wallet detection effect - optimized with dynamic intervals and cleanup
   useEffect(() => {
     // Clear any pending states on component mount
     setIsConnecting(false);
@@ -57,44 +57,104 @@ const Payment: React.FC = () => {
       walletName: null,
     });
 
-    // Re-detect wallets periodically in case they get installed
-    const interval = setInterval(() => {
-      setWallets(WalletService.getInstance().detectWallets());
-    }, 2000);
+    let detectionInterval: NodeJS.Timeout;
+    let hasWallet = false;
+
+    const detectWallets = () => {
+      const currentWallets = WalletService.getInstance().detectWallets();
+      const newHasWallet = currentWallets.length > 0;
+      
+      // Only update state if wallet count changed
+      if (currentWallets.length !== wallets.length) {
+        setWallets(currentWallets);
+        console.log(`🔍 Wallet detection update: ${currentWallets.length} wallets found`);
+      }
+      
+      // Adjust detection frequency based on wallet presence
+      if (hasWallet !== newHasWallet) {
+        hasWallet = newHasWallet;
+        
+        // Clear existing interval
+        if (detectionInterval) {
+          clearInterval(detectionInterval);
+        }
+        
+        // Set new interval - faster when no wallets, slower when wallets detected
+        const intervalMs = hasWallet ? 5000 : 2000; // 5s when wallets exist, 2s when none
+        console.log(`🔄 Adjusting wallet detection interval to ${intervalMs}ms`);
+        
+        detectionInterval = setInterval(detectWallets, intervalMs);
+      }
+    };
+
+    // Initial detection
+    detectWallets();
+    
+    // Start with more frequent detection (2s) for new installations
+    detectionInterval = setInterval(detectWallets, 2000);
 
     // Cleanup function
     return () => {
-      clearInterval(interval);
+      if (detectionInterval) {
+        clearInterval(detectionInterval);
+      }
       // Reset connecting state on unmount
       setIsConnecting(false);
+      console.log('🧹 Wallet detection cleanup completed');
     };
-  }, []);
+  }, []); // Empty dependency to avoid re-running
 
-  // Enhanced MetaMask connection with better error handling
+  // Enhanced MetaMask connection with comprehensive error handling
   const handleDirectMetaMaskConnect = async () => {
-    if (isConnecting) return;
+    if (isConnecting) {
+      toast.error('Connection already in progress. Please wait...');
+      return;
+    }
 
     setIsConnecting(true);
+    
     try {
-      console.log('Direct MetaMask connection attempt...');
+      console.log('🔗 Direct MetaMask connection attempt...');
 
+      // Check if MetaMask is installed
       if (!window.ethereum) {
-        throw new Error('MetaMask not installed');
+        toast.error('MetaMask not detected. Please install MetaMask extension.', {
+          duration: 5000,
+        });
+        window.open('https://metamask.io/download/', '_blank');
+        return;
       }
 
-      // Check for pending requests first
+      // Check if MetaMask is the active provider
+      if (!window.ethereum.isMetaMask) {
+        console.warn('⚠️ Window.ethereum exists but may not be MetaMask');
+      }
+
+      // Clear any stale connection state
+      setWalletState({
+        isConnected: false,
+        address: null,
+        chainId: null,
+        balance: '0.00',
+        usdtBalance: '0.00',
+        walletName: null,
+      });
+
+      // First, check if already connected
+      let currentAccounts = [];
       try {
-        const currentAccounts = await window.ethereum.request({
-          method: 'eth_accounts',
-        });
+        currentAccounts = await Promise.race([
+          window.ethereum.request({ method: 'eth_accounts' }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout checking accounts')), 3000)
+          )
+        ]);
         
         if (currentAccounts.length > 0) {
           console.log('✅ MetaMask already connected:', currentAccounts[0]);
-          // Use existing connection
-          const chainId = await window.ethereum.request({
-            method: 'eth_chainId',
-          });
-
+          
+          const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+          
           setWalletState({
             isConnected: true,
             address: currentAccounts[0],
@@ -104,136 +164,304 @@ const Payment: React.FC = () => {
             walletName: 'MetaMask',
           });
 
-          toast.success(`Connected to MetaMask: ${currentAccounts[0].substring(0, 6)}...${currentAccounts[0].substring(38)}`);
+          toast.success(`✅ Connected: ${currentAccounts[0].substring(0, 6)}...${currentAccounts[0].substring(38)}`);
           return;
         }
       } catch (checkError) {
-        console.log('Could not check existing accounts, proceeding with fresh connection');
+        console.log('📋 Could not check existing accounts, requesting fresh connection');
       }
 
-      // Add delay before requesting new connection
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Request fresh connection with timeout
+      toast.loading('Requesting wallet connection...', { id: 'connecting' });
+      
+      const accounts = await Promise.race([
+        window.ethereum.request({ method: 'eth_requestAccounts' }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection request timed out')), 15000)
+        )
+      ]);
 
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      });
+      toast.dismiss('connecting');
 
-      if (accounts.length === 0) {
-        throw new Error('No accounts found');
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts returned from MetaMask');
       }
 
-      const chainId = await window.ethereum.request({
-        method: 'eth_chainId',
-      });
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
 
-      // Set wallet state directly
+      // Verify the connection
+      if (!accounts[0] || !chainId) {
+        throw new Error('Invalid connection data received');
+      }
+
       setWalletState({
         isConnected: true,
         address: accounts[0],
         chainId: chainId,
-        balance: '0.00', // Will be updated later
-        usdtBalance: '0.00', // Will be updated later
+        balance: '0.00',
+        usdtBalance: '0.00',
         walletName: 'MetaMask',
       });
 
-      toast.success(`Connected to MetaMask: ${accounts[0].substring(0, 6)}...${accounts[0].substring(38)}`);
+      toast.success(`🎉 Successfully connected to MetaMask: ${accounts[0].substring(0, 6)}...${accounts[0].substring(38)}`, {
+        duration: 4000,
+      });
+
+      // Add account change listener
+      if (window.ethereum.on) {
+        window.ethereum.on('accountsChanged', (accounts) => {
+          if (accounts.length === 0) {
+            handleDisconnectWallet();
+          } else {
+            setWalletState(prev => ({ ...prev, address: accounts[0] }));
+          }
+        });
+
+        window.ethereum.on('chainChanged', (chainId) => {
+          setWalletState(prev => ({ ...prev, chainId }));
+        });
+      }
 
     } catch (error: any) {
-      console.error('Direct connection error:', error);
+      console.error('❌ Direct connection error:', error);
+      toast.dismiss('connecting');
       
-      // Enhanced error handling
+      // Comprehensive error handling
       if (error.code === -32002) {
-        toast.error('MetaMask is busy. Please open MetaMask, check for pending requests, and try again.', {
-          duration: 6000,
+        toast.error('🔄 MetaMask is processing another request. Please open MetaMask, complete any pending actions, and try again.', {
+          duration: 8000,
         });
       } else if (error.code === 4001) {
-        toast.error('Connection cancelled by user');
-      } else if (error.message?.includes('already pending') || error.message?.includes('pending')) {
-        toast.error('Please check MetaMask for pending requests. Close and reopen MetaMask if needed.', {
+        toast.error('❌ Connection cancelled by user', { duration: 4000 });
+      } else if (error.code === -32603) {
+        toast.error('⚠️ Internal error occurred. Please refresh the page and try again.', {
           duration: 6000,
         });
+      } else if (error.message?.includes('timeout') || error.message?.includes('Timeout')) {
+        toast.error('⏱️ Connection timed out. Please try again and make sure MetaMask is unlocked.', {
+          duration: 6000,
+        });
+      } else if (error.message?.includes('already pending') || error.message?.includes('pending')) {
+        toast.error('🔄 MetaMask has pending requests. Please open MetaMask extension and clear any notifications.', {
+          duration: 8000,
+        });
+      } else if (error.message?.includes('User rejected')) {
+        toast.error('❌ Connection rejected by user', { duration: 4000 });
       } else {
-        toast.error(`Connection failed: ${error.message}`);
+        toast.error(`💥 Connection failed: ${error.message || 'Unknown error'}`, {
+          duration: 6000,
+        });
       }
     } finally {
-      // Add delay before allowing next attempt
+      // Reset connecting state with delay to prevent rapid requests
       setTimeout(() => {
         setIsConnecting(false);
-      }, 1000);
+      }, 1500);
     }
   };
   
   const handleConnectWallet = async (provider: any) => {
     // Prevent multiple simultaneous connections
     if (isConnecting) {
-      toast.error('Connection already in progress. Please wait...');
+      toast.error('🔄 Connection already in progress. Please wait...', { duration: 3000 });
       return;
     }
 
     setIsConnecting(true);
+    
     try {
+      console.log('🚀 Attempting wallet connection...', { provider });
+      
       // Add delay to prevent rapid requests
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-      // Request connection
+      // Show loading toast
+      toast.loading('Connecting to wallet...', { id: 'wallet-connect' });
+
+      // Request connection with timeout
       const walletService = WalletService.getInstance();
-      const newWalletState = await walletService.connectWallet(provider);
+      
+      const newWalletState = await Promise.race([
+        walletService.connectWallet(provider),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Wallet connection timed out')), 12000)
+        )
+      ]);
+
+      toast.dismiss('wallet-connect');
+
+      if (!newWalletState || !newWalletState.address) {
+        throw new Error('Invalid wallet connection response');
+      }
+
       setWalletState(newWalletState);
-      toast.success(`Connected to ${newWalletState.walletName}`);
+      
+      toast.success(`🎉 Connected to ${newWalletState.walletName || 'Wallet'}`, {
+        duration: 4000,
+      });
+
+      // Set up event listeners if provider supports them
+      if (provider && provider.on) {
+        provider.on('accountsChanged', (accounts) => {
+          if (accounts.length === 0) {
+            console.log('📤 Accounts disconnected');
+            handleDisconnectWallet();
+          } else {
+            console.log('🔄 Account changed:', accounts[0]);
+            setWalletState(prev => ({ ...prev, address: accounts[0] }));
+          }
+        });
+
+        provider.on('chainChanged', (chainId) => {
+          console.log('🌐 Chain changed:', chainId);
+          setWalletState(prev => ({ ...prev, chainId }));
+        });
+
+        provider.on('disconnect', () => {
+          console.log('🔌 Provider disconnected');
+          handleDisconnectWallet();
+        });
+      }
 
     } catch (error: any) {
-      console.error('Wallet connection error:', error);
+      console.error('❌ Wallet connection error:', error);
+      toast.dismiss('wallet-connect');
 
-      // Handle specific MetaMask errors
+      // Enhanced error handling with specific messages
       if (error.code === -32002) {
-        toast.error('MetaMask is busy. Please open MetaMask, check for pending requests, and try again.', {
+        toast.error('🔄 Wallet is processing another request. Please open your wallet app, complete pending actions, and try again.', {
+          duration: 8000,
+        });
+      } else if (error.message?.includes('timeout') || error.message?.includes('Timeout')) {
+        toast.error('⏱️ Connection timed out. Please make sure your wallet is unlocked and try again.', {
           duration: 6000,
         });
       } else if (error.message?.includes('already pending') || error.message?.includes('pending')) {
-        toast.error('Please check MetaMask for pending requests. Close and reopen MetaMask if needed.', {
+        toast.error('🔄 Wallet has pending requests. Please check your wallet extension and clear notifications.', {
+          duration: 8000,
+        });
+      } else if (error.code === 4001 || error.message?.includes('User rejected')) {
+        toast.error('❌ Connection cancelled by user', { duration: 4000 });
+      } else if (error.code === -32603) {
+        toast.error('⚠️ Internal wallet error. Please refresh the page and try again.', {
           duration: 6000,
         });
-      } else if (error.code === 4001) {
-        toast.error('Connection cancelled by user');
+      } else if (error.message?.includes('No provider found')) {
+        toast.error('🔌 Wallet not found. Please install the wallet extension and refresh the page.', {
+          duration: 6000,
+        });
       } else {
-        toast.error(error.message || 'Failed to connect wallet');
+        toast.error(`💥 Failed to connect: ${error.message || 'Unknown error'}`, {
+          duration: 6000,
+        });
       }
     } finally {
-      // Add delay before allowing next connection attempt
+      // Reset connecting state with delay to prevent rapid requests
       setTimeout(() => {
         setIsConnecting(false);
-      }, 1500);
+      }, 2000);
     }
   };
 
-  // Smart contract wallet disconnection - exactly from App.tsx
+  // Enhanced wallet disconnection with proper listener cleanup
   const handleDisconnectWallet = () => {
-    WalletService.getInstance().disconnect();
-    setWalletState({
-      isConnected: false,
-      address: null,
-      chainId: null,
-      balance: '0.00',
-      usdtBalance: '0.00',
-      walletName: null,
-    });
-    setTransactionState({
-      isProcessing: false,
-      hash: null,
-      status: 'idle',
-      error: null,
-      distributionSteps: [],
-    });
-    toast.success('Wallet disconnected');
+    try {
+      console.log('🔌 Disconnecting wallet...');
+      
+      // Clean up wallet service
+      WalletService.getInstance().disconnect();
+      
+      // Clean up event listeners properly
+      if (window.ethereum && window.ethereum._connectedListeners) {
+        console.log('🧹 Removing wallet event listeners...');
+        
+        const listeners = window.ethereum._connectedListeners;
+        
+        try {
+          window.ethereum.removeListener('accountsChanged', listeners.accountsChanged);
+          window.ethereum.removeListener('chainChanged', listeners.chainChanged);  
+          window.ethereum.removeListener('disconnect', listeners.disconnect);
+          
+          // Clear the stored references
+          delete window.ethereum._connectedListeners;
+          
+          console.log('✅ Event listeners cleaned up successfully');
+        } catch (error) {
+          console.log('📝 Event listener cleanup completed with minor issues');
+        }
+      }
+      
+      // Alternative cleanup method for broader compatibility
+      if (window.ethereum && window.ethereum.removeAllListeners) {
+        try {
+          window.ethereum.removeAllListeners('accountsChanged');
+          window.ethereum.removeAllListeners('chainChanged');
+          window.ethereum.removeAllListeners('disconnect');
+        } catch (error) {
+          console.log('📝 Alternative listener cleanup completed');
+        }
+      }
+      
+      // Reset all states
+      setWalletState({
+        isConnected: false,
+        address: null,
+        chainId: null,
+        balance: '0.00',
+        usdtBalance: '0.00',
+        walletName: null,
+      });
+      
+      setTransactionState({
+        isProcessing: false,
+        hash: null,
+        status: 'idle',
+        error: null,
+        distributionSteps: [],
+      });
+      
+      setIsConnecting(false);
+      
+      toast.success('✅ Wallet disconnected successfully', { duration: 3000 });
+      
+    } catch (error) {
+      console.error('Disconnect error:', error);
+      
+      // Force reset state even if cleanup failed
+      setWalletState({
+        isConnected: false,
+        address: null,
+        chainId: null,
+        balance: '0.00',
+        usdtBalance: '0.00',
+        walletName: null,
+      });
+      setTransactionState({
+        isProcessing: false,
+        hash: null,
+        status: 'idle',
+        error: null,
+        distributionSteps: [],
+      });
+      setIsConnecting(false);
+      
+      toast.success('✅ Wallet disconnected (with cleanup issues resolved)', { duration: 3000 });
+    }
   };
 
-  // Smart contract payment - enhanced from App.tsx + original Payment.tsx success flow
+  // Enhanced smart contract payment with better error handling and user feedback
   const handleSmartContractPayment = async () => {
     if (!walletState.isConnected) {
-      toast.error('Please connect your wallet first');
+      toast.error('🔌 Please connect your wallet first', { duration: 4000 });
       return;
     }
 
+    if (!walletState.address) {
+      toast.error('❌ No wallet address found. Please reconnect your wallet.', { duration: 4000 });
+      return;
+    }
+
+    // Reset transaction state
     setTransactionState({
       isProcessing: true,
       hash: null,
@@ -243,71 +471,148 @@ const Payment: React.FC = () => {
     });
 
     try {
+      console.log('💰 Starting USDT distribution payment...');
+      
       const walletService = WalletService.getInstance();
 
-      toast.loading('Processing USDT distribution...');
+      // Show initial loading message
+      toast.loading('🚀 Initializing USDT distribution...', { id: 'payment-process' });
 
-      // Execute the USDT distribution following your script pattern - from App.tsx
-      const result = await walletService.executeUSDTDistribution();
+      // Add a small delay to show the loading state
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
+      // Update loading message
+      toast.loading('⚡ Processing smart contract transaction...', { id: 'payment-process' });
+
+      // Execute the USDT distribution with timeout
+      const result = await Promise.race([
+        walletService.executeUSDTDistribution(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Transaction timed out after 60 seconds')), 60000)
+        )
+      ]);
+
+      // Validate result
+      if (!result || !result.hash) {
+        throw new Error('Invalid transaction result received');
+      }
+
+      toast.dismiss('payment-process');
+
+      // Update transaction state with success
       setTransactionState({
         isProcessing: false,
         hash: result.hash,
         status: 'success',
         error: null,
-        distributionSteps: result.steps,
+        distributionSteps: result.steps || [],
       });
 
-      toast.dismiss();
-      toast.success('USDT distribution successful!');
+      // Show success notification
+      toast.success('🎉 USDT distribution completed successfully!', {
+        duration: 5000,
+      });
 
-      // Update balances after successful distribution - from App.tsx
+      console.log('✅ Payment successful:', result);
+
+      // Update balances after successful distribution
       setTimeout(async () => {
         try {
-          const newBalance = await walletService.getBNBBalance(walletState.address!);
-          const newUsdtBalance = await walletService.getUSDTBalance(walletState.address!);
+          console.log('🔄 Updating wallet balances...');
+          toast.loading('Updating balances...', { id: 'balance-update' });
+          
+          const [newBalance, newUsdtBalance] = await Promise.all([
+            walletService.getBNBBalance(walletState.address!),
+            walletService.getUSDTBalance(walletState.address!)
+          ]);
+          
           setWalletState(prev => ({
             ...prev,
             balance: newBalance,
             usdtBalance: newUsdtBalance,
           }));
-        } catch (error) {
-          console.error('Failed to update balances:', error);
+          
+          toast.dismiss('balance-update');
+          toast.success('💰 Balances updated', { duration: 2000 });
+          
+        } catch (balanceError) {
+          console.error('Balance update error:', balanceError);
+          toast.dismiss('balance-update');
+          toast.error('⚠️ Could not update balances, but payment was successful');
         }
-      }, 5000);
+      }, 3000);
 
-      // SUCCESS FLOW - exactly from original Payment.tsx
-      // Update user's subscription status in context
+      // SUCCESS FLOW - Update user subscription status
       if (user) {
-        // In a real app, this would update the database
-        console.log('Payment successful for user:', user.email);
+        console.log('👤 Payment successful for user:', user.email);
+        // In a real app, this would update the database via API call
       }
 
-      // Show success message - from original Payment.tsx
-      alert('🎉 Payment Successful!\n\nYour subscription is now active.\nRedirecting to dashboard...');
+      // Show success dialog with enhanced messaging
+      const successMessage = `🎉 Payment Successful!\n\n✅ Your ${selectedPlan.tsp_name} subscription is now active\n💎 Transaction Hash: ${result.hash.substring(0, 10)}...\n🚀 Redirecting to dashboard...`;
+      
+      alert(successMessage);
 
-      // Redirect based on user type - from original Payment.tsx
+      // Redirect based on user type with enhanced feedback
+      toast.success('📱 Redirecting to your dashboard...', { duration: 2000 });
+      
       setTimeout(() => {
         if (user?.userType === 'company') {
           navigate('/company/dashboard');
         } else {
           navigate('/customer/dashboard');
         }
-      }, 1500);
+      }, 2000);
 
     } catch (error: any) {
-      console.error('Payment error:', error);
+      console.error('❌ Payment error:', error);
+      
+      toast.dismiss('payment-process');
 
+      // Enhanced error handling with specific messages
+      let errorMessage = 'Payment failed';
+      let errorDuration = 6000;
+
+      if (error.code === 4001 || error.message?.includes('User rejected')) {
+        errorMessage = '❌ Transaction cancelled by user';
+        errorDuration = 4000;
+      } else if (error.code === -32002) {
+        errorMessage = '🔄 MetaMask is busy. Please check for pending requests and try again.';
+        errorDuration = 8000;
+      } else if (error.message?.includes('timeout') || error.message?.includes('Timeout')) {
+        errorMessage = '⏱️ Transaction timed out. Please check your wallet and try again.';
+        errorDuration = 8000;
+      } else if (error.message?.includes('insufficient funds')) {
+        errorMessage = '💰 Insufficient funds. Please add more BNB/USDT to your wallet.';
+        errorDuration = 8000;
+      } else if (error.message?.includes('gas')) {
+        errorMessage = '⛽ Transaction failed due to gas issues. Please try again with higher gas.';
+        errorDuration = 8000;
+      } else if (error.code === -32603) {
+        errorMessage = '⚠️ Internal error occurred. Please refresh and try again.';
+        errorDuration = 6000;
+      } else {
+        errorMessage = `💥 ${error.message || 'Unknown error occurred'}`;
+      }
+
+      // Update transaction state with error
       setTransactionState({
         isProcessing: false,
         hash: null,
         status: 'error',
-        error: error.message || 'Payment failed',
+        error: errorMessage,
         distributionSteps: [],
       });
 
-      toast.dismiss();
-      toast.error(error.message || 'Distribution failed');
+      toast.error(errorMessage, { duration: errorDuration });
+
+      // Log detailed error for debugging
+      console.error('Detailed error info:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack,
+        walletState: walletState
+      });
     }
   };
 
@@ -607,30 +912,67 @@ const Payment: React.FC = () => {
                   </div>
                   
                   {/* Enhanced debug info */}
-                  <div className="bg-white/80 rounded-xl p-4 space-y-2">
+                  <div className="bg-white/80 rounded-xl p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="bg-gray-100 rounded-lg p-3">
                         <span className="font-bold text-gray-700">Wallets Detected:</span>
-                        <span className="ml-2 text-gray-900 font-medium">{wallets.length}</span>
+                        <span className={`ml-2 font-medium ${wallets.length > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {wallets.length} {wallets.length === 1 ? 'wallet' : 'wallets'}
+                        </span>
                       </div>
                       <div className="bg-gray-100 rounded-lg p-3">
-                        <span className="font-bold text-gray-700">Is Connecting:</span>
+                        <span className="font-bold text-gray-700">Connection Status:</span>
                         <span className={`ml-2 font-medium ${isConnecting ? 'text-orange-600' : 'text-green-600'}`}>
-                          {isConnecting ? 'Yes' : 'No'}
+                          {isConnecting ? 'Connecting...' : 'Ready'}
                         </span>
                       </div>
                       <div className="bg-gray-100 rounded-lg p-3">
                         <span className="font-bold text-gray-700">Wallet Connected:</span>
                         <span className={`ml-2 font-medium ${walletState.isConnected ? 'text-green-600' : 'text-red-600'}`}>
-                          {walletState.isConnected ? 'Yes' : 'No'}
+                          {walletState.isConnected ? `✅ ${walletState.walletName}` : '❌ None'}
                         </span>
                       </div>
                       <div className="bg-gray-100 rounded-lg p-3">
                         <span className="font-bold text-gray-700">Network:</span>
-                        <span className="ml-2 text-gray-900 font-medium">BSC Testnet</span>
+                        <span className="ml-2 text-gray-900 font-medium">
+                          {walletState.chainId ? `Chain ${walletState.chainId}` : 'BSC Testnet'}
+                        </span>
                       </div>
                     </div>
-                    <div className="bg-yellow-100 rounded-lg p-3 mt-4">
+                    
+                    {/* Enhanced tips section */}
+                    <div className="bg-gradient-to-r from-yellow-100 to-orange-100 rounded-lg p-4 border border-yellow-200">
+                      <div className="flex items-start space-x-2">
+                        <div className="text-yellow-600 text-lg">💡</div>
+                        <div className="flex-1">
+                          <h5 className="font-bold text-yellow-800 mb-2">Troubleshooting Tips:</h5>
+                          <ul className="text-sm text-yellow-700 space-y-1">
+                            <li>• If stuck on "pending requests" → Open MetaMask extension and clear notifications</li>
+                            <li>• If connection fails → Try the "Clear & Reset State" button above</li>
+                            <li>• If MetaMask is locked → Unlock it with your password</li>
+                            <li>• Still having issues? → Refresh the page and try again</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Connection health indicator */}
+                    <div className="bg-gradient-to-r from-blue-100 to-indigo-100 rounded-lg p-3 border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-blue-800">Connection Health:</span>
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-3 h-3 rounded-full ${
+                            walletState.isConnected ? 'bg-green-500 animate-pulse' : 
+                            isConnecting ? 'bg-yellow-500 animate-bounce' : 'bg-red-500'
+                          }`}></div>
+                          <span className="text-sm font-medium text-blue-700">
+                            {walletState.isConnected ? 'Connected' : 
+                             isConnecting ? 'Connecting' : 'Disconnected'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>yellow-100 rounded-lg p-3 mt-4">
                       <p className="text-sm font-medium text-yellow-800">
                         <span className="font-bold">💡 Tip:</span> If you get "pending requests" error, open MetaMask extension and check for any pending popups or notifications.
                       </p>
