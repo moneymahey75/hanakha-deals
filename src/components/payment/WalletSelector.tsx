@@ -35,7 +35,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
               >
                 <div className="flex items-center space-x-3">
                   <span className="text-2xl">{wallet.icon}</span>
-                  <span className="text-white font-medium">{wallet.name}</span>
+                  <span className="text-gray font-medium">{wallet.name}</span>
                 </div>
                 <button
                   onClick={() => onConnect(wallet.provider)}
