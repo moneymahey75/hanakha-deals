@@ -982,5 +982,3 @@ const PlanModal: React.FC<{
 };
 
 export default SubscriptionManagement;
-
-export default SubscriptionManagement
