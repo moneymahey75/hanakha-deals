@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Eye, EyeOff, Mail, Phone, Lock, Building } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
@@ -7,6 +7,7 @@ import ReCaptcha from '../../components/ui/ReCaptcha';
 const CompanyLogin: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     emailOrMobile: '',
@@ -29,7 +30,16 @@ const CompanyLogin: React.FC = () => {
 
     try {
       await login(formData.emailOrMobile, formData.password, 'company');
-      navigate('/company/dashboard');
+      
+      // Check if user was trying to access a specific page
+      const from = location.state?.from;
+      
+      if (from) {
+        navigate(from);
+      } else {
+        // Default redirect - will be handled by ProtectedRoute based on subscription status
+        navigate('/company/dashboard');
+      }
     } catch (err) {
       // Error is now handled by notification system
     } finally {

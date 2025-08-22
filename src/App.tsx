@@ -109,9 +109,7 @@ function App() {
                             <Route path="/auth/callback" element={<AuthCallback />} />
                             <Route path="/verify-otp" element={<VerifyOTP />} />
                             <Route path="/subscription-plans" element={
-                              <ProtectedRoute userType="customer">
-                                <SubscriptionPlans />
-                              </ProtectedRoute>
+                              <SubscriptionPlans />
                             } />
                             <Route path="/payment" element={
                               <ProtectedRoute userType="customer">

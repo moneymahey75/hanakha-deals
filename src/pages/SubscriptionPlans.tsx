@@ -8,18 +8,25 @@ const SubscriptionPlans: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // If user is not authenticated, redirect to login
+  // If user is not authenticated, allow viewing but require login for selection
   if (!user) {
-    return <Navigate to="/customer/login" replace state={{ from: '/subscription-plans' }} />;
+    // Show plans but require login for purchase
   }
 
   // If user already has active subscription, redirect to dashboard
-  if (user.hasActiveSubscription) {
+  if (user && user.hasActiveSubscription) {
     const dashboardPath = user.userType === 'company' ? '/company/dashboard' : '/customer/dashboard';
     return <Navigate to={dashboardPath} replace />;
   }
 
   const handleSelectPlan = (planId: string) => {
+    // If user not logged in, redirect to login first
+    if (!user) {
+      navigate('/customer/login', { state: { from: '/subscription-plans', selectedPlanId: planId } });
+      return;
+    }
+    
+    // If logged in, proceed to payment
     navigate('/payment', { state: { selectedPlanId: planId, fromPlanSelection: true } });
   };
 
@@ -30,10 +37,13 @@ const SubscriptionPlans: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Choose Your USDT Subscription Plan
+            {user ? 'Choose Your USDT Subscription Plan' : 'USDT Subscription Plans'}
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Select the perfect USDT subscription plan to start your MLM journey and unlock your earning potential.
+            {user 
+              ? 'Select the perfect USDT subscription plan to start your MLM journey and unlock your earning potential.'
+              : 'Explore our USDT subscription plans. Login to purchase and start your MLM journey.'
+            }
           </p>
         </div>
 
@@ -85,7 +95,10 @@ const SubscriptionPlans: React.FC = () => {
                     : 'bg-gray-900 text-white hover:bg-gray-800'
                 }`}
               >
-                Pay {plan.tsp_price} USDT - Select {plan.tsp_name}
+                {user 
+                  ? `Pay ${plan.tsp_price} USDT - Select ${plan.tsp_name}`
+                  : `Select ${plan.tsp_name} - ${plan.tsp_price} USDT`
+                }
               </button>
             </div>
           ))}
@@ -97,23 +110,39 @@ const SubscriptionPlans: React.FC = () => {
               <Zap className="h-8 w-8 text-yellow-600" />
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {user.hasActiveSubscription ? 'Manage Your Plan' : 'Choose Your Subscription Plan'}
+              {user?.hasActiveSubscription ? 'Manage Your Plan' : 'Choose Your Subscription Plan'}
             </h3>
             <p className="text-gray-600">
-              {user.hasActiveSubscription 
+              {user?.hasActiveSubscription 
                 ? 'Your current subscription details and upgrade options.'
-                : 'You must select and pay for a subscription plan to access your dashboard and start your MLM journey.'
+                : user 
+                  ? 'You must select and pay for a subscription plan to access your dashboard and start your MLM journey.'
+                  : 'Login to select and purchase a subscription plan to start your MLM journey.'
               }
             </p>
-            {!user.hasActiveSubscription && (
+            {(!user || !user.hasActiveSubscription) && (
               <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 max-w-2xl mx-auto">
                 <div className="flex items-center justify-center space-x-2 text-blue-800">
                   <DollarSign className="h-5 w-5" />
                   <span className="font-semibold">All Payments in USDT (BEP-20)</span>
                 </div>
                 <p className="text-sm text-blue-700 mt-2">
-                  Select a plan above and pay with USDT on BNB Smart Chain for instant activation.
+                  {user 
+                    ? 'Select a plan above and pay with USDT on BNB Smart Chain for instant activation.'
+                    : 'Login first, then select a plan and pay with USDT on BNB Smart Chain for instant activation.'
+                  }
                 </p>
+              </div>
+            )}
+            {!user && (
+              <div className="mt-6">
+                <Link
+                  to="/customer/login"
+                  className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center space-x-2"
+                >
+                  <span>Login to Purchase</span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
             )}
           </div>

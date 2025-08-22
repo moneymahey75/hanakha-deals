@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
@@ -7,6 +7,7 @@ import ReCaptcha from '../../components/ui/ReCaptcha';
 const CustomerLogin: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     emailOrUsername: '',
@@ -29,7 +30,21 @@ const CustomerLogin: React.FC = () => {
 
     try {
       await login(formData.emailOrUsername, formData.password, 'customer');
-      navigate('/customer/dashboard');
+      
+      // Check if user was trying to access a specific page or select a plan
+      const from = location.state?.from;
+      const selectedPlanId = location.state?.selectedPlanId;
+      
+      if (selectedPlanId) {
+        // User was selecting a plan, redirect to payment with selected plan
+        navigate('/payment', { state: { selectedPlanId, fromPlanSelection: true } });
+      } else if (from) {
+        // User was trying to access a specific page
+        navigate(from);
+      } else {
+        // Default redirect - will be handled by ProtectedRoute based on subscription status
+        navigate('/customer/dashboard');
+      }
     } catch (err) {
       // Error is now handled by notification system
     } finally {
