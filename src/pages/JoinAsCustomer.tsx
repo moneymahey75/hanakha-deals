@@ -71,7 +71,7 @@ const JoinAsCustomer: React.FC = () => {
   const testimonials = [
     {
       name: "Sarah Johnson",
-      earnings: "$5,200",
+      earnings: "5,200 USDT",
       period: "monthly",
       quote: "The binary system is incredibly fair and transparent. I've built a sustainable income stream that continues to grow.",
       image: "https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop",
@@ -79,7 +79,7 @@ const JoinAsCustomer: React.FC = () => {
     },
     {
       name: "Michael Chen",
-      earnings: "$8,750",
+      earnings: "8,750 USDT",
       period: "monthly",
       quote: "The platform's analytics help me optimize my strategy. The support team is always there when I need help.",
       image: "https://images.pexels.com/photos/3184465/pexels-photo-3184465.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop",
@@ -87,7 +87,7 @@ const JoinAsCustomer: React.FC = () => {
     },
     {
       name: "Emma Davis",
-      earnings: "$12,300",
+      earnings: "12,300 USDT",
       period: "monthly",
       quote: "I love the blockchain transparency. Every transaction is visible and secure. It's the future of MLM.",
       image: "https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop",

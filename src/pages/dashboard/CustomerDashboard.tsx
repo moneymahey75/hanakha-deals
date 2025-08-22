@@ -281,13 +281,13 @@ const CustomerDashboard: React.FC = () => {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Earnings Summary</h3>
                 <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white p-6 rounded-lg mb-6">
                   <h4 className="text-lg font-semibold">Total Earnings</h4>
-                  <p className="text-3xl font-bold mt-2">$12,450.00</p>
+                  <p className="text-3xl font-bold mt-2">12,450 USDT</p>
                   <p className="text-green-100 mt-1">+15% from last month</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <h5 className="font-semibold text-gray-900">This Month</h5>
-                    <p className="text-xl font-bold text-gray-700 mt-1">$2,450.00</p>
+                    <p className="text-xl font-bold text-gray-700 mt-1">2,450 USDT</p>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <h5 className="font-semibold text-gray-900">Commission Rate</h5>

@@ -175,7 +175,7 @@ const AdminDashboard: React.FC = () => {
     },
     {
       title: 'Monthly Revenue',
-      value: '$45,230',
+      value: '45,230 USDT',
       icon: DollarSign,
       color: 'bg-yellow-500',
       change: '+15%'

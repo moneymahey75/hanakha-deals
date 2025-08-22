@@ -216,7 +216,7 @@ const AboutUs: React.FC = () => {
             {[
               { icon: Users, number: "50,000+", label: "Active Members" },
               { icon: Globe, number: "150+", label: "Countries" },
-              { icon: TrendingUp, number: "$2M+", label: "Total Earnings" },
+              { icon: TrendingUp, number: "2M+ USDT", label: "Total Earnings" },
               { icon: Award, number: "99.9%", label: "Uptime" }
             ].map((stat, index) => (
               <div key={index} className="group">

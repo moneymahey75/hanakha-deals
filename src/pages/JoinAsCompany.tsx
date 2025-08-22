@@ -181,7 +181,7 @@ const JoinAsCompany: React.FC = () => {
                     <div className="text-sm text-gray-300">Partner Companies</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-purple-300 mb-2">$10M+</div>
+                    <div className="text-3xl font-bold text-purple-300 mb-2">10M+ USDT</div>
                     <div className="text-sm text-gray-300">Revenue Generated</div>
                   </div>
                 </div>

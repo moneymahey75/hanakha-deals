@@ -232,7 +232,7 @@ const CompanyDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 rounded-lg">
                     <h4 className="text-lg font-semibold">Revenue Report</h4>
-                    <p className="text-3xl font-bold mt-2">$45,230</p>
+                    <p className="text-3xl font-bold mt-2">45,230 USDT</p>
                     <p className="text-blue-100 mt-1">Monthly revenue</p>
                   </div>
                   <div className="bg-gradient-to-r from-green-500 to-teal-600 text-white p-6 rounded-lg">

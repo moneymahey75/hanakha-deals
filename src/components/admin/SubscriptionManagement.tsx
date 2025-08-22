@@ -648,7 +648,7 @@ const PlansTab: React.FC<{
 
           <div className="mb-4">
             <div className="text-3xl font-bold text-gray-900 mb-1">
-              {plan.tsp_price} USDT
+              ${plan.tsp_price}
             </div>
             <div className="text-sm text-gray-600">
               {plan.tsp_duration_days} days subscription
@@ -769,7 +769,7 @@ const SubscriptionsTab: React.FC<{
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm font-medium text-gray-900">
-                  ${subscription.tus_payment_amount}
+                  {subscription.tus_payment_amount} USDT
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
