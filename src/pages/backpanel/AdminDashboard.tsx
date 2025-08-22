@@ -7,6 +7,7 @@ import CustomerManagement from '../../components/admin/CustomerManagement';
 import SMTPSettings from '../../components/admin/SMTPSettings';
 import SMSSettings from '../../components/admin/SMSSettings';
 import AdminManagement from '../../components/admin/AdminManagement';
+import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
 import {
   Users,
   Building,
@@ -376,10 +377,7 @@ const AdminDashboard: React.FC = () => {
           )}
 
           {activeTab === 'subscriptions' && hasPermission('subscriptions', 'read') && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription Management</h3>
-              <p className="text-gray-600">Subscription management interface will be displayed here.</p>
-            </div>
+            <SubscriptionManagement />
           )}
 
           {activeTab === 'payments' && hasPermission('payments', 'read') && (
