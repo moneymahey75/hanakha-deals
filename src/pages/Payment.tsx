@@ -473,8 +473,7 @@ const Payment: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-3xl font-bold text-gray-900">{selectedPlan.tsp_price}</span>
-                    <p className="text-sm text-gray-500">USDT</p>
+                    <span className="text-3xl font-bold text-gray-900">{selectedPlan.tsp_price} USDT</span>
                   </div>
                 </div>
 
@@ -498,7 +497,7 @@ const Payment: React.FC = () => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium">Processing Fee</span>
-                  <span className="text-green-600 font-semibold">0.00 USDT</span>
+                  <span className="text-green-600 font-semibold">0 USDT</span>
                 </div>
                 <div className="border-t-2 border-gray-200 pt-4">
                   <div className="flex justify-between items-center">

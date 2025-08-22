@@ -58,7 +58,7 @@ const SubscriptionPlans: React.FC = () => {
               <div className="text-center mb-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.tsp_name}</h3>
                 <div className="flex items-center justify-center mb-4">
-                  <span className="text-4xl font-bold text-gray-900">${plan.tsp_price}</span>
+                  <span className="text-4xl font-bold text-gray-900">{plan.tsp_price} USDT</span>
                   <span className="text-gray-600 ml-2">/{plan.tsp_duration_days} days</span>
                 </div>
                 <p className="text-gray-600">
