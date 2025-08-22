@@ -436,9 +436,9 @@ const SubscriptionManagement: React.FC = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
-                <option value="all">All Statuses</option>
+                <option value="all">All Status</option>
                 <option value="active">Active</option>
                 <option value="expired">Expired</option>
                 <option value="cancelled">Cancelled</option>
@@ -487,43 +487,81 @@ const SubscriptionManagement: React.FC = () => {
 
       {/* Content */}
       <div className="p-6">
-        {activeTab === 'plans' ? (
-          <div>
-            {/* Debug Info */}
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-800 mb-2">Debug Information</h4>
-              <div className="text-sm text-blue-700 space-y-1">
-                <p>Total plans in database: {plans.length}</p>
-                <p>Filtered plans: {filteredPlans.length}</p>
-                <p>Search term: "{searchTerm}"</p>
-                <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
-              </div>
-            </div>
-            
-            <PlansTab
-              plans={filteredPlans}
-              onEdit={openEditModal}
-              onDelete={handleDeletePlan}
-              onToggleStatus={handleTogglePlanStatus}
-            />
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading {activeTab === 'plans' ? 'subscription plans' : 'user subscriptions'}...</p>
           </div>
-        ) : (
-          <div>
-            {/* Debug Info */}
-            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <h4 className="text-sm font-medium text-green-800 mb-2">Debug Information</h4>
-              <div className="text-sm text-green-700 space-y-1">
-                <p>Total subscriptions in database: {subscriptions.length}</p>
-                <p>Filtered subscriptions: {filteredSubscriptions.length}</p>
-                <p>Search term: "{searchTerm}"</p>
-                <p>Status filter: {statusFilter}</p>
-              </div>
+        )}
+        
+        {/* Error State */}
+        {!loading && plans.length === 0 && activeTab === 'plans' && (
+          <div className="text-center py-12">
+            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Subscription Plans Found</h3>
+            <p className="text-gray-600 mb-6">
+              Either no plans exist in the database or there's a connection issue.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={loadData}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span>Retry Loading</span>
+              </button>
+              <button
+                onClick={() => setShowCreatePlanModal(true)}
+                className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2 mx-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create First Plan</span>
+              </button>
             </div>
-            
-            <SubscriptionsTab
-              subscriptions={filteredSubscriptions}
-            />
           </div>
+        )}
+        
+        {/* Content when data is loaded */}
+        {!loading && (
+          activeTab === 'plans' ? (
+            <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">Debug Information</h4>
+                <div className="text-sm text-blue-700 space-y-1">
+                  <p>Total plans in database: {plans.length}</p>
+                  <p>Filtered plans: {filteredPlans.length}</p>
+                  <p>Search term: "{searchTerm}"</p>
+                  <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
+                </div>
+              </div>
+              
+              <PlansTab
+                plans={filteredPlans}
+                onEdit={openEditModal}
+                onDelete={handleDeletePlan}
+                onToggleStatus={handleTogglePlanStatus}
+              />
+            </div>
+          ) : (
+            <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h4 className="text-sm font-medium text-green-800 mb-2">Debug Information</h4>
+                <div className="text-sm text-green-700 space-y-1">
+                  <p>Total subscriptions in database: {subscriptions.length}</p>
+                  <p>Filtered subscriptions: {filteredSubscriptions.length}</p>
+                  <p>Search term: "{searchTerm}"</p>
+                  <p>Status filter: {statusFilter}</p>
+                </div>
+              </div>
+              
+              <SubscriptionsTab
+                subscriptions={filteredSubscriptions}
+              />
+            </div>
+          )
         )}
       </div>
 
