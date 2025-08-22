@@ -392,10 +392,6 @@ export const getMLMTreeNode = async (userId: string) => {
     console.error('❌ Failed to fetch subscription plans:', error);
     throw error;
   }
-  } catch (error) {
-    console.warn('Failed to get MLM tree node:', error);
-    return null;
-  }
 }
 
 // Enhanced MLM tree functions with Redis integration
