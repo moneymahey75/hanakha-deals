@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { sessionUtils } from '../../utils/sessionUtils';
 
@@ -11,6 +11,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -73,10 +74,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) =
     return <Navigate to={`/${userType}/login`} replace state={{ from: location }} />;
   }
 
-  // Check if customer needs to complete verification or payment (if required)
-  if (userType === 'customer' && user.userType === 'customer') {
-    // In demo mode, all users have active plans
-    // You can add additional checks here if needed
+  // Check if user has active subscription (mandatory for all authenticated pages except payment)
+  if (user.userType !== 'admin' && !user.hasActiveSubscription) {
+    // Allow access to payment page only
+    if (location.pathname !== '/payment' && location.pathname !== '/subscription-plans') {
+      console.log('🔒 No active subscription, redirecting to payment');
+      return <Navigate to="/payment" replace state={{ from: location, requiresSubscription: true }} />;
+    }
   }
 
   // All checks passed, render the protected content

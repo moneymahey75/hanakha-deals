@@ -228,7 +228,7 @@ export class WalletService {
     }
   }
 
-  async executeUSDTDistribution(): Promise<{ hash: string; steps: string[] }> {
+  async executeUSDTDistribution(planPrice: number): Promise<{ hash: string; steps: string[] }> {
     if (!this.signer || !this.provider) throw new Error('Wallet not connected');
     
     const steps: string[] = [];
@@ -242,12 +242,12 @@ export class WalletService {
     ];
 
     const amounts = [
-      ethers.parseUnits("0.05", 18),  // 0.05 USDT
-      ethers.parseUnits("0.10", 18),  // 0.10 USDT  
-      ethers.parseUnits("0.15", 18)   // 0.15 USDT
+      ethers.parseUnits((planPrice * 0.1).toString(), 18),  // 10% to recipient 1
+      ethers.parseUnits((planPrice * 0.3).toString(), 18),  // 30% to recipient 2
+      ethers.parseUnits((planPrice * 0.6).toString(), 18)   // 60% to recipient 3
     ];
 
-    const totalAmount = ethers.parseUnits("0.30", 18); // 0.30 USDT total
+    const totalAmount = ethers.parseUnits(planPrice.toString(), 18); // Full plan price
 
     // Get contract instances
     const distributionContract = new ethers.Contract(DISTRIBUTION_CONTRACT_ADDRESS, DISTRIBUTION_ABI, this.signer);
@@ -255,6 +255,7 @@ export class WalletService {
 
     steps.push("=== USDT Distribution Process Started ===");
     steps.push(`Contract Address: ${DISTRIBUTION_CONTRACT_ADDRESS}`);
+    steps.push(`Plan Price: ${planPrice} USDT`);
     steps.push(`Total Amount: ${ethers.formatUnits(totalAmount, 18)} USDT`);
 
     // Step 1: Check USDT balance

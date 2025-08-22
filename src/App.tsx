@@ -108,8 +108,16 @@ function App() {
                             <Route path="/reset-password" element={<ResetPassword />} />
                             <Route path="/auth/callback" element={<AuthCallback />} />
                             <Route path="/verify-otp" element={<VerifyOTP />} />
-                            <Route path="/subscription-plans" element={<SubscriptionPlans />} />
-                            <Route path="/payment" element={<Payment />} />
+                            <Route path="/subscription-plans" element={
+                              <ProtectedRoute userType="customer">
+                                <SubscriptionPlans />
+                              </ProtectedRoute>
+                            } />
+                            <Route path="/payment" element={
+                              <ProtectedRoute userType="customer">
+                                <Payment />
+                              </ProtectedRoute>
+                            } />
                             
                             <Route path="*" element={<Navigate to="/" replace />} />
                           </Routes>

@@ -6,12 +6,14 @@ interface PaymentSectionProps {
   onPayment: () => void;
   transaction: TransactionState;
   distributionSteps?: string[];
+  planPrice?: number;
 }
 
 export const PaymentSection: React.FC<PaymentSectionProps> = ({
   onPayment,
   transaction,
   distributionSteps = [],
+  planPrice = 0.30,
 }) => {
   const openTransaction = () => {
     if (transaction.hash) {
@@ -34,10 +36,10 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
               Distribution Details
             </h4>
             <div className="text-blue-300 text-sm space-y-1">
-              <p>• Recipient 1: 0xF52F...9444 → 0.05 USDT</p>
-              <p>• Recipient 2: 0x73D5...894E → 0.10 USDT</p>
-              <p>• Recipient 3: 0x323E...ADB3 → 0.15 USDT</p>
-              <p className="font-medium mt-2">Total: 0.30 USDT</p>
+              <p>• Recipient 1: 0xF52F...9444 → {(planPrice * 0.1).toFixed(2)} USDT (10%)</p>
+              <p>• Recipient 2: 0x73D5...894E → {(planPrice * 0.3).toFixed(2)} USDT (30%)</p>
+              <p>• Recipient 3: 0x323E...ADB3 → {(planPrice * 0.6).toFixed(2)} USDT (60%)</p>
+              <p className="font-medium mt-2">Total: {planPrice} USDT</p>
             </div>
           </div>
 
@@ -71,7 +73,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
             <CreditCard className="w-5 h-5" />
           )}
           <span>
-            {transaction.isProcessing ? 'Processing Distribution...' : 'Approve & Distribute 0.30 USDT'}
+            {transaction.isProcessing ? 'Processing Distribution...' : `Approve & Distribute ${planPrice} USDT`}
           </span>
         </button>
       </div>

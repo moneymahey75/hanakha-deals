@@ -12,7 +12,7 @@ interface User {
   sponsorshipNumber?: string;
   parentId?: string;
   isVerified: boolean;
-  hasActivePlan: boolean;
+  hasActiveSubscription: boolean;
   mobileVerified: boolean;
 }
 
@@ -205,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sponsorshipNumber: profileData?.tup_sponsorship_number,
         parentId: profileData?.tup_parent_account,
         isVerified: userData?.tu_is_verified || false,
-        hasActivePlan: true, // Set to true for demo mode
+        hasActiveSubscription: !!subscriptionData, // Check if user has active subscription
         mobileVerified: userData?.tu_mobile_verified || false
       };
 

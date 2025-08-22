@@ -1,11 +1,24 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
-import { Check, Star, Zap } from 'lucide-react';
-
+import { useAuth } from '../contexts/AuthContext';
+import { Check, Star, Zap, DollarSign } from 'lucide-react';
 const SubscriptionPlans: React.FC = () => {
   const { subscriptionPlans } = useAdmin();
+  const { user } = useAuth();
   const navigate = useNavigate();
+
+  // If user is not authenticated, redirect to login
+  if (!user) {
+    return <Navigate to="/customer/login" replace />;
+  }
+
+  // If user already has active subscription, redirect to dashboard
+  if (user.hasActiveSubscription) {
+    const dashboardPath = user.userType === 'company' ? '/company/dashboard' : '/customer/dashboard';
+    return <Navigate to={dashboardPath} replace />;
+  }
 
   const handleSelectPlan = (planId: string) => {
     navigate('/payment', { state: { planId } });
@@ -84,11 +97,25 @@ const SubscriptionPlans: React.FC = () => {
               <Zap className="h-8 w-8 text-yellow-600" />
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No Active Plans Available
+              {user.hasActiveSubscription ? 'Manage Your Plan' : 'Choose Your Subscription Plan'}
             </h3>
             <p className="text-gray-600">
-              Please contact support for assistance with subscription plans.
+              {user.hasActiveSubscription 
+                ? 'Your current subscription details and upgrade options.'
+                : 'Select a subscription plan to access your dashboard and start your MLM journey. Payment in USDT only.'
+              }
             </p>
+            {!user.hasActiveSubscription && (
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 max-w-2xl mx-auto">
+                <div className="flex items-center justify-center space-x-2 text-blue-800">
+                  <DollarSign className="h-5 w-5" />
+                  <span className="font-semibold">Payment Currency: USDT (BEP-20)</span>
+                </div>
+                <p className="text-sm text-blue-700 mt-2">
+                  All payments are processed in USDT on BNB Smart Chain for transparency and security.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

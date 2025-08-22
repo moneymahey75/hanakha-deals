@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Shield, CheckCircle, DollarSign, Wallet, CreditCard, Zap, Lock } from 'lucide-react';
+import { Shield, CheckCircle, DollarSign, Wallet, CreditCard, Zap, Lock, AlertTriangle } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 
@@ -20,8 +20,19 @@ const Payment: React.FC = () => {
   const { subscriptionPlans } = useAdmin();
   const { user } = useAuth();
 
-  const planId = location.state?.planId;
-  const selectedPlan = subscriptionPlans.find(plan => plan.id === planId);
+  // Check if user is authenticated
+  if (!user) {
+    return <Navigate to="/customer/login" replace />;
+  }
+
+  // If user already has active subscription, redirect to dashboard
+  if (user.hasActiveSubscription && !location.state?.requiresSubscription) {
+    const dashboardPath = user.userType === 'company' ? '/company/dashboard' : '/customer/dashboard';
+    return <Navigate to={dashboardPath} replace />;
+  }
+
+  const planId = location.state?.planId || subscriptionPlans[0]?.id; // Default to first plan if none selected
+  const selectedPlan = subscriptionPlans.find(plan => plan.id === planId) || subscriptionPlans[0];
 
   // Smart contract state - exactly from App.tsx
   const [wallets, setWallets] = useState(WalletService.getInstance().detectWallets());
@@ -248,7 +259,7 @@ const Payment: React.FC = () => {
       toast.loading('Processing USDT distribution...');
 
       // Execute the USDT distribution following your script pattern - from App.tsx
-      const result = await walletService.executeUSDTDistribution();
+      const result = await walletService.executeUSDTDistribution(selectedPlan.tsp_price);
 
       setTransactionState({
         isProcessing: false,
@@ -279,12 +290,31 @@ const Payment: React.FC = () => {
       // SUCCESS FLOW - exactly from original Payment.tsx
       // Update user's subscription status in context
       if (user) {
-        // In a real app, this would update the database
-        console.log('Payment successful for user:', user.email);
+        // Create subscription record in database
+        try {
+          const { error: subscriptionError } = await supabase
+            .from('tbl_user_subscriptions')
+            .insert({
+              tus_user_id: user.id,
+              tus_plan_id: selectedPlan.id,
+              tus_status: 'active',
+              tus_start_date: new Date().toISOString(),
+              tus_end_date: new Date(Date.now() + selectedPlan.tsp_duration_days * 24 * 60 * 60 * 1000).toISOString(),
+              tus_payment_amount: selectedPlan.tsp_price
+            });
+
+          if (subscriptionError) {
+            console.error('Failed to create subscription record:', subscriptionError);
+          } else {
+            console.log('✅ Subscription record created successfully');
+          }
+        } catch (dbError) {
+          console.error('Database error creating subscription:', dbError);
+        }
       }
 
       // Show success message - from original Payment.tsx
-      alert('🎉 Payment Successful!\n\nYour subscription is now active.\nRedirecting to dashboard...');
+      toast.success('🎉 Payment Successful! Your subscription is now active.');
 
       // Redirect based on user type - from original Payment.tsx
       setTimeout(() => {
@@ -293,6 +323,8 @@ const Payment: React.FC = () => {
         } else {
           navigate('/customer/dashboard');
         }
+        // Reload the page to refresh user data with new subscription
+        window.location.reload();
       }, 1500);
 
     } catch (error: any) {
@@ -316,13 +348,16 @@ const Payment: React.FC = () => {
     return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Plan Not Found</h2>
-            <p className="text-gray-600 mb-6">The selected subscription plan could not be found.</p>
+            <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="h-8 w-8 text-yellow-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Subscription Plans Available</h2>
+            <p className="text-gray-600 mb-6">Please contact support to set up subscription plans.</p>
             <button
                 onClick={() => navigate('/subscription-plans')}
                 className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors"
             >
-              Back to Plans
+              View Available Plans
             </button>
           </div>
         </div>
@@ -331,6 +366,23 @@ const Payment: React.FC = () => {
 
   return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 py-8 px-4 sm:px-6 lg:px-8">
+        {/* Mandatory Subscription Notice */}
+        {location.state?.requiresSubscription && (
+          <div className="max-w-4xl mx-auto mb-6">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
+              <div className="flex items-center space-x-3">
+                <div className="bg-yellow-100 p-2 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-yellow-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-yellow-800">Subscription Required</h3>
+                  <p className="text-yellow-700">You need an active subscription to access the dashboard. Please complete your payment below.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Toast notifications - enhanced styling */}
         <Toaster
             position="top-right"
@@ -421,8 +473,8 @@ const Payment: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-3xl font-bold text-gray-900">${selectedPlan.tsp_price}</span>
-                    <p className="text-sm text-gray-500">USD</p>
+                    <span className="text-3xl font-bold text-gray-900">{selectedPlan.tsp_price}</span>
+                    <p className="text-sm text-gray-500">USDT</p>
                   </div>
                 </div>
 
@@ -442,16 +494,16 @@ const Payment: React.FC = () => {
               <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium">Subtotal</span>
-                  <span className="text-gray-900 font-semibold">${selectedPlan.tsp_price}</span>
+                  <span className="text-gray-900 font-semibold">{selectedPlan.tsp_price} USDT</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium">Processing Fee</span>
-                  <span className="text-green-600 font-semibold">$0.00</span>
+                  <span className="text-green-600 font-semibold">0.00 USDT</span>
                 </div>
                 <div className="border-t-2 border-gray-200 pt-4">
                   <div className="flex justify-between items-center">
                     <span className="text-xl font-bold text-gray-900">Total</span>
-                    <span className="text-2xl font-bold text-indigo-600">${selectedPlan.tsp_price}</span>
+                    <span className="text-2xl font-bold text-indigo-600">{selectedPlan.tsp_price} USDT</span>
                   </div>
                 </div>
               </div>
@@ -707,6 +759,7 @@ const Payment: React.FC = () => {
                             onPayment={handleSmartContractPayment}
                             transaction={transactionState}
                             distributionSteps={transactionState.distributionSteps}
+                            planPrice={selectedPlan.tsp_price}
                         />
                       </div>
                     </div>
