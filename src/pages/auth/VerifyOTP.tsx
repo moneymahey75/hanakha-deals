@@ -76,8 +76,8 @@ const VerifyOTP: React.FC = () => {
       console.log('🔍 Submitting OTP verification:', otpString)
       await verifyOTP(otpString);
       console.log('✅ OTP verification successful, redirecting...')
-      // After OTP verification, redirect to payment page to buy subscription
-      navigate('/payment', { state: { requiresSubscription: true } });
+      // After OTP verification, redirect to subscription plans to select and buy subscription
+      navigate('/subscription-plans', { state: { requiresSubscription: true } });
     } catch (err) {
       console.error('❌ OTP verification failed:', err)
       setError('Invalid OTP. Please try again.');

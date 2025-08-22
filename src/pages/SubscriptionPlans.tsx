@@ -1,6 +1,5 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Check, Star, Zap, DollarSign } from 'lucide-react';
@@ -11,7 +10,7 @@ const SubscriptionPlans: React.FC = () => {
 
   // If user is not authenticated, redirect to login
   if (!user) {
-    return <Navigate to="/customer/login" replace />;
+    return <Navigate to="/customer/login" replace state={{ from: '/subscription-plans' }} />;
   }
 
   // If user already has active subscription, redirect to dashboard
@@ -21,7 +20,7 @@ const SubscriptionPlans: React.FC = () => {
   }
 
   const handleSelectPlan = (planId: string) => {
-    navigate('/payment', { state: { planId } });
+    navigate('/payment', { state: { selectedPlanId: planId, fromPlanSelection: true } });
   };
 
   const activePlans = subscriptionPlans.filter(plan => plan.tsp_is_active);
@@ -31,10 +30,10 @@ const SubscriptionPlans: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Choose Your Plan
+            Choose Your USDT Subscription Plan
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Select the perfect subscription plan to start your MLM journey and unlock your earning potential.
+            Select the perfect USDT subscription plan to start your MLM journey and unlock your earning potential.
           </p>
         </div>
 
@@ -58,7 +57,8 @@ const SubscriptionPlans: React.FC = () => {
               <div className="text-center mb-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.tsp_name}</h3>
                 <div className="flex items-center justify-center mb-4">
-                  <span className="text-4xl font-bold text-gray-900">{plan.tsp_price} USDT</span>
+                  <span className="text-4xl font-bold text-gray-900">{plan.tsp_price}</span>
+                  <span className="text-2xl font-bold text-indigo-600 ml-2">USDT</span>
                   <span className="text-gray-600 ml-2">/{plan.tsp_duration_days} days</span>
                 </div>
                 <p className="text-gray-600">
@@ -85,7 +85,7 @@ const SubscriptionPlans: React.FC = () => {
                     : 'bg-gray-900 text-white hover:bg-gray-800'
                 }`}
               >
-                Select {plan.tsp_name}
+                Pay {plan.tsp_price} USDT - Select {plan.tsp_name}
               </button>
             </div>
           ))}
@@ -102,17 +102,17 @@ const SubscriptionPlans: React.FC = () => {
             <p className="text-gray-600">
               {user.hasActiveSubscription 
                 ? 'Your current subscription details and upgrade options.'
-                : 'Select a subscription plan to access your dashboard and start your MLM journey. Payment in USDT only.'
+                : 'You must select and pay for a subscription plan to access your dashboard and start your MLM journey.'
               }
             </p>
             {!user.hasActiveSubscription && (
               <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 max-w-2xl mx-auto">
                 <div className="flex items-center justify-center space-x-2 text-blue-800">
                   <DollarSign className="h-5 w-5" />
-                  <span className="font-semibold">Payment Currency: USDT (BEP-20)</span>
+                  <span className="font-semibold">All Payments in USDT (BEP-20)</span>
                 </div>
                 <p className="text-sm text-blue-700 mt-2">
-                  All payments are processed in USDT on BNB Smart Chain for transparency and security.
+                  Select a plan above and pay with USDT on BNB Smart Chain for instant activation.
                 </p>
               </div>
             )}
@@ -122,7 +122,7 @@ const SubscriptionPlans: React.FC = () => {
         <div className="mt-16 bg-white rounded-2xl shadow-lg p-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Why Choose Our MLM Platform?
+              Why Choose Our USDT MLM Platform?
             </h2>
           </div>
           
@@ -141,9 +141,9 @@ const SubscriptionPlans: React.FC = () => {
               <div className="bg-green-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Zap className="h-6 w-6 text-green-600" />
               </div>
-              <h3 className="font-semibold text-gray-900 mb-2">Smart Contracts</h3>
+              <h3 className="font-semibold text-gray-900 mb-2">USDT Smart Contracts</h3>
               <p className="text-gray-600 text-sm">
-                Blockchain-based payments with transparent and secure transactions.
+                USDT blockchain payments with transparent and secure smart contract transactions.
               </p>
             </div>
             

@@ -22,18 +22,28 @@ const Payment: React.FC = () => {
 
   // Check if user is authenticated
   if (!user) {
-    return <Navigate to="/customer/login" replace />;
+    return <Navigate to="/customer/login" replace state={{ from: '/payment' }} />;
   }
 
-  // If user already has active subscription, redirect to dashboard
-  if (user.hasActiveSubscription && !location.state?.requiresSubscription) {
+  // If user already has active subscription and not coming from plan selection, redirect to dashboard
+  if (user.hasActiveSubscription && !location.state?.fromPlanSelection && !location.state?.requiresSubscription) {
     const dashboardPath = user.userType === 'company' ? '/company/dashboard' : '/customer/dashboard';
     return <Navigate to={dashboardPath} replace />;
   }
 
-  const planId = location.state?.planId || subscriptionPlans[0]?.id; // Default to first plan if none selected
-  const selectedPlan = subscriptionPlans.find(plan => plan.id === planId) || subscriptionPlans[0];
+  // Get selected plan from navigation state
+  const selectedPlanId = location.state?.selectedPlanId;
+  const selectedPlan = selectedPlanId 
+    ? subscriptionPlans.find(plan => plan.id === selectedPlanId)
+    : null;
 
+  // If no plan selected, redirect to plan selection
+  if (!selectedPlan && !user.hasActiveSubscription) {
+    return <Navigate to="/subscription-plans" replace />;
+  }
+
+  // Fallback to first plan if somehow no plan is found but user needs subscription
+  const finalSelectedPlan = selectedPlan || subscriptionPlans[0];
   // Smart contract state - exactly from App.tsx
   const [wallets, setWallets] = useState(WalletService.getInstance().detectWallets());
   const [isConnecting, setIsConnecting] = useState(false);
@@ -296,11 +306,11 @@ const Payment: React.FC = () => {
             .from('tbl_user_subscriptions')
             .insert({
               tus_user_id: user.id,
-              tus_plan_id: selectedPlan.id,
+              tus_plan_id: finalSelectedPlan.id,
               tus_status: 'active',
               tus_start_date: new Date().toISOString(),
-              tus_end_date: new Date(Date.now() + selectedPlan.tsp_duration_days * 24 * 60 * 60 * 1000).toISOString(),
-              tus_payment_amount: selectedPlan.tsp_price
+              tus_end_date: new Date(Date.now() + finalSelectedPlan.tsp_duration_days * 24 * 60 * 60 * 1000).toISOString(),
+              tus_payment_amount: finalSelectedPlan.tsp_price
             });
 
           if (subscriptionError) {
@@ -344,7 +354,7 @@ const Payment: React.FC = () => {
   };
 
   // Plan not found check - from original Payment.tsx
-  if (!selectedPlan) {
+  if (!finalSelectedPlan) {
     return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
@@ -357,7 +367,7 @@ const Payment: React.FC = () => {
                 onClick={() => navigate('/subscription-plans')}
                 className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors"
             >
-              View Available Plans
+              Select a Subscription Plan
             </button>
           </div>
         </div>
@@ -367,7 +377,7 @@ const Payment: React.FC = () => {
   return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 py-8 px-4 sm:px-6 lg:px-8">
         {/* Mandatory Subscription Notice */}
-        {location.state?.requiresSubscription && (
+        {(location.state?.requiresSubscription || !user.hasActiveSubscription) && (
           <div className="max-w-4xl mx-auto mb-6">
             <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
               <div className="flex items-center space-x-3">
@@ -376,7 +386,12 @@ const Payment: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-yellow-800">Subscription Required</h3>
-                  <p className="text-yellow-700">You need an active subscription to access the dashboard. Please complete your payment below.</p>
+                  <p className="text-yellow-700">
+                    {selectedPlan 
+                      ? `Complete your payment for ${selectedPlan.tsp_name} (${selectedPlan.tsp_price} USDT) to access the dashboard.`
+                      : 'You need an active subscription to access the dashboard. Please complete your payment below.'
+                    }
+                  </p>
                 </div>
               </div>
             </div>
@@ -421,9 +436,11 @@ const Payment: React.FC = () => {
               </div>
               <div className="text-left">
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Complete Your Payment
+                  Complete Your USDT Payment
                 </h1>
-                <p className="text-lg text-gray-600 mt-1">Secure blockchain-based payment with smart contracts</p>
+                <p className="text-lg text-gray-600 mt-1">
+                  {finalSelectedPlan ? `Pay ${finalSelectedPlan.tsp_price} USDT for ${finalSelectedPlan.tsp_name}` : 'Secure USDT payment with smart contracts'}
+                </p>
               </div>
             </div>
             
@@ -431,7 +448,9 @@ const Payment: React.FC = () => {
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl max-w-2xl mx-auto">
               <div className="flex items-center justify-center space-x-3 mb-3">
                 <Zap className="w-6 h-6 text-yellow-300" />
-                <h3 className="text-xl font-bold">USDT Smart Contract Payment</h3>
+                <h3 className="text-xl font-bold">
+                  {finalSelectedPlan ? `${finalSelectedPlan.tsp_name} - ${finalSelectedPlan.tsp_price} USDT` : 'USDT Smart Contract Payment'}
+                </h3>
                 <Zap className="w-6 h-6 text-yellow-300" />
               </div>
               <div className="grid grid-cols-3 gap-4 text-center">
@@ -441,7 +460,7 @@ const Payment: React.FC = () => {
                 </div>
                 <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
                   <Lock className="w-5 h-5 mx-auto mb-1 text-blue-300" />
-                  <p className="text-sm font-medium">Total: 0.30 USDT</p>
+                  <p className="text-sm font-medium">Total: {finalSelectedPlan?.tsp_price || 0} USDT</p>
                 </div>
                 <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
                   <CheckCircle className="w-5 h-5 mx-auto mb-1 text-emerald-300" />
@@ -465,22 +484,23 @@ const Payment: React.FC = () => {
               <div className="bg-gradient-to-r from-gray-50 to-blue-50 border-2 border-gray-200 rounded-2xl p-6 mb-8">
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">{selectedPlan.tsp_name}</h3>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">{finalSelectedPlan.tsp_name}</h3>
                     <div className="flex items-center space-x-2">
                       <span className="bg-indigo-100 text-indigo-800 text-sm font-medium px-3 py-1 rounded-full">
-                        {selectedPlan.tsp_duration_days} days subscription
+                        {finalSelectedPlan.tsp_duration_days} days subscription
                       </span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-3xl font-bold text-gray-900">{selectedPlan.tsp_price} USDT</span>
+                    <span className="text-3xl font-bold text-gray-900">{finalSelectedPlan.tsp_price}</span>
+                    <span className="text-xl font-bold text-indigo-600 ml-1">USDT</span>
                   </div>
                 </div>
 
                 {/* Features list */}
                 <div className="space-y-3">
                   <h4 className="font-semibold text-gray-800 mb-3">Included Features:</h4>
-                  {selectedPlan.tsp_features.map((feature, index) => (
+                  {finalSelectedPlan.tsp_features.map((feature, index) => (
                       <div key={index} className="flex items-center space-x-3 bg-white/50 rounded-lg p-3">
                         <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                         <span className="text-gray-700 font-medium">{feature}</span>
@@ -493,7 +513,7 @@ const Payment: React.FC = () => {
               <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium">Subtotal</span>
-                  <span className="text-gray-900 font-semibold">{selectedPlan.tsp_price} USDT</span>
+                  <span className="text-gray-900 font-semibold">{finalSelectedPlan.tsp_price} USDT</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium">Processing Fee</span>
@@ -502,9 +522,22 @@ const Payment: React.FC = () => {
                 <div className="border-t-2 border-gray-200 pt-4">
                   <div className="flex justify-between items-center">
                     <span className="text-xl font-bold text-gray-900">Total</span>
-                    <span className="text-2xl font-bold text-indigo-600">{selectedPlan.tsp_price} USDT</span>
+                    <span className="text-2xl font-bold text-indigo-600">{finalSelectedPlan.tsp_price} USDT</span>
                   </div>
                 </div>
+              </div>
+
+              {/* Plan Selection Link */}
+              <div className="mt-6 text-center">
+                <Link
+                  to="/subscription-plans"
+                  className="inline-flex items-center space-x-2 text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  <span>← Change Selected Plan</span>
+                </Link>
+                <p className="text-sm text-gray-500 mt-2">
+                  Currently selected: {finalSelectedPlan.tsp_name}
+                </p>
               </div>
 
               {/* Enhanced security section */}
@@ -758,7 +791,7 @@ const Payment: React.FC = () => {
                             onPayment={handleSmartContractPayment}
                             transaction={transactionState}
                             distributionSteps={transactionState.distributionSteps}
-                            planPrice={selectedPlan.tsp_price}
+                            planPrice={finalSelectedPlan.tsp_price}
                         />
                       </div>
                     </div>

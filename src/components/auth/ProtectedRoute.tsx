@@ -76,10 +76,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) =
 
   // Check if user has active subscription (mandatory for all authenticated pages except payment)
   if (user.userType !== 'admin' && !user.hasActiveSubscription) {
-    // Allow access to payment page only
-    if (location.pathname !== '/payment' && location.pathname !== '/subscription-plans') {
+    // Allow access to payment and subscription-plans pages only
+    if (location.pathname !== '/payment' && 
+        location.pathname !== '/subscription-plans' && 
+        !location.pathname.startsWith('/verify-otp')) {
       console.log('🔒 No active subscription, redirecting to payment');
-      return <Navigate to="/payment" replace state={{ from: location, requiresSubscription: true }} />;
+      return <Navigate to="/subscription-plans" replace state={{ from: location, requiresSubscription: true }} />;
     }
   }
 
