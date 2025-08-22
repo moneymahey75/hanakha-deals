@@ -348,14 +348,18 @@ export const getSubscriptionPlans = async () => {
   console.log('🔍 Fetching subscription plans from database...');
   
   try {
-  const { data, error } = await supabase
-      .from('tbl_subscription_plans')
-      .select('*')
-      .eq('tsp_is_active', true)
-      .order('tsp_price')
+    const { data, error } = await supabase
+        .from('tbl_subscription_plans')
+        .select('*')
+        .eq('tsp_is_active', true)
+        .order('tsp_price')
 
-  if (error) throw error
-  return data
+    if (error) throw error
+    return data
+  } catch (error) {
+    console.error('❌ Failed to fetch subscription plans:', error);
+    throw error;
+  }
 }
 
 export const getUserProfile = async (userId: string) => {
