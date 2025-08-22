@@ -75,15 +75,20 @@ const SubscriptionManagement: React.FC = () => {
   });
 
   useEffect(() => {
+    console.log('🔄 SubscriptionManagement useEffect triggered, activeTab:', activeTab);
+    console.log('🔄 Loading data for tab:', activeTab);
     loadData();
   }, [activeTab]);
 
   const loadData = async () => {
+    console.log('📊 loadData called for tab:', activeTab);
     setLoading(true);
     try {
       if (activeTab === 'plans') {
+        console.log('📋 Loading plans...');
         await loadPlans();
       } else {
+        console.log('👥 Loading subscriptions...');
         await loadSubscriptions();
       }
     } catch (error) {
@@ -96,21 +101,38 @@ const SubscriptionManagement: React.FC = () => {
 
   const loadPlans = async () => {
     try {
+      console.log('🔍 Loading subscription plans from database...');
+      
       const { data, error } = await supabase
         .from('tbl_subscription_plans')
         .select('*')
         .order('tsp_created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Failed to load plans:', error);
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+      
+      console.log('✅ Plans loaded successfully:', data?.length || 0, 'plans');
+      console.log('Plans data:', data);
       setPlans(data || []);
     } catch (error) {
       console.error('Failed to load plans:', error);
+      notification.showError('Load Failed', 'Failed to load subscription plans from database');
       setPlans([]);
     }
   };
 
   const loadSubscriptions = async () => {
     try {
+      console.log('🔍 Loading user subscriptions from database...');
+      
       const { data, error } = await supabase
         .from('tbl_user_subscriptions')
         .select(`
@@ -121,7 +143,12 @@ const SubscriptionManagement: React.FC = () => {
         `)
         .order('tus_created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Failed to load subscriptions:', error);
+        throw error;
+      }
+      
+      console.log('✅ Subscriptions loaded:', data);
       
       const formattedSubscriptions = (data || []).map(sub => ({
         ...sub,
@@ -138,6 +165,7 @@ const SubscriptionManagement: React.FC = () => {
       setSubscriptions(formattedSubscriptions);
     } catch (error) {
       console.error('Failed to load subscriptions:', error);
+      notification.showError('Load Failed', 'Failed to load user subscriptions from database');
       setSubscriptions([]);
     }
   };
@@ -406,17 +434,52 @@ const SubscriptionManagement: React.FC = () => {
           {activeTab === 'subscriptions' && (
             <div>
               <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
+            <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">Debug Information</h4>
+                <div className="text-sm text-blue-700 space-y-1">
+                  <p>Total plans in database: {plans.length}</p>
+                  <p>Filtered plans: {filteredPlans.length}</p>
+                  <p>Search term: "{searchTerm}"</p>
+                  <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
+                </div>
+              </div>
+              
+              <PlansTab
+                plans={filteredPlans}
+                onEdit={openEditModal}
+                onDelete={handleDeletePlan}
+                onToggleStatus={handleTogglePlanStatus}
+              />
+            </div>
                 <option value="expired">Expired</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+            <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h4 className="text-sm font-medium text-green-800 mb-2">Debug Information</h4>
+                <div className="text-sm text-green-700 space-y-1">
+                  <p>Total subscriptions in database: {subscriptions.length}</p>
+                  <p>Filtered subscriptions: {filteredSubscriptions.length}</p>
+                  <p>Search term: "{searchTerm}"</p>
+                  <p>Status filter: {statusFilter}</p>
+                </div>
+              </div>
+              
+              <SubscriptionsTab
+                subscriptions={filteredSubscriptions}
+              />
             </div>
           )}
+          <div>
+            <button
+              onClick={loadData}
+              className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh Data</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -450,6 +513,43 @@ const SubscriptionManagement: React.FC = () => {
 
       {/* Content */}
       <div className="p-6">
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading {activeTab === 'plans' ? 'subscription plans' : 'user subscriptions'}...</p>
+          </div>
+        )}
+        
+        {/* Error State */}
+        {!loading && plans.length === 0 && activeTab === 'plans' && (
+          <div className="text-center py-12">
+            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Subscription Plans Found</h3>
+            <p className="text-gray-600 mb-6">
+              Either no plans exist in the database or there's a connection issue.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={loadData}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span>Retry Loading</span>
+              </button>
+              <button
+                onClick={() => setShowCreatePlanModal(true)}
+                className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2 mx-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create First Plan</span>
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Content when data is loaded */}
+        {!loading && (
         {activeTab === 'plans' ? (
           <PlansTab
             plans={filteredPlans}
@@ -461,6 +561,7 @@ const SubscriptionManagement: React.FC = () => {
           <SubscriptionsTab
             subscriptions={filteredSubscriptions}
           />
+        )}
         )}
       </div>
 
@@ -509,12 +610,23 @@ const PlansTab: React.FC<{
   onDelete: (planId: string) => void;
   onToggleStatus: (planId: string, currentStatus: boolean) => void;
 }> = ({ plans, onEdit, onDelete, onToggleStatus }) => {
+  console.log('📋 PlansTab rendering with plans:', plans);
+  
   if (plans.length === 0) {
     return (
       <div className="text-center py-12">
         <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">No subscription plans found</h3>
-        <p className="text-gray-600">Create your first subscription plan to get started.</p>
+        <p className="text-gray-600 mb-4">
+          {plans.length === 0 ? 'No plans exist in the database.' : 'No plans match your search criteria.'}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+        >
+          <RefreshCw className="h-4 w-4" />
+          <span>Refresh Page</span>
+        </button>
       </div>
     );
   }

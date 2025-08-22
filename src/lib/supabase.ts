@@ -345,6 +345,9 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
 }
 
 export const getSubscriptionPlans = async () => {
+  console.log('🔍 Fetching subscription plans from database...');
+  
+  try {
   const { data, error } = await supabase
       .from('tbl_subscription_plans')
       .select('*')
@@ -369,13 +372,22 @@ export const getUserProfile = async (userId: string) => {
 export const getMLMTreeNode = async (userId: string) => {
   try {
     const { data, error } = await supabase
-        .from('tbl_mlm_tree')
-        .select('*')
-        .eq('tmt_user_id', userId)
-        .single()
+      .from('tbl_subscription_plans')
+      .select('*')
+      .order('tsp_created_at', { ascending: false });
 
-    if (error) throw error
+    if (error) {
+      console.error('❌ Database error fetching plans:', error);
+      throw error;
+    }
+    
+    console.log('✅ Subscription plans fetched:', data?.length || 0, 'plans');
+    console.log('Plans data:', data);
     return data
+  } catch (error) {
+    console.error('❌ Failed to fetch subscription plans:', error);
+    throw error;
+  }
   } catch (error) {
     console.warn('Failed to get MLM tree node:', error);
     return null;
