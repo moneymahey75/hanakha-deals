@@ -3,6 +3,8 @@ import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Shield, CheckCircle, DollarSign, Wallet, CreditCard, Zap, Lock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import { Package } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 
@@ -33,12 +35,16 @@ const Payment: React.FC = () => {
 
   // Get selected plan from navigation state
   const selectedPlanId = location.state?.selectedPlanId;
-  const selectedPlan = selectedPlanId 
-    ? subscriptionPlans.find(plan => plan.id === selectedPlanId)
-    : null;
+  const selectedPlan = location.state?.selectedPlan || 
+    (selectedPlanId ? subscriptionPlans.find(plan => plan.tsp_id === selectedPlanId) : null);
 
-  // If no plan selected, redirect to plan selection
+  console.log('💳 Payment page - Selected plan ID:', selectedPlanId);
+  console.log('💳 Payment page - Selected plan:', selectedPlan);
+  console.log('💳 Payment page - User has subscription:', user.hasActiveSubscription);
+
+  // If no plan selected and user doesn't have subscription, redirect to plan selection
   if (!selectedPlan && !user.hasActiveSubscription) {
+    console.log('🔄 No plan selected, redirecting to plan selection');
     return <Navigate to="/subscription-plans" replace />;
   }
 
@@ -436,10 +442,10 @@ const Payment: React.FC = () => {
               </div>
               <div className="text-left">
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Complete Your USDT Payment
+                  Complete Payment: {finalSelectedPlan.tsp_name}
                 </h1>
                 <p className="text-lg text-gray-600 mt-1">
-                  {finalSelectedPlan ? `Pay ${finalSelectedPlan.tsp_price} USDT for ${finalSelectedPlan.tsp_name}` : 'Secure USDT payment with smart contracts'}
+                  Pay {finalSelectedPlan.tsp_price} USDT via Smart Contract
                 </p>
               </div>
             </div>
@@ -449,7 +455,7 @@ const Payment: React.FC = () => {
               <div className="flex items-center justify-center space-x-3 mb-3">
                 <Zap className="w-6 h-6 text-yellow-300" />
                 <h3 className="text-xl font-bold">
-                  {finalSelectedPlan ? `${finalSelectedPlan.tsp_name} - ${finalSelectedPlan.tsp_price} USDT` : 'USDT Smart Contract Payment'}
+                  {finalSelectedPlan.tsp_name} - {finalSelectedPlan.tsp_price} USDT
                 </h3>
                 <Zap className="w-6 h-6 text-yellow-300" />
               </div>
@@ -460,7 +466,7 @@ const Payment: React.FC = () => {
                 </div>
                 <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
                   <Lock className="w-5 h-5 mx-auto mb-1 text-blue-300" />
-                  <p className="text-sm font-medium">Total: {finalSelectedPlan?.tsp_price || 0} USDT</p>
+                  <p className="text-sm font-medium">Total: {finalSelectedPlan.tsp_price} USDT</p>
                 </div>
                 <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm">
                   <CheckCircle className="w-5 h-5 mx-auto mb-1 text-emerald-300" />
@@ -529,15 +535,25 @@ const Payment: React.FC = () => {
 
               {/* Plan Selection Link */}
               <div className="mt-6 text-center">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                  <div className="flex items-center justify-center space-x-2 mb-2">
+                    <Package className="h-5 w-5 text-blue-600" />
+                    <span className="font-semibold text-blue-900">Selected Plan</span>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-900 mb-1">
+                    {finalSelectedPlan.tsp_name}
+                  </div>
+                  <div className="text-lg font-semibold text-blue-700">
+                    {finalSelectedPlan.tsp_price} USDT
+                  </div>
+                </div>
                 <Link
                   to="/subscription-plans"
-                  className="inline-flex items-center space-x-2 text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="inline-flex items-center space-x-2 text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 px-4 py-2 rounded-lg transition-colors"
                 >
-                  <span>← Change Selected Plan</span>
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Change Selected Plan</span>
                 </Link>
-                <p className="text-sm text-gray-500 mt-2">
-                  Currently selected: {finalSelectedPlan.tsp_name}
-                </p>
               </div>
 
               {/* Enhanced security section */}

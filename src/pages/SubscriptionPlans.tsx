@@ -89,14 +89,28 @@ const SubscriptionPlans: React.FC = () => {
   };
 
   const handleSelectPlan = (planId: string) => {
-    // If user not logged in, redirect to login first
+    console.log('🎯 Plan selected:', planId);
+    
     if (!user) {
-      navigate('/customer/login', { state: { from: '/subscription-plans', selectedPlanId: planId } });
+      console.log('👤 User not logged in, redirecting to login with plan selection');
+      navigate('/customer/login', { 
+        state: { 
+          from: '/payment', 
+          selectedPlanId: planId,
+          returnToPayment: true
+        } 
+      });
       return;
     }
     
-    // If logged in, proceed to payment
-    navigate('/payment', { state: { selectedPlanId: planId, fromPlanSelection: true } });
+    console.log('💳 User logged in, proceeding to payment with plan:', planId);
+    navigate('/payment', { 
+      state: { 
+        selectedPlanId: planId, 
+        fromPlanSelection: true,
+        selectedPlan: plans.find(p => p.tsp_id === planId)
+      } 
+    });
   };
 
   if (loading) {

@@ -31,13 +31,24 @@ const CompanyLogin: React.FC = () => {
     try {
       await login(formData.emailOrMobile, formData.password, 'company');
       
-      // Check if user was trying to access a specific page
+      // Check if user was selecting a plan and should go to payment
       const from = location.state?.from;
+      const selectedPlanId = location.state?.selectedPlanId;
+      const returnToPayment = location.state?.returnToPayment;
       
-      if (from) {
+      if (selectedPlanId && returnToPayment) {
+        console.log('💳 Redirecting to payment with selected plan:', selectedPlanId);
+        navigate('/payment', { 
+          state: { 
+            selectedPlanId, 
+            fromPlanSelection: true 
+          } 
+        });
+      } else if (from) {
+        console.log('🔄 Redirecting to originally requested page:', from);
         navigate(from);
       } else {
-        // Default redirect - will be handled by ProtectedRoute based on subscription status
+        console.log('🏠 Default redirect to dashboard');
         navigate('/company/dashboard');
       }
     } catch (err) {
