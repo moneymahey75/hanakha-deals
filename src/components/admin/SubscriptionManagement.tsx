@@ -369,4 +369,618 @@ const SubscriptionManagement: React.FC = () => {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Subscription Management</h3>
-              <p className="text-gray-600
+              <p className="text-gray-600">Manage subscription plans and user subscriptions</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={loadData}
+              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            {activeTab === 'plans' && (
+              <button
+                onClick={() => setShowCreatePlanModal(true)}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors flex items-center space-x-2"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Plan</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8">
+            {[
+              { id: 'plans', label: 'Subscription Plans', icon: Package },
+              { id: 'subscriptions', label: 'User Subscriptions', icon: Users }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as 'plans' | 'subscriptions')}
+                className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === tab.id
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <tab.icon className="h-4 w-4" />
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder={activeTab === 'plans' ? 'Search plans...' : 'Search subscriptions...'}
+              />
+            </div>
+          </div>
+          {activeTab === 'subscriptions' && (
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+          <div>
+            <button
+              onClick={loadData}
+              className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh Data</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats for Subscriptions */}
+      {activeTab === 'subscriptions' && (
+        <div className="p-6 bg-purple-50 border-b border-gray-200">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{stats.total}</div>
+              <div className="text-sm text-gray-600">Total Subscriptions</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+              <div className="text-sm text-gray-600">Active</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">{stats.expired}</div>
+              <div className="text-sm text-gray-600">Expired</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{stats.cancelled}</div>
+              <div className="text-sm text-gray-600">Cancelled</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-indigo-600">${stats.totalRevenue.toFixed(2)}</div>
+              <div className="text-sm text-gray-600">Active Revenue</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="p-6">
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading {activeTab === 'plans' ? 'subscription plans' : 'user subscriptions'}...</p>
+          </div>
+        )}
+        
+        {/* Error State */}
+        {!loading && plans.length === 0 && activeTab === 'plans' && (
+          <div className="text-center py-12">
+            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Subscription Plans Found</h3>
+            <p className="text-gray-600 mb-6">
+              Either no plans exist in the database or there's a connection issue.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={loadData}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span>Retry Loading</span>
+              </button>
+              <button
+                onClick={() => setShowCreatePlanModal(true)}
+                className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2 mx-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create First Plan</span>
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Content when data is loaded */}
+        {!loading && (
+          activeTab === 'plans' ? (
+            <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">Debug Information</h4>
+                <div className="text-sm text-blue-700 space-y-1">
+                  <p>Total plans in database: {plans.length}</p>
+                  <p>Filtered plans: {filteredPlans.length}</p>
+                  <p>Search term: "{searchTerm}"</p>
+                  <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
+                </div>
+              </div>
+              
+              <PlansTab
+                plans={filteredPlans}
+                onEdit={openEditModal}
+                onDelete={handleDeletePlan}
+                onToggleStatus={handleTogglePlanStatus}
+              />
+            </div>
+          ) : (
+            <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h4 className="text-sm font-medium text-green-800 mb-2">Debug Information</h4>
+                <div className="text-sm text-green-700 space-y-1">
+                  <p>Total subscriptions in database: {subscriptions.length}</p>
+                  <p>Filtered subscriptions: {filteredSubscriptions.length}</p>
+                  <p>Search term: "{searchTerm}"</p>
+                  <p>Status filter: {statusFilter}</p>
+                </div>
+              </div>
+              
+              <SubscriptionsTab
+                subscriptions={filteredSubscriptions}
+              />
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Create Plan Modal */}
+      {showCreatePlanModal && (
+        <PlanModal
+          title="Create New Plan"
+          plan={newPlan}
+          setPlan={setNewPlan}
+          onSubmit={handleCreatePlan}
+          onClose={() => {
+            setShowCreatePlanModal(false);
+            resetNewPlan();
+          }}
+          addFeature={addFeature}
+          removeFeature={removeFeature}
+          updateFeature={updateFeature}
+        />
+      )}
+
+      {/* Edit Plan Modal */}
+      {showEditPlanModal && selectedPlan && (
+        <PlanModal
+          title="Edit Plan"
+          plan={newPlan}
+          setPlan={setNewPlan}
+          onSubmit={handleUpdatePlan}
+          onClose={() => {
+            setShowEditPlanModal(false);
+            setSelectedPlan(null);
+            resetNewPlan();
+          }}
+          addFeature={addFeature}
+          removeFeature={removeFeature}
+          updateFeature={updateFeature}
+        />
+      )}
+    </div>
+  );
+};
+
+// Plans Tab Component
+const PlansTab: React.FC<{
+  plans: SubscriptionPlan[];
+  onEdit: (plan: SubscriptionPlan) => void;
+  onDelete: (planId: string) => void;
+  onToggleStatus: (planId: string, currentStatus: boolean) => void;
+}> = ({ plans, onEdit, onDelete, onToggleStatus }) => {
+  console.log('📋 PlansTab rendering with plans:', plans);
+  
+  if (plans.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No subscription plans found</h3>
+        <p className="text-gray-600 mb-4">
+          {plans.length === 0 ? 'No plans exist in the database.' : 'No plans match your search criteria.'}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+        >
+          <RefreshCw className="h-4 w-4" />
+          <span>Refresh Page</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {plans.map((plan) => (
+        <div key={plan.tsp_id} className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-lg font-semibold text-gray-900">{plan.tsp_name}</h4>
+            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+              plan.tsp_is_active
+                ? 'bg-green-100 text-green-800'
+                : 'bg-red-100 text-red-800'
+            }`}>
+              {plan.tsp_is_active ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+
+          <div className="mb-4">
+            <div className="text-3xl font-bold text-gray-900 mb-1">
+              {plan.tsp_price} USDT
+            </div>
+            <div className="text-sm text-gray-600">
+              {plan.tsp_duration_days} days subscription
+            </div>
+          </div>
+
+          <p className="text-gray-600 text-sm mb-4">{plan.tsp_description}</p>
+
+          <div className="mb-6">
+            <h5 className="text-sm font-medium text-gray-900 mb-2">Features:</h5>
+            <ul className="space-y-1">
+              {plan.tsp_features.map((feature, index) => (
+                <li key={index} className="flex items-center text-sm text-gray-600">
+                  <CheckCircle className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex space-x-2">
+            <button
+              onClick={() => onEdit(plan)}
+              className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center space-x-1"
+            >
+              <Edit className="h-4 w-4" />
+              <span>Edit</span>
+            </button>
+            <button
+              onClick={() => onToggleStatus(plan.tsp_id, plan.tsp_is_active)}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-1 ${
+                plan.tsp_is_active
+                  ? 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              <span>{plan.tsp_is_active ? 'Disable' : 'Enable'}</span>
+            </button>
+            <button
+              onClick={() => onDelete(plan.tsp_id)}
+              className="bg-red-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Subscriptions Tab Component
+const SubscriptionsTab: React.FC<{
+  subscriptions: UserSubscription[];
+}> = ({ subscriptions }) => {
+  if (subscriptions.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No subscriptions found</h3>
+        <p className="text-gray-600">No user subscriptions match your search criteria.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              User
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Plan
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Amount
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Status
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Period
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {subscriptions.map((subscription) => (
+            <tr key={subscription.tus_id} className="hover:bg-gray-50">
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 h-10 w-10">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                      <span className="text-white font-medium text-sm">
+                        {subscription.user_info?.first_name?.charAt(0) || 'U'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <div className="text-sm font-medium text-gray-900">
+                      {subscription.user_info?.first_name} {subscription.user_info?.last_name}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {subscription.user_info?.email}
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="text-sm font-medium text-gray-900">
+                  {subscription.plan_info?.name}
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="text-sm font-medium text-gray-900">
+                  {subscription.tus_payment_amount} USDT
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                  subscription.tus_status === 'active'
+                    ? 'bg-green-100 text-green-800'
+                    : subscription.tus_status === 'expired'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {subscription.tus_status === 'active' && <CheckCircle className="h-3 w-3 mr-1" />}
+                  {subscription.tus_status === 'expired' && <AlertCircle className="h-3 w-3 mr-1" />}
+                  {subscription.tus_status === 'cancelled' && <X className="h-3 w-3 mr-1" />}
+                  {subscription.tus_status.charAt(0).toUpperCase() + subscription.tus_status.slice(1)}
+                </span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <div className="flex items-center">
+                  <Calendar className="h-4 w-4 mr-1" />
+                  <div>
+                    <div>{new Date(subscription.tus_start_date).toLocaleDateString()}</div>
+                    <div className="text-xs">to {new Date(subscription.tus_end_date).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <div className="flex space-x-2">
+                  <button
+                    className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                    title="View Details"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                    title="Extend Subscription"
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// Plan Modal Component
+const PlanModal: React.FC<{
+  title: string;
+  plan: any;
+  setPlan: (plan: any) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+  addFeature: () => void;
+  removeFeature: (index: number) => void;
+  updateFeature: (index: number, value: string) => void;
+}> = ({ title, plan, setPlan, onSubmit, onClose, addFeature, removeFeature, updateFeature }) => {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Plan Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={plan.name}
+                onChange={(e) => setPlan(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="e.g., Premium Plan"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Price (USDT) *
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-400 font-medium text-sm">USDT</span>
+                </div>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="0.01"
+                  value={plan.price}
+                  onChange={(e) => setPlan(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                  className="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="100.00"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Price in USDT cryptocurrency</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={plan.description}
+              onChange={(e) => setPlan(prev => ({ ...prev, description: e.target.value }))}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              placeholder="Describe what this plan includes..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Duration (Days) *
+            </label>
+            <input
+              type="number"
+              required
+              min="1"
+              value={plan.duration_days}
+              onChange={(e) => setPlan(prev => ({ ...prev, duration_days: parseInt(e.target.value) || 30 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              placeholder="30"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Features
+            </label>
+            <div className="space-y-3">
+              {plan.features.map((feature: string, index: number) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={feature}
+                    onChange={(e) => updateFeature(index, e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Enter feature description"
+                  />
+                  {plan.features.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeFeature(index)}
+                      className="text-red-600 hover:text-red-800 p-1"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addFeature}
+                className="text-purple-600 hover:text-purple-800 text-sm font-medium flex items-center space-x-1"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Feature</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={plan.is_active}
+              onChange={(e) => setPlan(prev => ({ ...prev, is_active: e.target.checked }))}
+              className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+            />
+            <label htmlFor="is_active" className="ml-2 block text-sm text-gray-700">
+              Plan is active and available for purchase
+            </label>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
+            >
+              <Save className="h-4 w-4" />
+              <span>{title.includes('Create') ? 'Create Plan' : 'Update Plan'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default SubscriptionManagement;
+
+export default SubscriptionManagement
