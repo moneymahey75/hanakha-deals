@@ -648,7 +648,7 @@ const PlansTab: React.FC<{
 
           <div className="mb-4">
             <div className="text-3xl font-bold text-gray-900 mb-1">
-              ${plan.tsp_price}
+              {plan.tsp_price} USDT
             </div>
             <div className="text-sm text-gray-600">
               {plan.tsp_duration_days} days subscription
@@ -769,7 +769,7 @@ const SubscriptionsTab: React.FC<{
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm font-medium text-gray-900">
-                  {subscription.tus_payment_amount} USDT
+                  {subscription.tus_payment_amount.toFixed(2)} USDT
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
@@ -861,11 +861,11 @@ const PlanModal: React.FC<{
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Price (USD) *
+                Price (USDT) *
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <DollarSign className="h-5 w-5 text-gray-400" />
+                  <span className="text-gray-400 font-medium text-sm">USDT</span>
                 </div>
                 <input
                   type="number"
@@ -874,10 +874,11 @@ const PlanModal: React.FC<{
                   step="0.01"
                   value={plan.price}
                   onChange={(e) => setPlan(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="99.00"
+                  className="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="100.00"
                 />
               </div>
+              <p className="text-xs text-gray-500 mt-1">Price in USDT cryptocurrency</p>
             </div>
           </div>
 
