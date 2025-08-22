@@ -427,7 +427,7 @@ const SubscriptionManagement: React.FC = () => {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
-                <option value="all">All Status</option>
+                <option value="all">All Statuses</option>
                 <option value="active">Active</option>
                 <option value="expired">Expired</option>
                 <option value="cancelled">Cancelled</option>
@@ -468,16 +468,42 @@ const SubscriptionManagement: React.FC = () => {
       {/* Content */}
       <div className="p-6">
         {activeTab === 'plans' ? (
-          <PlansTab
-            plans={filteredPlans}
-            onEdit={openEditModal}
-            onDelete={handleDeletePlan}
-            onToggleStatus={handleTogglePlanStatus}
-          />
+          <div>
+            {/* Debug Info */}
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-800 mb-2">Debug Information</h4>
+              <div className="text-sm text-blue-700 space-y-1">
+                <p>Total plans in database: {plans.length}</p>
+                <p>Filtered plans: {filteredPlans.length}</p>
+                <p>Search term: "{searchTerm}"</p>
+                <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
+              </div>
+            </div>
+            
+            <PlansTab
+              plans={filteredPlans}
+              onEdit={openEditModal}
+              onDelete={handleDeletePlan}
+              onToggleStatus={handleTogglePlanStatus}
+            />
+          </div>
         ) : (
-          <SubscriptionsTab
-            subscriptions={filteredSubscriptions}
-          />
+          <div>
+            {/* Debug Info */}
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h4 className="text-sm font-medium text-green-800 mb-2">Debug Information</h4>
+              <div className="text-sm text-green-700 space-y-1">
+                <p>Total subscriptions in database: {subscriptions.length}</p>
+                <p>Filtered subscriptions: {filteredSubscriptions.length}</p>
+                <p>Search term: "{searchTerm}"</p>
+                <p>Status filter: {statusFilter}</p>
+              </div>
+            </div>
+            
+            <SubscriptionsTab
+              subscriptions={filteredSubscriptions}
+            />
+          </div>
         )}
       </div>
 
@@ -526,12 +552,23 @@ const PlansTab: React.FC<{
   onDelete: (planId: string) => void;
   onToggleStatus: (planId: string, currentStatus: boolean) => void;
 }> = ({ plans, onEdit, onDelete, onToggleStatus }) => {
+  console.log('📋 PlansTab rendering with plans:', plans);
+  
   if (plans.length === 0) {
     return (
       <div className="text-center py-12">
         <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">No subscription plans found</h3>
-        <p className="text-gray-600">Create your first subscription plan to get started.</p>
+        <p className="text-gray-600 mb-4">
+          {plans.length === 0 ? 'No plans exist in the database.' : 'No plans match your search criteria.'}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+        >
+          <RefreshCw className="h-4 w-4" />
+          <span>Refresh Page</span>
+        </button>
       </div>
     );
   }
