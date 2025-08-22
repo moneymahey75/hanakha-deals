@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMLM } from '../../contexts/MLMContext';
 import BinaryTreeVisualizer from '../../components/mlm/BinaryTreeVisualizer';

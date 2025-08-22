@@ -87,7 +87,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     {
       id: '1',
       tsp_name: 'Basic Plan',
-      tsp_price: 99,
+      tsp_price: 50,
       tsp_duration_days: 30,
       tsp_features: ['MLM Tree Access', 'Basic Dashboard', 'Email Support'],
       tsp_is_active: true
@@ -95,7 +95,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     {
       id: '2',
       tsp_name: 'Premium Plan',
-      tsp_price: 199,
+      tsp_price: 100,
       tsp_duration_days: 30,
       tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics'],
       tsp_is_active: true
@@ -103,7 +103,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     {
       id: '3',
       tsp_name: 'Enterprise Plan',
-      tsp_price: 399,
+      tsp_price: 200,
       tsp_duration_days: 30,
       tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics', 'Custom Branding', 'API Access'],
       tsp_is_active: true
