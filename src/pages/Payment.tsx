@@ -48,8 +48,13 @@ const Payment: React.FC = () => {
     return <Navigate to="/subscription-plans" replace />;
   }
 
-  // Fallback to first plan if somehow no plan is found but user needs subscription
-  const finalSelectedPlan = selectedPlan || subscriptionPlans[0];
+  // No fallback plan - user must select a plan
+  if (!selectedPlan) {
+    console.log('🔄 No plan selected, redirecting to plan selection');
+    return <Navigate to="/subscription-plans" replace />;
+  }
+
+  const finalSelectedPlan = selectedPlan;
   // Smart contract state - exactly from App.tsx
   const [wallets, setWallets] = useState(WalletService.getInstance().detectWallets());
   const [isConnecting, setIsConnecting] = useState(false);
@@ -367,14 +372,15 @@ const Payment: React.FC = () => {
             <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="h-8 w-8 text-yellow-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Subscription Plans Available</h2>
-            <p className="text-gray-600 mb-6">Please contact support to set up subscription plans.</p>
-            <button
-                onClick={() => navigate('/subscription-plans')}
-                className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors"
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Plan Selected</h2>
+            <p className="text-gray-600 mb-6">Please select a subscription plan to continue with payment.</p>
+            <Link
+                to="/subscription-plans"
+                className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center space-x-2"
             >
-              Select a Subscription Plan
-            </button>
+              <Package className="h-4 w-4" />
+              <span>Select Subscription Plan</span>
+            </Link>
           </div>
         </div>
     );
