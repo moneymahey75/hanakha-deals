@@ -75,16 +75,20 @@ const SubscriptionManagement: React.FC = () => {
   });
 
   useEffect(() => {
+    console.log('🔄 SubscriptionManagement useEffect triggered, activeTab:', activeTab);
     console.log('🔄 Loading data for tab:', activeTab);
     loadData();
   }, [activeTab]);
 
   const loadData = async () => {
+    console.log('📊 loadData called for tab:', activeTab);
     setLoading(true);
     try {
       if (activeTab === 'plans') {
+        console.log('📋 Loading plans...');
         await loadPlans();
       } else {
+        console.log('👥 Loading subscriptions...');
         await loadSubscriptions();
       }
     } catch (error) {
@@ -106,10 +110,17 @@ const SubscriptionManagement: React.FC = () => {
 
       if (error) {
         console.error('❌ Failed to load plans:', error);
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         throw error;
       }
       
-      console.log('✅ Plans loaded:', data);
+      console.log('✅ Plans loaded successfully:', data?.length || 0, 'plans');
+      console.log('Plans data:', data);
       setPlans(data || []);
     } catch (error) {
       console.error('Failed to load plans:', error);
@@ -434,6 +445,15 @@ const SubscriptionManagement: React.FC = () => {
               </select>
             </div>
           )}
+          <div>
+            <button
+              onClick={loadData}
+              className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh Data</span>
+            </button>
+          </div>
         </div>
       </div>
 
