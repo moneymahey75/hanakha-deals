@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMLM } from '../../contexts/MLMContext';
 import BinaryTreeVisualizer from '../../components/mlm/BinaryTreeVisualizer';
 import ReferralLinkGenerator from '../../components/mlm/ReferralLinkGenerator';
+import { useNotification } from '../../components/ui/NotificationProvider';
 import { 
   Users, 
   TrendingUp, 
@@ -17,6 +18,8 @@ import {
 
 const CustomerDashboard: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const notification = useNotification();
   const { treeData, loading: treeLoading, getUserPosition, getDownline, getUpline, getTreeStats, loadTreeData } = useMLM();
   const [activeTab, setActiveTab] = useState('overview');
   const [treeStats, setTreeStats] = useState({
@@ -36,6 +39,17 @@ const CustomerDashboard: React.FC = () => {
     }
   }, [user?.id]);
 
+  // Show payment success notification
+  React.useEffect(() => {
+    if (location.state?.paymentSuccess) {
+      notification.showSuccess(
+        'Payment Successful!', 
+        `Your ${location.state.planName} subscription is now active. Welcome to your dashboard!`
+      );
+      // Clear the state to prevent showing notification again
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, notification]);
   const loadTreeStats = async () => {
     if (user?.id) {
       try {

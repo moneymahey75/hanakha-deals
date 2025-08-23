@@ -80,7 +80,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) =
     if (location.pathname !== '/payment' && 
         location.pathname !== '/subscription-plans' && 
         !location.pathname.startsWith('/verify-otp')) {
-      console.log('🔒 No active subscription, redirecting to payment');
+      console.log('🔒 No active subscription, redirecting to subscription plans');
       return <Navigate to="/subscription-plans" replace state={{ from: location, requiresSubscription: true }} />;
     }
   }
