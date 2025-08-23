@@ -25,6 +25,7 @@ interface AuthContextType {
   resetPassword: (token: string, password: string) => Promise<void>;
   verifyOTP: (otp: string) => Promise<void>;
   sendOTPToUser: (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => Promise<any>;
+  fetchUserData: (userId: string) => Promise<void>;
   loading: boolean;
 }
 
@@ -180,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Try to check for active subscription
       let subscriptionData = null;
       try {
+        console.log('💳 Checking for active subscription for user:', userId);
         const { data: subscriptionDataArray } = await supabase
             .from('tbl_user_subscriptions')
             .select('*')
@@ -187,6 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('tus_status', 'active')
             .gte('tus_end_date', new Date().toISOString());
         console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
+        console.log('💳 Subscription details:', subscriptionDataArray);
         subscriptionData = subscriptionDataArray?.[0];
       } catch (subscriptionRlsError) {
         console.warn('RLS blocking user_subscriptions table:', subscriptionRlsError);
@@ -209,7 +212,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mobileVerified: userData?.tu_mobile_verified || false
       };
 
-      console.log('✅ User data compiled:', user);
+      console.log('✅ User data compiled:', {
+        ...user,
+        hasActiveSubscription: !!subscriptionData,
+        subscriptionFound: !!subscriptionData
+      });
       setUser(user);
     } catch (error) {
       console.error('❌ Error fetching user data:', error);
@@ -575,6 +582,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     resetPassword,
     verifyOTP,
     sendOTPToUser,
+    fetchUserData,
     loading
   };
 
