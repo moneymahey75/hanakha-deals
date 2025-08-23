@@ -317,7 +317,7 @@ const Payment: React.FC = () => {
             .from('tbl_user_subscriptions')
             .insert({
               tus_user_id: user.id,
-              tus_plan_id: finalSelectedPlan.id,
+              tus_plan_id: finalSelectedPlan.tsp_id,
               tus_status: 'active',
               tus_start_date: new Date().toISOString(),
               tus_end_date: new Date(Date.now() + finalSelectedPlan.tsp_duration_days * 24 * 60 * 60 * 1000).toISOString(),
@@ -328,9 +328,41 @@ const Payment: React.FC = () => {
             console.error('Failed to create subscription record:', subscriptionError);
           } else {
             console.log('✅ Subscription record created successfully');
+            
+            // Update user context immediately
+            const updatedUser = { ...user, hasActiveSubscription: true };
+            setUser(updatedUser);
           }
         } catch (dbError) {
           console.error('Database error creating subscription:', dbError);
+        }
+        
+        // Create payment record
+        try {
+          const { error: paymentError } = await supabase
+            .from('tbl_payments')
+            .insert({
+              tp_user_id: user.id,
+              tp_subscription_id: null, // Will be updated if we get the subscription ID
+              tp_amount: finalSelectedPlan.tsp_price,
+              tp_currency: 'USDT',
+              tp_payment_method: 'cryptocurrency',
+              tp_payment_status: 'completed',
+              tp_transaction_id: result.hash,
+              tp_gateway_response: { 
+                hash: result.hash, 
+                steps: result.steps,
+                timestamp: new Date().toISOString()
+              }
+            });
+
+          if (paymentError) {
+            console.error('Failed to create payment record:', paymentError);
+          } else {
+            console.log('✅ Payment record created successfully');
+          }
+        } catch (paymentDbError) {
+          console.error('Database error creating payment record:', paymentDbError);
         }
       }
 
@@ -339,14 +371,23 @@ const Payment: React.FC = () => {
 
       // Redirect based on user type - from original Payment.tsx
       setTimeout(() => {
-        if (user?.userType === 'company') {
-          navigate('/company/dashboard');
+        // Force refresh user data before redirect
+        if (user?.id) {
+          fetchUserData(user.id).then(() => {
+            if (user?.userType === 'company') {
+              navigate('/company/dashboard');
+            } else {
+              navigate('/customer/dashboard');
+            }
+          });
         } else {
-          navigate('/customer/dashboard');
+          if (user?.userType === 'company') {
+            navigate('/company/dashboard');
+          } else {
+            navigate('/customer/dashboard');
+          }
         }
-        // Reload the page to refresh user data with new subscription
-        window.location.reload();
-      }, 1500);
+      }, 2000);
 
     } catch (error: any) {
       console.error('Payment error:', error);
