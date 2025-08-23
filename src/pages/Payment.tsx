@@ -54,6 +54,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (targetUserId) {
       await fetchUserData(targetUserId);
     }
+  };
+
   useEffect(() => {
     // Initialize session from sessionStorage
     const initializeSession = async () => {
@@ -371,6 +373,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Add user to MLM tree if parent account is provided
         if (userData.parentAccount) {
           try {
+            const { data: profileData, error: profileError } = await supabase
+                .from('tbl_user_profiles')
                 .select('tup_sponsorship_number')
                 .eq('tup_user_id', authData.user.id)
                 .single();
@@ -408,28 +412,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           p_brand_name: userData.brandName,
           p_business_type: userData.businessType,
           p_business_category: userData.businessCategory,
-      // Force refresh user data to update subscription status
-      console.log('🔄 Refreshing user data after payment...');
-      await fetchUserData(user.id);
-
           p_registration_number: userData.registrationNumber,
           p_gstin: userData.gstin,
-        console.log('🔄 Redirecting to dashboard after payment success...');
-        // Navigate with state to indicate successful payment
-        const dashboardPath = user?.userType === 'company' ? '/company/dashboard' : '/customer/dashboard';
-        navigate(dashboardPath, { 
-          state: { 
-            paymentSuccess: true, 
-            planName: finalSelectedPlan.tsp_name,
-            planPrice: finalSelectedPlan.tsp_price
-          },
-          replace: true 
+          p_contact_person: userData.contactPerson,
+          p_mobile: userData.mobile,
+          p_address: userData.address,
+          p_city: userData.city,
+          p_state: userData.state,
+          p_pincode: userData.pincode
         });
-      }, 1000);
-            tual_ip_address: 'unknown',
-            tual_user_agent: navigator.userAgent,
-            tual_login_time: new Date().toISOString()
-          });
+
+        if (regError) {
+          console.error('Company registration error:', regError);
+          throw new Error(regError.message);
+        }
+      }
+
+      // Log registration activity
+      try {
+        await supabase
+            .from('tbl_user_activity_logs')
+            .insert({
+              tual_user_id: authData.user.id,
+              tual_activity_type: 'registration',
+              tual_ip_address: 'unknown',
+              tual_user_agent: navigator.userAgent,
+              tual_login_time: new Date().toISOString()
+            });
+      } catch (logError) {
+        console.warn('Failed to log registration activity:', logError);
+      }
 
       console.log('✅ Registration completed successfully');
       notification.showSuccess('Registration Successful!', 'Your account has been created successfully.');
