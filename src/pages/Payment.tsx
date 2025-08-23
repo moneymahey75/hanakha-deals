@@ -1,603 +1,433 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, sendOTP, verifyOTP as verifyOTPAPI, sessionManager, addUserToMLMTree } from '../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../components/ui/NotificationProvider';
+import { supabase } from '../lib/supabase';
+import { CreditCard, Shield, Lock, CheckCircle, ArrowLeft, Wallet } from 'lucide-react';
 
-interface User {
-  id: string;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  companyName?: string;
-  userType: 'customer' | 'company' | 'admin';
-  sponsorshipNumber?: string;
-  parentId?: string;
-  isVerified: boolean;
-  hasActiveSubscription: boolean;
-  mobileVerified: boolean;
+interface SubscriptionPlan {
+  tsp_id: string;
+  tsp_name: string;
+  tsp_description: string;
+  tsp_price: number;
+  tsp_duration_days: number;
+  tsp_features: string[];
 }
 
-interface AuthContextType {
-  user: User | null;
-  login: (email: string, password: string, userType: string) => Promise<void>;
-  register: (userData: any, userType: string) => Promise<string>;
-  logout: () => void;
-  forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (token: string, password: string) => Promise<void>;
-  verifyOTP: (otp: string) => Promise<void>;
-  sendOTPToUser: (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => Promise<any>;
-  loading: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isInitialized, setIsInitialized] = useState(false);
+const Payment: React.FC = () => {
+  const { user, fetchUserData } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const notification = useNotification();
-
-  // Expose setUser and fetchUserData for payment success updates
-  const updateUser = (updatedUser: User) => {
-    setUser(updatedUser);
-  };
-
-  const refreshUserData = async (userId?: string) => {
-    const targetUserId = userId || user?.id;
-    if (targetUserId) {
-      await fetchUserData(targetUserId);
-    }
-  };
+  
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
+  const [processing, setProcessing] = useState(false);
+  const [cardDetails, setCardDetails] = useState({
+    number: '',
+    expiry: '',
+    cvv: '',
+    name: ''
+  });
 
   useEffect(() => {
-    // Initialize session from sessionStorage
-    const initializeSession = async () => {
-      if (isInitialized) return; // Prevent multiple initializations
+    // Get selected plan from navigation state
+    const planFromState = location.state?.selectedPlan;
+    
+    if (planFromState) {
+      setSelectedPlan(planFromState);
+    } else {
+      // No plan selected, redirect to subscription plans
+      notification.showError('No Plan Selected', 'Please select a subscription plan first.');
+      navigate('/subscription-plans', { replace: true });
+    }
+  }, [location.state, navigate, notification]);
 
-      setLoading(true);
-      try {
-        console.log('🔍 Initializing authentication...');
-
-        // First, check if there's an existing Supabase session
-        const { data: { session: existingSession } } = await supabase.auth.getSession();
-
-        if (existingSession?.user) {
-          console.log('✅ Found existing Supabase session:', existingSession.user.id);
-          // Save to sessionStorage if not already saved
-          sessionManager.saveSession(existingSession);
-          await fetchUserData(existingSession.user.id);
-        } else {
-          // Try to restore from sessionStorage
-          console.log('🔍 Checking sessionStorage for saved session...');
-          const restoredSession = await sessionManager.restoreSession();
-
-          if (restoredSession?.user) {
-            console.log('✅ Session restored from sessionStorage:', restoredSession.user.id);
-            await fetchUserData(restoredSession.user.id);
-          } else {
-            console.log('ℹ️ No existing session found');
-            setUser(null);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Failed to initialize session:', error);
-        // Clear any corrupted session data
-        sessionManager.removeSession();
-        setUser(null);
-      } finally {
-        setLoading(false);
-        setIsInitialized(true);
-      }
-    };
-
-    initializeSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isInitialized) return; // Don't process auth changes until initialized
-
-      console.log('🔄 Auth state change:', event, session?.user?.id);
-
-      try {
-        if (event === 'SIGNED_IN' && session?.user) {
-          console.log('✅ User signed in, saving session');
-          sessionManager.saveSession(session);
-          await fetchUserData(session.user.id);
-        } else if (event === 'SIGNED_OUT' || !session) {
-          console.log('👋 User signed out, clearing session');
-          const currentUserId = user?.id;
-          sessionManager.removeSession(currentUserId);
-          setUser(null);
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          console.log('🔄 Token refreshed, updating session');
-          sessionManager.saveSession(session);
-          // Optionally refresh user data if needed
-          if (!user || user.id !== session.user.id) {
-            await fetchUserData(session.user.id);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error handling auth state change:', error);
-        sessionManager.removeSession();
-        setUser(null);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [isInitialized, user?.id]);
-
-  const fetchUserData = async (userId: string) => {
-    if (!userId) {
-      console.warn('⚠️ No userId provided to fetchUserData');
+  const handlePayment = async () => {
+    if (!selectedPlan || !user) {
+      notification.showError('Error', 'Missing plan or user information');
       return;
     }
 
+    setProcessing(true);
     try {
-      console.log('🔍 Fetching user data for:', userId);
+      console.log('💳 Processing payment for plan:', selectedPlan.tsp_name);
 
-      // Try to get user data, but handle RLS gracefully
-      let userData = null;
-      try {
-        const { data: userDataArray, error: userError } = await supabase
-            .from('tbl_users')
-            .select('*')
-            .eq('tu_id', userId);
+      // Calculate end date
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + selectedPlan.tsp_duration_days);
 
-        if (userError) {
-          console.log('⚠️ RLS blocking users table access:', userError.message);
-        } else if (userDataArray && userDataArray.length > 0) {
-          userData = userDataArray[0];
-        }
-      } catch (rlsError) {
-        console.warn('RLS blocking users table:', rlsError);
+      // Create subscription record
+      const { data: subscriptionData, error: subscriptionError } = await supabase
+        .from('tbl_user_subscriptions')
+        .insert({
+          tus_user_id: user.id,
+          tus_plan_id: selectedPlan.tsp_id,
+          tus_status: 'active',
+          tus_start_date: startDate.toISOString(),
+          tus_end_date: endDate.toISOString(),
+          tus_payment_amount: selectedPlan.tsp_price
+        })
+        .select()
+        .single();
+
+      if (subscriptionError) {
+        console.error('❌ Subscription creation failed:', subscriptionError);
+        throw new Error(subscriptionError.message);
       }
 
-      // Try to get profile data
-      let profileData = null;
-      try {
-        const { data: profileDataArray } = await supabase
-            .from('tbl_user_profiles')
-            .select('*')
-            .eq('tup_user_id', userId);
-        console.log('📋 Profile data retrieved:', profileDataArray?.length || 0, 'records');
-        profileData = profileDataArray?.[0];
-      } catch (profileRlsError) {
-        console.warn('RLS blocking user_profiles table:', profileRlsError);
-      }
+      console.log('✅ Subscription created:', subscriptionData);
 
-      // Try to get company data if user is a company
-      let companyData = null;
-      if (userData?.tu_user_type === 'company') {
-        try {
-          const { data: companyDataArray } = await supabase
-              .from('tbl_companies')
-              .select('*')
-              .eq('tc_user_id', userId);
-          console.log('🏢 Company data retrieved:', companyDataArray?.length || 0, 'records');
-          companyData = companyDataArray?.[0];
-        } catch (companyRlsError) {
-          console.warn('RLS blocking companies table:', companyRlsError);
-        }
-      }
-
-      // Try to check for active subscription
-      let subscriptionData = null;
-      try {
-        const { data: subscriptionDataArray } = await supabase
-            .from('tbl_user_subscriptions')
-            .select('*')
-            .eq('tus_user_id', userId)
-            .eq('tus_status', 'active')
-            .gte('tus_end_date', new Date().toISOString());
-        console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
-        subscriptionData = subscriptionDataArray?.[0];
-      } catch (subscriptionRlsError) {
-        console.warn('RLS blocking user_subscriptions table:', subscriptionRlsError);
-      }
-
-      // Get current session to get email
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const user: User = {
-        id: userId,
-        email: session?.user?.email || userData?.tu_email || 'unknown@example.com',
-        firstName: profileData?.tup_first_name,
-        lastName: profileData?.tup_last_name,
-        companyName: companyData?.tc_company_name,
-        userType: userData?.tu_user_type || 'customer',
-        sponsorshipNumber: profileData?.tup_sponsorship_number,
-        parentId: profileData?.tup_parent_account,
-        isVerified: userData?.tu_is_verified || false,
-        hasActiveSubscription: !!subscriptionData, // Check if user has active subscription
-        mobileVerified: userData?.tu_mobile_verified || false
-      };
-
-      console.log('✅ User data compiled:', user);
-      setUser(user);
-    } catch (error) {
-      console.error('❌ Error fetching user data:', error);
-      // Don't throw error, just set user to null
-      setUser(null);
-    }
-  };
-
-  const login = async (emailOrUsername: string, password: string, userType: string) => {
-    setLoading(true);
-    try {
-      console.log('🔍 Attempting login for:', emailOrUsername);
-
-      // Clear any existing session data first
-      console.log('🧹 Clearing existing session data...');
-      sessionManager.removeSession();
-      await supabase.auth.signOut();
-      setUser(null);
-
-      // Small delay to ensure cleanup is complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Determine if input is email or username
-      const isEmail = emailOrUsername.includes('@');
-      let actualEmail = emailOrUsername;
-
-      // If username provided, get the email from user_profiles
-      if (!isEmail) {
-        const { data: profileData, error: profileError } = await supabase
-            .from('tbl_user_profiles')
-            .select('tup_user_id, tbl_users!inner(tu_email)')
-            .eq('tup_username', emailOrUsername)
-            .single();
-
-        if (profileError || !profileData) {
-          throw new Error('Username not found');
-        }
-        actualEmail = profileData.tbl_users.tu_email;
-      }
-
-      // Authenticate with Supabase
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: actualEmail,
-        password: password
-      });
-
-      if (authError) {
-        throw new Error(authError.message);
-      }
-
-      if (!authData.user || !authData.session) {
-        throw new Error('Authentication failed - no session created');
-      }
-
-      // Explicitly save the session
-      console.log('💾 Saving session after login...');
-      sessionManager.saveSession(authData.session);
-
-      // Log login activity
-      try {
-        await supabase
-            .from('tbl_user_activity_logs')
-            .insert({
-              tual_user_id: authData.user.id,
-              tual_activity_type: 'login',
-              tual_ip_address: 'unknown',
-              tual_user_agent: navigator.userAgent,
-              tual_login_time: new Date().toISOString()
-            });
-      } catch (logError) {
-        console.warn('Failed to log login activity:', logError);
-      }
-
-      // Fetch user data explicitly
-      await fetchUserData(authData.user.id);
-
-      notification.showSuccess('Login Successful!', 'Welcome back!');
-
-    } catch (error: any) {
-      console.error('❌ Login error:', error);
-      const errorMessage = error?.message || 'Login failed';
-      notification.showError('Login Failed', errorMessage);
-
-      // Clear any partial session data on error
-      sessionManager.removeSession();
-      setUser(null);
-
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const register = async (userData: any, userType: string) => {
-    setLoading(true);
-    try {
-      console.log('🔍 Attempting registration for:', userData.email);
-
-      // Clear any existing session data first
-      sessionManager.removeSession();
-      await supabase.auth.signOut();
-
-      // Register with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-        options: {
-          emailRedirectTo: undefined // Disable email confirmation for demo
-        }
-      });
-
-      if (authError) {
-        console.error('Supabase auth error:', authError);
-        throw new Error(authError.message);
-      }
-
-      if (!authData.user) {
-        console.error('No user data returned from Supabase');
-        throw new Error('Registration failed');
-      }
-
-      console.log('✅ Supabase auth successful, user ID:', authData.user.id);
-
-      // Save session immediately if available
-      if (authData.session) {
-        console.log('💾 Saving session to sessionStorage');
-        sessionManager.saveSession(authData.session);
-      }
-
-      // Use the appropriate registration function based on user type
-      if (userType === 'customer') {
-        console.log('📝 Registering customer profile...');
-        const { error: regError } = await supabase.rpc('register_customer', {
-          p_user_id: authData.user.id,
-          p_email: userData.email,
-          p_first_name: userData.firstName,
-          p_last_name: userData.lastName,
-          p_username: userData.userName,
-          p_mobile: userData.mobile,
-          p_gender: userData.gender,
-          p_parent_account: userData.parentAccount
-        });
-
-        if (regError) {
-          console.error('Customer registration error:', regError);
-          throw new Error(regError.message);
-        }
-
-        // Add user to MLM tree if parent account is provided
-        if (userData.parentAccount) {
-          try {
-            const { data: profileData, error: profileError } = await supabase
-                .from('tbl_user_profiles')
-                .select('tup_sponsorship_number')
-                .eq('tup_user_id', authData.user.id)
-                .single();
-
-            if (profileError) {
-              console.error('❌ Could not get sponsorship number for MLM tree placement:', profileError);
-              throw profileError;
-            }
-
-            if (profileData?.tup_sponsorship_number) {
-              const treeResult = await addUserToMLMTree(
-                  authData.user.id,
-                  profileData.tup_sponsorship_number,
-                  userData.parentAccount
-              );
-
-              if (treeResult?.success) {
-                console.log('✅ MLM tree placement successful');
-              } else {
-                console.error('❌ MLM tree placement failed:', treeResult);
-                throw new Error(treeResult?.error || 'MLM tree placement failed');
-              }
-            }
-          } catch (treeError) {
-            console.error('❌ MLM tree placement failed:', treeError);
-            console.warn('⚠️ Registration completed but MLM tree placement failed');
+      // Create payment record
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('tbl_payments')
+        .insert({
+          tp_user_id: user.id,
+          tp_subscription_id: subscriptionData.tus_id,
+          tp_amount: selectedPlan.tsp_price,
+          tp_currency: 'USD',
+          tp_payment_method: paymentMethod,
+          tp_payment_status: 'completed',
+          tp_transaction_id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          tp_gateway_response: {
+            method: paymentMethod,
+            card_last_four: paymentMethod === 'card' ? cardDetails.number.slice(-4) : null,
+            processed_at: new Date().toISOString()
           }
-        }
-      } else if (userType === 'company') {
-        console.log('📝 Registering company profile...');
-        const { error: regError } = await supabase.rpc('register_company', {
-          p_user_id: authData.user.id,
-          p_email: userData.email,
-          p_company_name: userData.companyName,
-          p_brand_name: userData.brandName,
-          p_business_type: userData.businessType,
-          p_business_category: userData.businessCategory,
-          p_registration_number: userData.registrationNumber,
-          p_gstin: userData.gstin,
-          p_contact_person: userData.contactPerson,
-          p_mobile: userData.mobile,
-          p_address: userData.address,
-          p_city: userData.city,
-          p_state: userData.state,
-          p_pincode: userData.pincode
+        })
+        .select()
+        .single();
+
+      if (paymentError) {
+        console.error('❌ Payment record creation failed:', paymentError);
+        throw new Error(paymentError.message);
+      }
+
+      console.log('✅ Payment record created:', paymentData);
+
+      // Refresh user data to update subscription status
+      await fetchUserData(user.id);
+
+      notification.showSuccess('Payment Successful!', 'Your subscription has been activated.');
+
+      // Redirect to dashboard with success state
+      setTimeout(() => {
+        navigate('/dashboard', { 
+          replace: true,
+          state: { paymentSuccess: true }
         });
-
-        if (regError) {
-          console.error('Company registration error:', regError);
-          throw new Error(regError.message);
-        }
-      }
-
-      // Log registration activity
-      try {
-        await supabase
-            .from('tbl_user_activity_logs')
-            .insert({
-              tual_user_id: authData.user.id,
-              tual_activity_type: 'registration',
-              tual_ip_address: 'unknown',
-              tual_user_agent: navigator.userAgent,
-              tual_login_time: new Date().toISOString()
-            });
-      } catch (logError) {
-        console.warn('Failed to log registration activity:', logError);
-      }
-
-      console.log('✅ Registration completed successfully');
-      notification.showSuccess('Registration Successful!', 'Your account has been created successfully.');
-
-      // Fetch user data immediately after successful registration
-      if (authData.session) {
-        await fetchUserData(authData.user.id);
-      }
-
-      return authData.user.id;
+      }, 1000);
 
     } catch (error: any) {
-      console.error('❌ Registration failed:', error);
-      const errorMessage = error?.message || 'Registration failed';
-      notification.showError('Registration Failed', errorMessage);
-
-      // Clear any partial session data on error
-      sessionManager.removeSession();
-      setUser(null);
-
-      throw new Error(errorMessage);
+      console.error('❌ Payment processing failed:', error);
+      notification.showError('Payment Failed', error?.message || 'Payment processing failed');
     } finally {
-      setLoading(false);
+      setProcessing(false);
     }
   };
 
-  const logout = () => {
-    setLoading(true);
-    const currentUserId = user?.id;
-
-    try {
-      // Log logout activity before signing out
-      if (user) {
-        supabase
-            .from('tbl_user_activity_logs')
-            .insert({
-              tual_user_id: user.id,
-              tual_activity_type: 'logout',
-              tual_ip_address: 'unknown',
-              tual_user_agent: navigator.userAgent,
-              tual_logout_time: new Date().toISOString()
-            })
-            .then(({ error }) => {
-              if (error) console.warn('Failed to log logout activity:', error);
-            });
-      }
-
-      // Clear all session data
-      console.log('🧹 Clearing all session data during logout...');
-      sessionManager.removeSession(currentUserId);
-
-      // Sign out from Supabase
-      supabase.auth.signOut();
-
-      // Clear user state
-      setUser(null);
-
-      notification.showInfo('Logged Out', 'You have been successfully logged out.');
-    } catch (error) {
-      console.error('❌ Error during logout:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const forgotPassword = async (email: string) => {
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      notification.showSuccess('Reset Email Sent', 'Please check your email for password reset instructions.');
-    } catch (error: any) {
-      notification.showError('Reset Failed', error?.message || 'Failed to send reset email');
-      throw error;
-    }
-  };
-
-  const resetPassword = async (token: string, password: string) => {
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: password
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      notification.showSuccess('Password Reset', 'Your password has been updated successfully.');
-    } catch (error: any) {
-      notification.showError('Reset Failed', error?.message || 'Failed to reset password');
-      throw error;
-    }
-  };
-
-  const verifyOTP = async (otp: string) => {
-    try {
-      if (!user) {
-        throw new Error('No user found');
-      }
-
-      console.log('🔍 Starting OTP verification for user:', user.id);
-      const result = await verifyOTPAPI(user.id, otp, 'mobile');
-
-      if (!result.success) {
-        throw new Error(result.error || 'OTP verification failed');
-      }
-
-      console.log('✅ OTP verification successful');
-      setUser({ ...user, mobileVerified: true });
-      notification.showSuccess('Verification Successful', 'Mobile number verified successfully.');
-    } catch (error: any) {
-      console.error('❌ OTP verification failed:', error);
-      notification.showError('Verification Failed', error?.message || 'Invalid OTP code');
-      throw error;
-    }
-  };
-
-  const sendOTPToUser = async (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => {
-    try {
-      console.log('📤 Sending OTP to user:', { userId, contactInfo, otpType });
-      const result = await sendOTP(userId, contactInfo, otpType);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to send OTP');
-      }
-
-      console.log('✅ OTP sent successfully');
-      notification.showSuccess('OTP Sent', `Verification code sent to ${contactInfo}`);
-      return result;
-    } catch (error: any) {
-      console.error('❌ Failed to send OTP:', error);
-      notification.showError('Send Failed', error?.message || 'Failed to send OTP');
-      throw error;
-    }
-  };
-
-  const value = {
-    user,
-    login,
-    register,
-    logout,
-    forgotPassword,
-    resetPassword,
-    verifyOTP,
-    sendOTPToUser,
-    loading
-  };
+  if (!selectedPlan) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading payment information...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-      <AuthContext.Provider value={value}>
-        {children}
-      </AuthContext.Provider>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8">
+          <Link 
+            to="/subscription-plans" 
+            className="inline-flex items-center text-indigo-600 hover:text-indigo-700 mb-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Plans
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-900">Complete Your Payment</h1>
+          <p className="text-gray-600 mt-2">Secure payment processing for your subscription</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Order Summary */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Order Summary</h2>
+            
+            <div className="border rounded-lg p-4 mb-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900">{selectedPlan.tsp_name}</h3>
+                  <p className="text-gray-600 text-sm mt-1">{selectedPlan.tsp_description}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">${selectedPlan.tsp_price}</p>
+                  <p className="text-sm text-gray-600">{selectedPlan.tsp_duration_days} days</p>
+                </div>
+              </div>
+              
+              <div className="border-t pt-4">
+                <h4 className="font-medium text-gray-900 mb-2">Features included:</h4>
+                <ul className="space-y-1">
+                  {selectedPlan.tsp_features.map((feature, index) => (
+                    <li key={index} className="flex items-center text-sm text-gray-600">
+                      <CheckCircle className="w-4 h-4 text-green-500 mr-2 flex-shrink-0" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="flex justify-between items-center text-lg font-semibold">
+                <span>Total Amount</span>
+                <span className="text-indigo-600">${selectedPlan.tsp_price}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Form */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Payment Details</h2>
+
+            {/* Payment Method Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Payment Method
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('card')}
+                  className={`p-4 border rounded-lg flex items-center justify-center transition-colors ${
+                    paymentMethod === 'card'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <CreditCard className="w-5 h-5 mr-2" />
+                  Credit Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('wallet')}
+                  className={`p-4 border rounded-lg flex items-center justify-center transition-colors ${
+                    paymentMethod === 'wallet'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <Wallet className="w-5 h-5 mr-2" />
+                  Digital Wallet
+                </button>
+              </div>
+            </div>
+
+            {/* Card Payment Form */}
+            {paymentMethod === 'card' && (
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Card Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="1234 5678 9012 3456"
+                    value={cardDetails.number}
+                    onChange={(e) => setCardDetails({ ...cardDetails, number: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Expiry Date
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="MM/YY"
+                      value={cardDetails.expiry}
+                      onChange={(e) => setCardDetails({ ...cardDetails, expiry: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CVV
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="123"
+                      value={cardDetails.cvv}
+                      onChange={(e) => setCardDetails({ ...cardDetails, cvv: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cardholder Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="John Doe"
+                    value={cardDetails.name}
+                    onChange={(e) => setCardDetails({ ...cardDetails, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Wallet Payment Info */}
+            {paymentMethod === 'wallet' && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center mb-2">
+                  <Wallet className="w-5 h-5 text-blue-600 mr-2" />
+                  <h3 className="font-medium text-blue-900">Digital Wallet Payment</h3>
+                </div>
+                <p className="text-blue-700 text-sm">
+                  You'll be redirected to your preferred digital wallet to complete the payment securely.
+                </p>
+              </div>
+            )}
+
+            {/* Security Features */}
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center mb-2">
+                <Shield className="w-5 h-5 text-green-600 mr-2" />
+                <h3 className="font-medium text-green-900">Secure Payment</h3>
+              </div>
+              <div className="space-y-1 text-sm text-green-700">
+                <div className="flex items-center">
+                  <Lock className="w-4 h-4 mr-2" />
+                  256-bit SSL encryption
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  PCI DSS compliant
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Fraud protection enabled
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Button */}
+            <button
+              onClick={handlePayment}
+              disabled={processing}
+              className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {processing ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Processing Payment...
+                </div>
+              ) : (
+                `Pay $${selectedPlan.tsp_price}`
+              )}
+            </button>
+
+            <p className="text-xs text-gray-500 text-center mt-4">
+              By completing this payment, you agree to our Terms of Service and Privacy Policy.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
+
+  async function handlePayment() {
+    if (!selectedPlan || !user) {
+      notification.showError('Error', 'Missing plan or user information');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      console.log('💳 Processing payment for plan:', selectedPlan.tsp_name);
+
+      // Calculate end date
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + selectedPlan.tsp_duration_days);
+
+      // Create subscription record
+      const { data: subscriptionData, error: subscriptionError } = await supabase
+        .from('tbl_user_subscriptions')
+        .insert({
+          tus_user_id: user.id,
+          tus_plan_id: selectedPlan.tsp_id,
+          tus_status: 'active',
+          tus_start_date: startDate.toISOString(),
+          tus_end_date: endDate.toISOString(),
+          tus_payment_amount: selectedPlan.tsp_price
+        })
+        .select()
+        .single();
+
+      if (subscriptionError) {
+        console.error('❌ Subscription creation failed:', subscriptionError);
+        throw new Error(subscriptionError.message);
+      }
+
+      console.log('✅ Subscription created:', subscriptionData);
+
+      // Create payment record
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('tbl_payments')
+        .insert({
+          tp_user_id: user.id,
+          tp_subscription_id: subscriptionData.tus_id,
+          tp_amount: selectedPlan.tsp_price,
+          tp_currency: 'USD',
+          tp_payment_method: paymentMethod,
+          tp_payment_status: 'completed',
+          tp_transaction_id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          tp_gateway_response: {
+            method: paymentMethod,
+            card_last_four: paymentMethod === 'card' ? cardDetails.number.slice(-4) : null,
+            processed_at: new Date().toISOString()
+          }
+        })
+        .select()
+        .single();
+
+      if (paymentError) {
+        console.error('❌ Payment record creation failed:', paymentError);
+        throw new Error(paymentError.message);
+      }
+
+      console.log('✅ Payment record created:', paymentData);
+
+      // Refresh user data to update subscription status
+      await fetchUserData(user.id);
+
+      notification.showSuccess('Payment Successful!', 'Your subscription has been activated.');
+
+      // Redirect to dashboard with success state
+      setTimeout(() => {
+        navigate('/dashboard', { 
+          replace: true,
+          state: { paymentSuccess: true }
+        });
+      }, 1000);
+
+    } catch (error: any) {
+      console.error('❌ Payment processing failed:', error);
+      notification.showError('Payment Failed', error?.message || 'Payment processing failed');
+    } finally {
+      setProcessing(false);
+    }
+  }
 };
+
+export default Payment;
