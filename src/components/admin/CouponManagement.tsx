@@ -910,4 +910,4 @@ const CouponDetails: React.FC<{
   );
 };
 
-export default CompanyManagement;
+export default CouponManagement;
