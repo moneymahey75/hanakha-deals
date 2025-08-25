@@ -419,7 +419,7 @@ const CompanyCouponManagement: React.FC = () => {
                   <div className="flex space-x-2">
                     <button
                       onClick={() => openEditModal(coupon)}
-                      disabled={coupon.tc_status === 'approved'}
+                      disabled={coupon.tc_status === 'approved' || coupon.tc_status === 'declined'}
                       className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-1"
                     >
                       <Edit className="h-4 w-4" />
@@ -434,9 +434,9 @@ const CompanyCouponManagement: React.FC = () => {
                     </button>
                   </div>
 
-                  {coupon.tc_status === 'approved' && (
+                  {(coupon.tc_status === 'approved' || coupon.tc_status === 'declined') && (
                     <p className="text-xs text-gray-500 mt-2 text-center">
-                      Approved coupons cannot be edited
+                      {coupon.tc_status === 'approved' ? 'Approved coupons cannot be edited' : 'Declined coupons cannot be edited'}
                     </p>
                   )}
                 </div>
