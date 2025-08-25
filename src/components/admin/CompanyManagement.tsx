@@ -21,7 +21,9 @@ import {
   X,
   AlertTriangle,
   User,
-  Settings
+  Settings,
+  Plus,
+  RefreshCw
 } from 'lucide-react';
 
 interface Company {
@@ -48,6 +50,7 @@ interface Company {
 const CompanyManagement: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [verificationFilter, setVerificationFilter] = useState('all');
@@ -79,40 +82,63 @@ const CompanyManagement: React.FC = () => {
   const loadCompanies = async () => {
     try {
       setLoading(true);
+      setError(null);
       console.log('🔍 Loading companies from database...');
 
-      const { data: companiesData, error } = await supabase
+      // Simple query first to test basic connectivity
+      const { data: companiesData, error: companiesError } = await supabase
         .from('tbl_companies')
-        .select(`
-          *,
-          tbl_users(tu_email, tu_is_active)
-        `)
+        .select('*')
         .order('tc_created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Failed to load companies:', error);
-        // Don't throw error, just show empty state with error message
+      if (companiesError) {
+        console.error('❌ Failed to load companies:', companiesError);
+        setError(`Database error: ${companiesError.message}`);
         setCompanies([]);
-        notification.showError('Load Failed', `Failed to load company data: ${error.message}`);
         return;
       }
 
-      console.log('📊 Raw companies data:', companiesData);
+      console.log('✅ Companies loaded from database:', companiesData?.length || 0);
 
-      const formattedCompanies = (companiesData || []).map(company => ({
-        ...company,
-        user_info: {
-          email: company.tbl_users?.tu_email || company.tc_official_email || '',
-          is_active: company.tbl_users?.tu_is_active ?? true
-        }
-      }));
+      // Try to get user info for each company
+      const companiesWithUserInfo = await Promise.all(
+        (companiesData || []).map(async (company) => {
+          try {
+            const { data: userData } = await supabase
+              .from('tbl_users')
+              .select('tu_email, tu_is_active')
+              .eq('tu_id', company.tc_user_id)
+              .single();
 
-      console.log('✅ Formatted companies:', formattedCompanies);
-      setCompanies(formattedCompanies);
-    } catch (error) {
-      console.error('Failed to load companies:', error);
+            return {
+              ...company,
+              user_info: userData ? {
+                email: userData.tu_email,
+                is_active: userData.tu_is_active
+              } : {
+                email: company.tc_official_email,
+                is_active: true
+              }
+            };
+          } catch (userError) {
+            console.warn('Failed to load user info for company:', company.tc_id, userError);
+            return {
+              ...company,
+              user_info: {
+                email: company.tc_official_email,
+                is_active: true
+              }
+            };
+          }
+        })
+      );
+
+      setCompanies(companiesWithUserInfo);
+      console.log('✅ Companies with user info loaded:', companiesWithUserInfo.length);
+    } catch (error: any) {
+      console.error('❌ Unexpected error loading companies:', error);
+      setError(`Unexpected error: ${error.message}`);
       setCompanies([]);
-      notification.showError('Load Failed', `Unexpected error: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -129,7 +155,7 @@ const CompanyManagement: React.FC = () => {
 
       notification.showSuccess('Company Approved', 'Company has been verified and approved');
       loadCompanies();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to approve company:', error);
       notification.showError('Approval Failed', 'Failed to approve company');
     }
@@ -148,7 +174,7 @@ const CompanyManagement: React.FC = () => {
 
       notification.showSuccess('Company Rejected', 'Company registration has been rejected');
       loadCompanies();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to reject company:', error);
       notification.showError('Rejection Failed', 'Failed to reject company');
     }
@@ -167,7 +193,7 @@ const CompanyManagement: React.FC = () => {
 
       notification.showSuccess('Company Deleted', 'Company has been deleted successfully');
       loadCompanies();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete company:', error);
       notification.showError('Deletion Failed', 'Failed to delete company');
     }
@@ -183,14 +209,17 @@ const CompanyManagement: React.FC = () => {
         email: newCompany.user_email,
         password: newCompany.password,
         options: {
-          emailRedirectTo: undefined // Disable email confirmation for admin-created accounts
+          emailRedirectTo: undefined
         }
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error('Auth error:', authError);
+        throw new Error(`Authentication error: ${authError.message}`);
+      }
 
       if (!authData.user) {
-        throw new Error('Failed to create user account');
+        throw new Error('Failed to create user account - no user data returned');
       }
 
       console.log('✅ User account created:', authData.user.id);
@@ -204,11 +233,15 @@ const CompanyManagement: React.FC = () => {
           tu_user_type: 'company',
           tu_is_verified: true,
           tu_email_verified: true,
-          tu_mobile_verified: true, // Admin-created accounts are pre-verified
+          tu_mobile_verified: true,
           tu_is_active: true
         });
 
-      if (userError) throw userError;
+      if (userError) {
+        console.error('User record error:', userError);
+        throw new Error(`Failed to create user record: ${userError.message}`);
+      }
+
       console.log('✅ User record created in tbl_users');
 
       // Create company record
@@ -217,27 +250,31 @@ const CompanyManagement: React.FC = () => {
         .insert({
           tc_user_id: authData.user.id,
           tc_company_name: newCompany.company_name,
-          tc_brand_name: newCompany.brand_name,
-          tc_business_type: newCompany.business_type,
-          tc_business_category: newCompany.business_category,
+          tc_brand_name: newCompany.brand_name || null,
+          tc_business_type: newCompany.business_type || null,
+          tc_business_category: newCompany.business_category || null,
           tc_registration_number: newCompany.registration_number,
           tc_gstin: newCompany.gstin,
-          tc_website_url: newCompany.website_url,
+          tc_website_url: newCompany.website_url || null,
           tc_official_email: newCompany.official_email,
-          tc_affiliate_code: newCompany.affiliate_code,
+          tc_affiliate_code: newCompany.affiliate_code || null,
           tc_verification_status: newCompany.verification_status
         });
 
-      if (companyError) throw companyError;
+      if (companyError) {
+        console.error('Company record error:', companyError);
+        throw new Error(`Failed to create company record: ${companyError.message}`);
+      }
+
       console.log('✅ Company record created in tbl_companies');
 
       notification.showSuccess('Company Created', 'Company account has been created successfully');
       setShowCreateModal(false);
       resetNewCompany();
       loadCompanies();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create company:', error);
-      notification.showError('Creation Failed', `Failed to create company account: ${error.message}`);
+      notification.showError('Creation Failed', error.message || 'Failed to create company account');
     }
   };
 
@@ -276,34 +313,33 @@ const CompanyManagement: React.FC = () => {
     return matchesSearch && matchesStatus && matchesVerification;
   });
 
+  // Loading state
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Companies</h3>
-          <p className="text-gray-600">Please wait while we fetch company data...</p>
+          <p className="text-gray-600">Fetching company data from database...</p>
         </div>
       </div>
     );
   }
 
-  // Add error state for when companies fail to load
-  if (!loading && companies.length === 0 && !showCreateModal) {
+  // Error state
+  if (error) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="text-center py-12">
-          <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Companies Found</h3>
-          <p className="text-gray-600 mb-6">
-            Either no companies are registered or there's a database connection issue.
-          </p>
+          <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to Load Companies</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
           <div className="space-y-3">
             <button
               onClick={loadCompanies}
               className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
             >
-              <Eye className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
               <span>Retry Loading</span>
             </button>
             <button
@@ -311,7 +347,7 @@ const CompanyManagement: React.FC = () => {
               className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2 mx-auto"
             >
               <Plus className="h-4 w-4" />
-              <span>Create First Company</span>
+              <span>Create Company</span>
             </button>
           </div>
         </div>
@@ -319,6 +355,7 @@ const CompanyManagement: React.FC = () => {
     );
   }
 
+  // Company details view
   if (showCompanyDetails && selectedCompany) {
     return (
       <CompanyDetails
@@ -335,6 +372,7 @@ const CompanyManagement: React.FC = () => {
     );
   }
 
+  // Main company management view
   return (
     <div className="bg-white rounded-xl shadow-sm">
       <div className="p-6 border-b border-gray-200">
@@ -356,7 +394,7 @@ const CompanyManagement: React.FC = () => {
               onClick={loadCompanies}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
             >
-              <Eye className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
               <span>Refresh</span>
             </button>
             <button
@@ -414,144 +452,143 @@ const CompanyManagement: React.FC = () => {
       </div>
 
       {/* Companies List */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Company
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Contact
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Business Info
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Verification
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Registered
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredCompanies.map((company) => (
-              <tr key={company.tc_id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 h-10 w-10">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-r from-green-500 to-blue-600 flex items-center justify-center">
-                        <span className="text-white font-medium text-sm">
-                          {company.tc_company_name.charAt(0)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        {company.tc_company_name}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {company.tc_brand_name}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">{company.tc_official_email}</div>
-                  <div className="text-sm text-gray-500">{company.user_info?.email}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">{company.tc_business_type}</div>
-                  <div className="text-sm text-gray-500">{company.tc_business_category}</div>
-                  <div className="text-xs text-gray-400">GST: {company.tc_gstin}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                    company.tc_verification_status === 'verified'
-                      ? 'bg-green-100 text-green-800'
-                      : company.tc_verification_status === 'pending'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {company.tc_verification_status === 'verified' && <CheckCircle className="h-3 w-3 mr-1" />}
-                    {company.tc_verification_status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
-                    {company.tc_verification_status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
-                    {company.tc_verification_status.charAt(0).toUpperCase() + company.tc_verification_status.slice(1)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <div className="flex items-center">
-                    <Calendar className="h-4 w-4 mr-1" />
-                    {new Date(company.tc_created_at).toLocaleDateString()}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedCompany(company);
-                        setShowCompanyDetails(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
-                      title="View Details"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    {company.tc_verification_status === 'pending' && (
-                      <>
-                        <button
-                          onClick={() => handleApproveCompany(company.tc_id)}
-                          className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
-                          title="Approve"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleRejectCompany(company.tc_id)}
-                          className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50"
-                          title="Reject"
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => handleDeleteCompany(company.tc_id)}
-                      className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </td>
+      {companies.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Company
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contact
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Business Info
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Verification
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Registered
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {filteredCompanies.length === 0 && (
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredCompanies.map((company) => (
+                <tr key={company.tc_id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-r from-green-500 to-blue-600 flex items-center justify-center">
+                          <span className="text-white font-medium text-sm">
+                            {company.tc_company_name.charAt(0)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {company.tc_company_name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {company.tc_brand_name || 'No brand name'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{company.tc_official_email}</div>
+                    <div className="text-sm text-gray-500">{company.user_info?.email || 'No login email'}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{company.tc_business_type || 'Not specified'}</div>
+                    <div className="text-sm text-gray-500">{company.tc_business_category || 'Not specified'}</div>
+                    <div className="text-xs text-gray-400">GST: {company.tc_gstin}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      company.tc_verification_status === 'verified'
+                        ? 'bg-green-100 text-green-800'
+                        : company.tc_verification_status === 'pending'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {company.tc_verification_status === 'verified' && <CheckCircle className="h-3 w-3 mr-1" />}
+                      {company.tc_verification_status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
+                      {company.tc_verification_status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
+                      {company.tc_verification_status.charAt(0).toUpperCase() + company.tc_verification_status.slice(1)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div className="flex items-center">
+                      <Calendar className="h-4 w-4 mr-1" />
+                      {new Date(company.tc_created_at).toLocaleDateString()}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedCompany(company);
+                          setShowCompanyDetails(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                        title="View Details"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      {company.tc_verification_status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => handleApproveCompany(company.tc_id)}
+                            className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                            title="Approve"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleRejectCompany(company.tc_id)}
+                            className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50"
+                            title="Reject"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleDeleteCompany(company.tc_id)}
+                        className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
         <div className="text-center py-12">
           <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No companies found</h3>
-          <p className="text-gray-600">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Companies Found</h3>
+          <p className="text-gray-600 mb-6">
             {searchTerm || statusFilter !== 'all' || verificationFilter !== 'all'
-              ? 'Try adjusting your search criteria'
+              ? 'No companies match your search criteria'
               : 'No companies have been registered yet'
             }
           </p>
-          {!searchTerm && statusFilter === 'all' && verificationFilter === 'all' && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
-            >
-              Create First Company
-            </button>
-          )}
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2 mx-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Create First Company</span>
+          </button>
         </div>
       )}
 
@@ -826,14 +863,14 @@ const CompanyDetails: React.FC<{
         .from('tbl_companies')
         .update({
           tc_company_name: editData.company_name,
-          tc_brand_name: editData.brand_name,
-          tc_business_type: editData.business_type,
-          tc_business_category: editData.business_category,
+          tc_brand_name: editData.brand_name || null,
+          tc_business_type: editData.business_type || null,
+          tc_business_category: editData.business_category || null,
           tc_registration_number: editData.registration_number,
           tc_gstin: editData.gstin,
-          tc_website_url: editData.website_url,
+          tc_website_url: editData.website_url || null,
           tc_official_email: editData.official_email,
-          tc_affiliate_code: editData.affiliate_code,
+          tc_affiliate_code: editData.affiliate_code || null,
           tc_verification_status: editData.verification_status
         })
         .eq('tc_id', company.tc_id);
@@ -843,7 +880,7 @@ const CompanyDetails: React.FC<{
       notification.showSuccess('Company Updated', 'Company information has been updated successfully');
       setEditMode(false);
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update company:', error);
       notification.showError('Update Failed', 'Failed to update company information');
     }
@@ -938,12 +975,21 @@ const CompanyDetails: React.FC<{
                 <div>
                   <label className="text-sm font-medium text-gray-500">Business Type</label>
                   {editMode ? (
-                    <input
-                      type="text"
+                    <select
                       value={editData.business_type}
                       onChange={(e) => setEditData(prev => ({ ...prev, business_type: e.target.value }))}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    />
+                    >
+                      <option value="">Select business type</option>
+                      <option value="Private Limited Company">Private Limited Company</option>
+                      <option value="Public Limited Company">Public Limited Company</option>
+                      <option value="Partnership">Partnership</option>
+                      <option value="LLP">LLP</option>
+                      <option value="Sole Proprietorship">Sole Proprietorship</option>
+                      <option value="Trust">Trust</option>
+                      <option value="Society">Society</option>
+                      <option value="Other">Other</option>
+                    </select>
                   ) : (
                     <p className="text-gray-900 mt-1">{company.tc_business_type || 'Not specified'}</p>
                   )}
@@ -951,12 +997,23 @@ const CompanyDetails: React.FC<{
                 <div>
                   <label className="text-sm font-medium text-gray-500">Business Category</label>
                   {editMode ? (
-                    <input
-                      type="text"
+                    <select
                       value={editData.business_category}
                       onChange={(e) => setEditData(prev => ({ ...prev, business_category: e.target.value }))}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    />
+                    >
+                      <option value="">Select business category</option>
+                      <option value="Technology">Technology</option>
+                      <option value="Healthcare">Healthcare</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Education">Education</option>
+                      <option value="Retail">Retail</option>
+                      <option value="Manufacturing">Manufacturing</option>
+                      <option value="Services">Services</option>
+                      <option value="Agriculture">Agriculture</option>
+                      <option value="Real Estate">Real Estate</option>
+                      <option value="Other">Other</option>
+                    </select>
                   ) : (
                     <p className="text-gray-900 mt-1">{company.tc_business_category || 'Not specified'}</p>
                   )}
@@ -1059,6 +1116,14 @@ const CompanyDetails: React.FC<{
                       {company.tc_verification_status.charAt(0).toUpperCase() + company.tc_verification_status.slice(1)}
                     </span>
                   )}
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Registration Date</label>
+                  <p className="text-gray-900 mt-1">{new Date(company.tc_created_at).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Last Updated</label>
+                  <p className="text-gray-900 mt-1">{new Date(company.tc_updated_at).toLocaleDateString()}</p>
                 </div>
               </div>
             </div>
