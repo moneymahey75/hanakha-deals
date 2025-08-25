@@ -107,12 +107,6 @@ const CompanyRegister: React.FC = () => {
       });
       
       await register(registrationData, 'company');
-      const registrationData = {
-        ...formData,
-        email: formData.officialEmail // Make sure email is properly set
-      };
-      
-      await register(registrationData, 'company');
       
       console.log('✅ Company registration successful, redirecting to dashboard...');
       navigate('/company/dashboard');
