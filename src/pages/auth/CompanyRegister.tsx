@@ -18,6 +18,7 @@ const CompanyRegister: React.FC = () => {
     websiteUrl: '',
     officialEmail: '',
     affiliateCode: '',
+    email: '', // Add email field for consistency
     password: '',
     confirmPassword: '',
     acceptTerms: false
@@ -83,7 +84,35 @@ const CompanyRegister: React.FC = () => {
         registrationNumber: formData.registrationNumber
       });
       
-      await register(formData, 'company');
+      // Ensure all required fields are properly mapped
+      const registrationData = {
+        ...formData,
+        email: formData.officialEmail, // Map official email to email field
+        companyName: formData.companyName,
+        brandName: formData.brandName,
+        businessType: formData.businessType,
+        businessCategory: formData.businessCategory,
+        registrationNumber: formData.registrationNumber,
+        gstin: formData.gstin,
+        websiteUrl: formData.websiteUrl,
+        officialEmail: formData.officialEmail,
+        affiliateCode: formData.affiliateCode,
+        password: formData.password
+      };
+      
+      console.log('📝 Registration data prepared:', {
+        email: registrationData.email,
+        companyName: registrationData.companyName,
+        officialEmail: registrationData.officialEmail
+      });
+      
+      await register(registrationData, 'company');
+      const registrationData = {
+        ...formData,
+        email: formData.officialEmail // Make sure email is properly set
+      };
+      
+      await register(registrationData, 'company');
       
       console.log('✅ Company registration successful, redirecting to dashboard...');
       navigate('/company/dashboard');

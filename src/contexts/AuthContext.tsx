@@ -402,6 +402,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else if (userType === 'company') {
         console.log('📝 Registering company profile...');
+        
+        // Validate required company fields
+        if (!userData.email) {
+          throw new Error('Email address is required for company registration');
+        }
+        if (!userData.companyName) {
+          throw new Error('Company name is required');
+        }
+        if (!userData.registrationNumber) {
+          throw new Error('Registration number is required');
+        }
+        if (!userData.gstin) {
+          throw new Error('GSTIN is required');
+        }
+        if (!userData.officialEmail) {
+          throw new Error('Official email is required');
+        }
+        
+        console.log('📝 Company registration data validation passed');
+        
         const { error: regError } = await supabase.rpc('register_company', {
           p_user_id: authData.user.id,
           p_email: userData.email,
@@ -420,6 +440,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error('Company registration error:', regError);
           throw new Error(regError.message);
         }
+        
+        console.log('✅ Company profile created successfully');
       }
 
       // Log registration activity

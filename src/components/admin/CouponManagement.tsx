@@ -57,9 +57,17 @@ interface Coupon {
   };
 }
 
+interface Company {
+  tc_id: string;
+  tc_company_name: string;
+  tc_official_email: string;
+  tc_verification_status: string;
+}
+
 const CouponManagement: React.FC = () => {
   const { user } = useAuth();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -88,7 +96,31 @@ const CouponManagement: React.FC = () => {
 
   useEffect(() => {
     loadCoupons();
+    loadCompanies();
   }, []);
+
+  const loadCompanies = async () => {
+    try {
+      console.log('🔍 Loading companies for coupon assignment...');
+      
+      const { data, error } = await supabase
+        .from('tbl_companies')
+        .select('tc_id, tc_company_name, tc_official_email, tc_verification_status')
+        .eq('tc_verification_status', 'verified')
+        .order('tc_company_name');
+
+      if (error) {
+        console.error('❌ Failed to load companies:', error);
+        throw error;
+      }
+
+      setCompanies(data || []);
+      console.log('✅ Companies loaded for coupon assignment:', data?.length || 0);
+    } catch (error) {
+      console.error('Failed to load companies:', error);
+      notification.showError('Load Failed', 'Failed to load companies');
+    }
+  };
 
   const loadCoupons = async () => {
     try {
@@ -137,12 +169,17 @@ const CouponManagement: React.FC = () => {
     e.preventDefault();
     if (!user?.id) return;
 
+    if (!newCoupon.company_id) {
+      notification.showError('Company Required', 'Please select a company for this coupon');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('tbl_coupons')
         .insert({
           tc_created_by: user.id,
-          tc_company_id: newCoupon.company_id || null,
+          tc_company_id: newCoupon.company_id,
           tc_title: newCoupon.title,
           tc_description: newCoupon.description,
           tc_coupon_code: newCoupon.coupon_code,
@@ -275,7 +312,9 @@ const CouponManagement: React.FC = () => {
       statusFilter === 'all' || coupon.tc_status === statusFilter;
 
     const matchesCompany = 
-      companyFilter === 'all' || coupon.tc_company_id === companyFilter;
+      companyFilter === 'all' || 
+      (companyFilter === 'admin' && !coupon.tc_company_id) ||
+      coupon.tc_company_id === companyFilter;
 
     return matchesSearch && matchesStatus && matchesCompany;
   });
@@ -413,7 +452,12 @@ const CouponManagement: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             >
               <option value="all">All Companies</option>
-              {/* Add company options dynamically */}
+              <option value="admin">Admin Created</option>
+              {companies.map(company => (
+                <option key={company.tc_id} value={company.tc_id}>
+                  {company.tc_company_name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -473,7 +517,12 @@ const CouponManagement: React.FC = () => {
                         {coupon.tc_coupon_code}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {coupon.company_info?.name || 'Admin Created'}
+                        {coupon.company_info?.name || 'Admin Created'} 
+                        {coupon.tc_company_id && (
+                          <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                            Company
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -744,6 +793,26 @@ const CouponManagement: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Company *
+                </label>
+                <select
+                  value={newCoupon.company_id}
+                  onChange={(e) => setNewCoupon(prev => ({ ...prev, company_id: e.target.value }))}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                >
+                  <option value="">Select Company</option>
+                  {companies.map(company => (
+                    <option key={company.tc_id} value={company.tc_id}>
+                      {company.tc_company_name} ({company.tc_official_email})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Select the company this coupon belongs to</p>
               </div>
 
               <div>

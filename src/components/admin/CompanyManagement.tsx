@@ -204,51 +204,53 @@ const CompanyManagement: React.FC = () => {
     try {
       console.log('🏢 Creating company account...');
       
-      // Create user account via Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: newCompany.user_email,
-        password: newCompany.password,
-        options: {
-          emailRedirectTo: undefined
-        }
-      });
-
-      if (authError) {
-        console.error('Auth error:', authError);
-        throw new Error(`Authentication error: ${authError.message}`);
-      }
-
-      if (!authData.user) {
-        throw new Error('Failed to create user account - no user data returned');
-      }
-
-      console.log('✅ User account created:', authData.user.id);
-
-      // Create user record in tbl_users
-      const { error: userError } = await supabase
+      // Check if user already exists first
+      const { data: existingUser } = await supabase
         .from('tbl_users')
-        .insert({
-          tu_id: authData.user.id,
-          tu_email: newCompany.user_email,
-          tu_user_type: 'company',
-          tu_is_verified: true,
-          tu_email_verified: true,
-          tu_mobile_verified: true,
-          tu_is_active: true
+        .select('tu_id')
+        .eq('tu_email', newCompany.user_email)
+        .single();
+
+      let userId: string;
+
+      if (existingUser) {
+        console.log('👤 User already exists, using existing user ID:', existingUser.tu_id);
+        userId = existingUser.tu_id;
+        
+        // Check if this user already has a company profile
+        const { data: existingCompany } = await supabase
+          .from('tbl_companies')
+          .select('tc_id')
+          .eq('tc_user_id', userId)
+          .single();
+          
+        if (existingCompany) {
+          throw new Error('This user already has a company profile');
+        }
+      } else {
+        // Create new user account via Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: newCompany.user_email,
+          password: newCompany.password,
+          options: {
+            emailRedirectTo: undefined
+          }
         });
 
-      if (userError) {
-        console.error('User record error:', userError);
-        throw new Error(`Failed to create user record: ${userError.message}`);
-      }
+        if (authError) {
+          console.error('Auth error:', authError);
+          throw new Error(`Authentication error: ${authError.message}`);
+        }
 
-      console.log('✅ User record created in tbl_users');
+        if (!authData.user) {
+          throw new Error('Failed to create user account - no user data returned');
+        }
 
       // Create company record
       const { error: companyError } = await supabase
         .from('tbl_companies')
         .insert({
-          tc_user_id: authData.user.id,
+          tc_user_id: userId,
           tc_company_name: newCompany.company_name,
           tc_brand_name: newCompany.brand_name || null,
           tc_business_type: newCompany.business_type || null,
