@@ -81,32 +81,38 @@ const CompanyManagement: React.FC = () => {
       setLoading(true);
       console.log('🔍 Loading companies from database...');
 
-      const { data, error } = await supabase
+      const { data: companiesData, error } = await supabase
         .from('tbl_companies')
         .select(`
           *,
-          tbl_users!inner(tu_email, tu_is_active)
+          tbl_users(tu_email, tu_is_active)
         `)
         .order('tc_created_at', { ascending: false });
 
       if (error) {
         console.error('❌ Failed to load companies:', error);
-        throw error;
+        // Don't throw error, just show empty state with error message
+        setCompanies([]);
+        notification.showError('Load Failed', `Failed to load company data: ${error.message}`);
+        return;
       }
 
-      const formattedCompanies = (data || []).map(company => ({
+      console.log('📊 Raw companies data:', companiesData);
+
+      const formattedCompanies = (companiesData || []).map(company => ({
         ...company,
         user_info: {
-          email: company.tbl_users?.tu_email || '',
-          is_active: company.tbl_users?.tu_is_active || false
+          email: company.tbl_users?.tu_email || company.tc_official_email || '',
+          is_active: company.tbl_users?.tu_is_active ?? true
         }
       }));
 
+      console.log('✅ Formatted companies:', formattedCompanies);
       setCompanies(formattedCompanies);
-      console.log('✅ Companies loaded:', formattedCompanies.length);
     } catch (error) {
       console.error('Failed to load companies:', error);
-      notification.showError('Load Failed', 'Failed to load company data');
+      setCompanies([]);
+      notification.showError('Load Failed', `Unexpected error: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -170,11 +176,15 @@ const CompanyManagement: React.FC = () => {
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // First create the user account
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      console.log('🏢 Creating company account...');
+      
+      // Create user account via Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newCompany.user_email,
         password: newCompany.password,
-        email_confirm: true
+        options: {
+          emailRedirectTo: undefined // Disable email confirmation for admin-created accounts
+        }
       });
 
       if (authError) throw authError;
@@ -182,6 +192,8 @@ const CompanyManagement: React.FC = () => {
       if (!authData.user) {
         throw new Error('Failed to create user account');
       }
+
+      console.log('✅ User account created:', authData.user.id);
 
       // Create user record in tbl_users
       const { error: userError } = await supabase
@@ -192,11 +204,12 @@ const CompanyManagement: React.FC = () => {
           tu_user_type: 'company',
           tu_is_verified: true,
           tu_email_verified: true,
-          tu_mobile_verified: false,
+          tu_mobile_verified: true, // Admin-created accounts are pre-verified
           tu_is_active: true
         });
 
       if (userError) throw userError;
+      console.log('✅ User record created in tbl_users');
 
       // Create company record
       const { error: companyError } = await supabase
@@ -216,6 +229,7 @@ const CompanyManagement: React.FC = () => {
         });
 
       if (companyError) throw companyError;
+      console.log('✅ Company record created in tbl_companies');
 
       notification.showSuccess('Company Created', 'Company account has been created successfully');
       setShowCreateModal(false);
@@ -223,7 +237,7 @@ const CompanyManagement: React.FC = () => {
       loadCompanies();
     } catch (error) {
       console.error('Failed to create company:', error);
-      notification.showError('Creation Failed', 'Failed to create company account');
+      notification.showError('Creation Failed', `Failed to create company account: ${error.message}`);
     }
   };
 
@@ -265,12 +279,40 @@ const CompanyManagement: React.FC = () => {
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-          <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
-            ))}
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Companies</h3>
+          <p className="text-gray-600">Please wait while we fetch company data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Add error state for when companies fail to load
+  if (!loading && companies.length === 0 && !showCreateModal) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="text-center py-12">
+          <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Companies Found</h3>
+          <p className="text-gray-600 mb-6">
+            Either no companies are registered or there's a database connection issue.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={loadCompanies}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
+            >
+              <Eye className="h-4 w-4" />
+              <span>Retry Loading</span>
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2 mx-auto"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create First Company</span>
+            </button>
           </div>
         </div>
       </div>
@@ -306,16 +348,25 @@ const CompanyManagement: React.FC = () => {
               <p className="text-gray-600">Manage company registrations and verifications</p>
             </div>
           </div>
-          <div className="text-sm text-gray-500">
-            Total: {companies.length} companies
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-gray-500">
+              Total: {companies.length} companies
+            </div>
+            <button
+              onClick={loadCompanies}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            >
+              <Eye className="h-4 w-4" />
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Company</span>
+            </button>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Company</span>
-          </button>
         </div>
 
         {/* Search and Filters */}
@@ -490,9 +541,17 @@ const CompanyManagement: React.FC = () => {
           <p className="text-gray-600">
             {searchTerm || statusFilter !== 'all' || verificationFilter !== 'all'
               ? 'Try adjusting your search criteria'
-              : 'No companies have registered yet'
+              : 'No companies have been registered yet'
             }
           </p>
+          {!searchTerm && statusFilter === 'all' && verificationFilter === 'all' && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
+            >
+              Create First Company
+            </button>
+          )}
         </div>
       )}
 
