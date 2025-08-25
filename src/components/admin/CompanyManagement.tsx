@@ -246,6 +246,27 @@ const CompanyManagement: React.FC = () => {
           throw new Error('Failed to create user account - no user data returned');
         }
 
+        userId = authData.user.id;
+        console.log('✅ New user created with ID:', userId);
+
+        // Create user record in tbl_users
+        const { error: userError } = await supabase
+          .from('tbl_users')
+          .insert({
+            tu_id: userId,
+            tu_email: newCompany.user_email,
+            tu_is_active: true,
+            tu_role: 'company'
+          });
+
+        if (userError) {
+          console.error('User record error:', userError);
+          throw new Error(`Failed to create user record: ${userError.message}`);
+        }
+
+        console.log('✅ User record created in tbl_users');
+      }
+
       // Create company record
       const { error: companyError } = await supabase
         .from('tbl_companies')
