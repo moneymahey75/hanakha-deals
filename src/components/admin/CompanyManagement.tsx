@@ -256,7 +256,9 @@ const CompanyManagement: React.FC = () => {
             tu_id: userId,
             tu_email: newCompany.user_email,
             tu_is_active: true,
-            tu_role: 'company'
+            tu_role: 'company',
+            tu_created_at: new Date().toISOString(),
+            tu_updated_at: new Date().toISOString()
           });
 
         if (userError) {
