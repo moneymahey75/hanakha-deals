@@ -54,7 +54,23 @@ const CompanyManagement: React.FC = () => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [showCompanyDetails, setShowCompanyDetails] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const notification = useNotification();
+
+  const [newCompany, setNewCompany] = useState({
+    company_name: '',
+    brand_name: '',
+    business_type: '',
+    business_category: '',
+    registration_number: '',
+    gstin: '',
+    website_url: '',
+    official_email: '',
+    affiliate_code: '',
+    verification_status: 'verified' as 'pending' | 'verified' | 'rejected',
+    user_email: '',
+    password: ''
+  });
 
   useEffect(() => {
     loadCompanies();
@@ -151,6 +167,83 @@ const CompanyManagement: React.FC = () => {
     }
   };
 
+  const handleCreateCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      // First create the user account
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: newCompany.user_email,
+        password: newCompany.password,
+        email_confirm: true
+      });
+
+      if (authError) throw authError;
+
+      if (!authData.user) {
+        throw new Error('Failed to create user account');
+      }
+
+      // Create user record in tbl_users
+      const { error: userError } = await supabase
+        .from('tbl_users')
+        .insert({
+          tu_id: authData.user.id,
+          tu_email: newCompany.user_email,
+          tu_user_type: 'company',
+          tu_is_verified: true,
+          tu_email_verified: true,
+          tu_mobile_verified: false,
+          tu_is_active: true
+        });
+
+      if (userError) throw userError;
+
+      // Create company record
+      const { error: companyError } = await supabase
+        .from('tbl_companies')
+        .insert({
+          tc_user_id: authData.user.id,
+          tc_company_name: newCompany.company_name,
+          tc_brand_name: newCompany.brand_name,
+          tc_business_type: newCompany.business_type,
+          tc_business_category: newCompany.business_category,
+          tc_registration_number: newCompany.registration_number,
+          tc_gstin: newCompany.gstin,
+          tc_website_url: newCompany.website_url,
+          tc_official_email: newCompany.official_email,
+          tc_affiliate_code: newCompany.affiliate_code,
+          tc_verification_status: newCompany.verification_status
+        });
+
+      if (companyError) throw companyError;
+
+      notification.showSuccess('Company Created', 'Company account has been created successfully');
+      setShowCreateModal(false);
+      resetNewCompany();
+      loadCompanies();
+    } catch (error) {
+      console.error('Failed to create company:', error);
+      notification.showError('Creation Failed', 'Failed to create company account');
+    }
+  };
+
+  const resetNewCompany = () => {
+    setNewCompany({
+      company_name: '',
+      brand_name: '',
+      business_type: '',
+      business_category: '',
+      registration_number: '',
+      gstin: '',
+      website_url: '',
+      official_email: '',
+      affiliate_code: '',
+      verification_status: 'verified',
+      user_email: '',
+      password: ''
+    });
+  };
+
   const filteredCompanies = companies.filter(company => {
     const matchesSearch = 
       company.tc_company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -216,6 +309,13 @@ const CompanyManagement: React.FC = () => {
           <div className="text-sm text-gray-500">
             Total: {companies.length} companies
           </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Company</span>
+          </button>
         </div>
 
         {/* Search and Filters */}
@@ -393,6 +493,246 @@ const CompanyManagement: React.FC = () => {
               : 'No companies have registered yet'
             }
           </p>
+        </div>
+      )}
+
+      {/* Create Company Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Create New Company</h3>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  resetNewCompany();
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCompany} className="space-y-6">
+              {/* Account Information */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-blue-800 mb-3">Account Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Login Email *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={newCompany.user_email}
+                      onChange={(e) => setNewCompany(prev => ({ ...prev, user_email: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="login@company.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Password *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={newCompany.password}
+                      onChange={(e) => setNewCompany(prev => ({ ...prev, password: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Secure password"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Company Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Company Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCompany.company_name}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, company_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Enter company name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newCompany.brand_name}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, brand_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Enter brand name"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Business Type
+                  </label>
+                  <select
+                    value={newCompany.business_type}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, business_type: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  >
+                    <option value="">Select business type</option>
+                    <option value="Private Limited Company">Private Limited Company</option>
+                    <option value="Public Limited Company">Public Limited Company</option>
+                    <option value="Partnership">Partnership</option>
+                    <option value="LLP">LLP</option>
+                    <option value="Sole Proprietorship">Sole Proprietorship</option>
+                    <option value="Trust">Trust</option>
+                    <option value="Society">Society</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Business Category
+                  </label>
+                  <select
+                    value={newCompany.business_category}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, business_category: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  >
+                    <option value="">Select business category</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Education">Education</option>
+                    <option value="Retail">Retail</option>
+                    <option value="Manufacturing">Manufacturing</option>
+                    <option value="Services">Services</option>
+                    <option value="Agriculture">Agriculture</option>
+                    <option value="Real Estate">Real Estate</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Registration Number *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCompany.registration_number}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, registration_number: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Company registration number"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    GSTIN *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCompany.gstin}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, gstin: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="GST identification number"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Website URL
+                  </label>
+                  <input
+                    type="url"
+                    value={newCompany.website_url}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, website_url: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="https://www.company.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Official Email *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={newCompany.official_email}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, official_email: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="contact@company.com"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Affiliate Code
+                  </label>
+                  <input
+                    type="text"
+                    value={newCompany.affiliate_code}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, affiliate_code: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Optional affiliate code"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Verification Status *
+                  </label>
+                  <select
+                    value={newCompany.verification_status}
+                    onChange={(e) => setNewCompany(prev => ({ ...prev, verification_status: e.target.value as any }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="verified">Verified</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetNewCompany();
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
+                >
+                  <Save className="h-4 w-4" />
+                  <span>Create Company</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
