@@ -1,24 +1,22 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase'; // Import your Supabase client
 import { Eye, EyeOff, Building, Mail, Globe, FileText, Users } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 
 const CompanyRegister: React.FC = () => {
-  const { register } = useAuth();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    companyName: '',
-    brandName: '',
-    businessType: '',
-    businessCategory: '',
-    registrationNumber: '',
+    company_name: '',
+    brand_name: '',
+    business_type: '',
+    business_category: '',
+    registration_number: '',
     gstin: '',
-    websiteUrl: '',
-    officialEmail: '',
-    affiliateCode: '',
-    email: '', // Add email field for consistency
+    website_url: '',
+    official_email: '',
+    affiliate_code: '',
     password: '',
     confirmPassword: '',
     acceptTerms: false
@@ -78,41 +76,44 @@ const CompanyRegister: React.FC = () => {
     }
 
     try {
-      console.log('📝 Calling register function with company data:', {
-        email: formData.officialEmail,
-        companyName: formData.companyName,
-        registrationNumber: formData.registrationNumber
+      console.log('📝 Registering company with data:', {
+        company_name: formData.company_name,
+        official_email: formData.official_email
       });
       
-      // Ensure all required fields are properly mapped
-      const registrationData = {
-        ...formData,
-        email: formData.officialEmail, // Map official email to email field
-        companyName: formData.companyName,
-        brandName: formData.brandName,
-        businessType: formData.businessType,
-        businessCategory: formData.businessCategory,
-        registrationNumber: formData.registrationNumber,
-        gstin: formData.gstin,
-        websiteUrl: formData.websiteUrl,
-        officialEmail: formData.officialEmail,
-        affiliateCode: formData.affiliateCode,
-        password: formData.password
-      };
+      // Insert company into the companies table
+      const { data, error: supabaseError } = await supabase
+        .from('companies')
+        .insert([
+          {
+            company_name: formData.company_name,
+            brand_name: formData.brand_name,
+            business_type: formData.business_type,
+            business_category: formData.business_category,
+            registration_number: formData.registration_number,
+            gstin: formData.gstin,
+            website_url: formData.website_url,
+            official_email: formData.official_email,
+            affiliate_code: formData.affiliate_code,
+            password: formData.password // Note: In production, hash this password!
+          }
+        ])
+        .select();
+
+      if (supabaseError) {
+        console.error('❌ Supabase error:', supabaseError);
+        throw new Error(supabaseError.message);
+      }
+
+      console.log('✅ Company registration successful:', data);
       
-      console.log('📝 Registration data prepared:', {
-        email: registrationData.email,
-        companyName: registrationData.companyName,
-        officialEmail: registrationData.officialEmail
+      // Redirect to company login or dashboard
+      navigate('/company/login', { 
+        state: { message: 'Registration successful! Please log in.' } 
       });
-      
-      await register(registrationData, 'company');
-      
-      console.log('✅ Company registration successful, redirecting to dashboard...');
-      navigate('/company/dashboard');
     } catch (err) {
-      console.error('❌ Company registration error in component:', err);
-      // Error is now handled by notification system
+      console.error('❌ Company registration error:', err);
+      setError(err.message || 'An error occurred during registration');
     } finally {
       setIsSubmitting(false);
     }
@@ -147,7 +148,7 @@ const CompanyRegister: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="company_name" className="block text-sm font-medium text-gray-700 mb-2">
                   Company Name *
                 </label>
                 <div className="relative">
@@ -155,11 +156,11 @@ const CompanyRegister: React.FC = () => {
                     <Building className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="companyName"
-                    name="companyName"
+                    id="company_name"
+                    name="company_name"
                     type="text"
                     required
-                    value={formData.companyName}
+                    value={formData.company_name}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="Enter company name"
@@ -168,7 +169,7 @@ const CompanyRegister: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="brandName" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="brand_name" className="block text-sm font-medium text-gray-700 mb-2">
                   Brand Name
                 </label>
                 <div className="relative">
@@ -176,10 +177,10 @@ const CompanyRegister: React.FC = () => {
                     <Building className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="brandName"
-                    name="brandName"
+                    id="brand_name"
+                    name="brand_name"
                     type="text"
-                    value={formData.brandName}
+                    value={formData.brand_name}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="Enter brand name"
@@ -190,13 +191,13 @@ const CompanyRegister: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="businessType" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="business_type" className="block text-sm font-medium text-gray-700 mb-2">
                   Business Type
                 </label>
                 <select
-                  id="businessType"
-                  name="businessType"
-                  value={formData.businessType}
+                  id="business_type"
+                  name="business_type"
+                  value={formData.business_type}
                   onChange={handleChange}
                   className="block w-full py-3 px-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 >
@@ -208,13 +209,13 @@ const CompanyRegister: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="businessCategory" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="business_category" className="block text-sm font-medium text-gray-700 mb-2">
                   Business Category
                 </label>
                 <select
-                  id="businessCategory"
-                  name="businessCategory"
-                  value={formData.businessCategory}
+                  id="business_category"
+                  name="business_category"
+                  value={formData.business_category}
                   onChange={handleChange}
                   className="block w-full py-3 px-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 >
@@ -228,7 +229,7 @@ const CompanyRegister: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="registrationNumber" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="registration_number" className="block text-sm font-medium text-gray-700 mb-2">
                   Company Registration Number *
                 </label>
                 <div className="relative">
@@ -236,11 +237,11 @@ const CompanyRegister: React.FC = () => {
                     <FileText className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="registrationNumber"
-                    name="registrationNumber"
+                    id="registration_number"
+                    name="registration_number"
                     type="text"
                     required
-                    value={formData.registrationNumber}
+                    value={formData.registration_number}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="Enter registration number"
@@ -272,7 +273,7 @@ const CompanyRegister: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="websiteUrl" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="website_url" className="block text-sm font-medium text-gray-700 mb-2">
                   Website URL
                 </label>
                 <div className="relative">
@@ -280,10 +281,10 @@ const CompanyRegister: React.FC = () => {
                     <Globe className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="websiteUrl"
-                    name="websiteUrl"
+                    id="website_url"
+                    name="website_url"
                     type="url"
-                    value={formData.websiteUrl}
+                    value={formData.website_url}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="https://www.example.com"
@@ -292,7 +293,7 @@ const CompanyRegister: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="officialEmail" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="official_email" className="block text-sm font-medium text-gray-700 mb-2">
                   Official Email Address *
                 </label>
                 <div className="relative">
@@ -300,11 +301,11 @@ const CompanyRegister: React.FC = () => {
                     <Mail className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="officialEmail"
-                    name="officialEmail"
+                    id="official_email"
+                    name="official_email"
                     type="email"
                     required
-                    value={formData.officialEmail}
+                    value={formData.official_email}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="company@example.com"
@@ -314,7 +315,7 @@ const CompanyRegister: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="affiliateCode" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="affiliate_code" className="block text-sm font-medium text-gray-700 mb-2">
                 Affiliate Code / Referral ID
               </label>
               <div className="relative">
@@ -322,10 +323,10 @@ const CompanyRegister: React.FC = () => {
                   <Users className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  id="affiliateCode"
-                  name="affiliateCode"
+                  id="affiliate_code"
+                  name="affiliate_code"
                   type="text"
-                  value={formData.affiliateCode}
+                  value={formData.affiliate_code}
                   onChange={handleChange}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   placeholder="Enter affiliate code (optional)"
