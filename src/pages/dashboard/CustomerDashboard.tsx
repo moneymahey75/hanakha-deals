@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useMLM } from '../../contexts/MLMContext';
 import BinaryTreeVisualizer from '../../components/mlm/BinaryTreeVisualizer';
 import ReferralLinkGenerator from '../../components/mlm/ReferralLinkGenerator';
+import WalletDashboard from '../../components/customer/WalletDashboard';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import { 
   Users, 
@@ -13,7 +14,8 @@ import {
   Eye,
   UserPlus,
   BarChart3,
-  Calendar
+  Calendar,
+  Wallet
 } from 'lucide-react';
 
 const CustomerDashboard: React.FC = () => {
@@ -156,6 +158,7 @@ const CustomerDashboard: React.FC = () => {
                 { id: 'overview', label: 'Overview', icon: BarChart3 },
                 { id: 'network', label: 'My Network', icon: Users },
                 { id: 'tree', label: 'Binary Tree', icon: Eye },
+                { id: 'wallet', label: 'Wallet & Tasks', icon: Wallet },
                 { id: 'earnings', label: 'Earnings', icon: DollarSign },
                 { id: 'referrals', label: 'Referral Links', icon: Users }
               ].map((tab) => (
@@ -290,6 +293,13 @@ const CustomerDashboard: React.FC = () => {
                 )}
               </div>
             )}
+
+            {activeTab === 'wallet' && (
+              <div>
+                <WalletDashboard />
+              </div>
+            )}
+
             {activeTab === 'earnings' && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Earnings Summary</h3>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import CompanyCouponManagement from '../../components/company/CompanyCouponManagement';
 import { 
   Building, 
   Users, 
@@ -9,7 +10,8 @@ import {
   BarChart3,
   FileText,
   Settings,
-  Globe
+  Globe,
+  Gift
 } from 'lucide-react';
 
 const CompanyDashboard: React.FC = () => {
@@ -106,6 +108,7 @@ const CompanyDashboard: React.FC = () => {
               {[
                 { id: 'overview', label: 'Overview', icon: BarChart3 },
                 { id: 'customers', label: 'Customers', icon: Users },
+                { id: 'coupons', label: 'My Coupons', icon: Gift },
                 { id: 'campaigns', label: 'Campaigns', icon: TrendingUp },
                 { id: 'reports', label: 'Reports', icon: FileText },
                 { id: 'settings', label: 'Settings', icon: Settings }
@@ -189,6 +192,12 @@ const CompanyDashboard: React.FC = () => {
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <p className="text-gray-600">Customer list and management tools will be displayed here.</p>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'coupons' && (
+              <div>
+                <CompanyCouponManagement />
               </div>
             )}
 

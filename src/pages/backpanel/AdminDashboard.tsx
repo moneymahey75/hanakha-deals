@@ -8,6 +8,10 @@ import SMTPSettings from '../../components/admin/SMTPSettings';
 import SMSSettings from '../../components/admin/SMSSettings';
 import AdminManagement from '../../components/admin/AdminManagement';
 import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
+import CompanyManagement from '../../components/admin/CompanyManagement';
+import CouponManagement from '../../components/admin/CouponManagement';
+import DailyTaskManagement from '../../components/admin/DailyTaskManagement';
+import WalletManagement from '../../components/admin/WalletManagement';
 import {
   Users,
   Building,
@@ -31,7 +35,10 @@ import {
   LogOut,
   Menu,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Gift,
+  Calendar,
+  Wallet
 } from 'lucide-react';
 
 interface SubAdmin {
@@ -186,6 +193,9 @@ const AdminDashboard: React.FC = () => {
     { id: 'overview', label: 'Overview', icon: BarChart3, permission: null },
     { id: 'users', label: 'Users', icon: Users, permission: 'users' },
     { id: 'companies', label: 'Companies', icon: Building, permission: 'companies' },
+    { id: 'coupons', label: 'Coupons', icon: Gift, permission: 'companies' },
+    { id: 'tasks', label: 'Daily Tasks', icon: Calendar, permission: 'users' },
+    { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'payments' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
@@ -293,6 +303,9 @@ const AdminDashboard: React.FC = () => {
                 {activeTab === 'overview' && 'System overview and statistics'}
                 {activeTab === 'users' && 'Manage customer accounts and profiles'}
                 {activeTab === 'companies' && 'Manage company registrations and verifications'}
+                {activeTab === 'coupons' && 'Manage coupons and sharing rewards'}
+                {activeTab === 'tasks' && 'Create and manage daily tasks for customers'}
+                {activeTab === 'wallets' && 'Monitor user wallets and transactions'}
                 {activeTab === 'subscriptions' && 'Manage subscription plans and pricing'}
                 {activeTab === 'payments' && 'View payment transactions and history'}
                 {activeTab === 'admins' && 'Manage sub-administrators and permissions'}
@@ -370,10 +383,19 @@ const AdminDashboard: React.FC = () => {
           )}
 
           {activeTab === 'companies' && hasPermission('companies', 'read') && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Management</h3>
-              <p className="text-gray-600">Company management interface will be displayed here.</p>
-            </div>
+            <CompanyManagement />
+          )}
+
+          {activeTab === 'coupons' && hasPermission('companies', 'read') && (
+            <CouponManagement />
+          )}
+
+          {activeTab === 'tasks' && hasPermission('users', 'read') && (
+            <DailyTaskManagement />
+          )}
+
+          {activeTab === 'wallets' && hasPermission('payments', 'read') && (
+            <WalletManagement />
           )}
 
           {activeTab === 'subscriptions' && hasPermission('subscriptions', 'read') && (
