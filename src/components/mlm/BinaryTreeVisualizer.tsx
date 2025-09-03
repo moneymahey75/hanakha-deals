@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Users, TrendingUp, Award, Eye, Plus, Minus, ChevronDown, ChevronUp,
-  Maximize2, Grid3X3, List, RotateCcw, Search, Filter, ChevronRight
+  Users, TrendingUp, ChevronLeft, Home,
+  Plus, Minus, RotateCcw, Eye, Grid3X3
 } from 'lucide-react';
 import { BinaryTreeManager, TreeNode } from '../../utils/binaryTreeUtils';
 
@@ -12,8 +12,7 @@ interface BinaryTreeVisualizerProps {
   showStats?: boolean;
 }
 
-type ViewMode = 'compact' | 'detailed' | 'virtual' | 'breadth-first';
-type NavigationMode = 'expand-collapse' | 'pagination' | 'infinite-scroll';
+type ViewMode = 'tree' | 'levels';
 
 interface NodeWithParent extends TreeNode {
   parentUserId?: string;
@@ -29,24 +28,18 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
   const [treeManager] = useState(() => new BinaryTreeManager(treeData));
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [viewMode, setViewMode] = useState<ViewMode>('compact');
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>('expand-collapse');
+  const [viewMode, setViewMode] = useState<ViewMode>('tree');
 
-  // Enhanced state for unlimited levels
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [currentPage, setCurrentPage] = useState(0);
-  const [nodesPerPage] = useState(50);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [levelFilter, setLevelFilter] = useState<number | null>(null);
-  const [maxVisibleLevels, setMaxVisibleLevels] = useState(5);
-  const [loadedLevels, setLoadedLevels] = useState(new Set<number>([0, 1, 2]));
-  const [actualMaxDepth, setActualMaxDepth] = useState(0);
+  // State for managing visible levels and navigation history
+  const [visibleLevels, setVisibleLevels] = useState<number[]>([]);
+  const [focusedNode, setFocusedNode] = useState<TreeNode | null>(null);
   const [allLevelsData, setAllLevelsData] = useState<Map<number, NodeWithParent[]>>(new Map());
+  const [actualMaxDepth, setActualMaxDepth] = useState(0);
+  const [navigationHistory, setNavigationHistory] = useState<{node: TreeNode, levels: number[]}[]>([]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const virtualScrollRef = useRef<HTMLDivElement>(null);
 
-  // Calculate actual max depth and pre-compute all levels
+  // Calculate all levels data
   const calculateTreeData = useCallback(() => {
     const levelData = new Map<number, NodeWithParent[]>();
     let maxDepth = 0;
@@ -96,162 +89,86 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
 
     if (userNode) {
       calculateTreeData();
-
-      // Auto-expand first few levels
-      const initialExpanded = new Set<string>();
-      const addInitialNodes = (node: TreeNode | null, level: number) => {
-        if (!node || level > 2) return;
-        initialExpanded.add(node.userId);
-        const children = treeManager.getDirectChildren(node.userId);
-        if (children.left) addInitialNodes(children.left, level + 1);
-        if (children.right) addInitialNodes(children.right, level + 1);
-      };
-      addInitialNodes(userNode, 0);
-      setExpandedNodes(initialExpanded);
+      setFocusedNode(userNode);
+      // Show first 3 levels initially
+      const initialLevels = [0, 1, 2];
+      setVisibleLevels(initialLevels);
+      // Add to navigation history
+      setNavigationHistory([{node: userNode, levels: initialLevels}]);
     }
   }, [treeData, treeManager, userId, calculateTreeData]);
 
   const userNode = treeManager.getUserPosition(userId);
   const stats = treeManager.getTreeStats(userId);
 
-  // Enhanced node expansion logic
-  const toggleNodeExpansion = useCallback((nodeId: string, level: number) => {
-    setExpandedNodes(prev => {
-      const newExpanded = new Set(prev);
-      if (newExpanded.has(nodeId)) {
-        newExpanded.delete(nodeId);
-      } else {
-        newExpanded.add(nodeId);
-        // Ensure next levels are loaded when expanding
-        setLoadedLevels(prevLevels => {
-          const newLevels = new Set(prevLevels);
-          newLevels.add(level + 1);
-          newLevels.add(level + 2);
-          return newLevels;
-        });
-      }
-      return newExpanded;
-    });
-  }, []);
+  // Handle node click to show next 3 levels
+  const handleNodeClick = useCallback((node: TreeNode, level: number) => {
+    setSelectedNode(node);
+    setFocusedNode(node);
+    onNodeClick?.(node);
 
-  // Load more levels on demand - FIXED VERSION
-  const loadMoreLevels = useCallback(() => {
-    const maxCurrentLevel = Math.max(...Array.from(loadedLevels));
-    const levelsToLoad = Math.min(3, actualMaxDepth - maxCurrentLevel);
+    // Show the next 3 levels from the clicked node's level
+    const startLevel = level;
+    const newVisibleLevels = [];
 
-    if (levelsToLoad <= 0) return;
+    for (let i = startLevel; i < startLevel + 3 && i <= actualMaxDepth; i++) {
+      newVisibleLevels.push(i);
+    }
 
-    setLoadedLevels(prevLevels => {
-      const newLevels = new Set(prevLevels);
-      for (let i = maxCurrentLevel + 1; i <= maxCurrentLevel + levelsToLoad; i++) {
-        if (i <= actualMaxDepth) {
-          newLevels.add(i);
-        }
-      }
-      return newLevels;
-    });
+    setVisibleLevels(newVisibleLevels);
 
-    setMaxVisibleLevels(prev => Math.min(actualMaxDepth + 1, prev + levelsToLoad));
-  }, [loadedLevels, actualMaxDepth]);
+    // Add to navigation history
+    setNavigationHistory(prev => [...prev, {node, levels: newVisibleLevels}]);
+  }, [onNodeClick, actualMaxDepth]);
+
+  // Navigate to previous levels in history
+  const navigateToPreviousLevels = useCallback(() => {
+    if (navigationHistory.length <= 1) return;
+
+    // Remove current state from history
+    const newHistory = [...navigationHistory];
+    newHistory.pop();
+
+    // Get the previous state
+    const previousState = newHistory[newHistory.length - 1];
+
+    // Update view with previous state
+    setFocusedNode(previousState.node);
+    setVisibleLevels(previousState.levels);
+    setSelectedNode(null); // Remove highlight
+
+    // Update history
+    setNavigationHistory(newHistory);
+  }, [navigationHistory]);
+
+  // Navigate back to root
+  const navigateToRoot = useCallback(() => {
+    if (userNode) {
+      setFocusedNode(userNode);
+      setVisibleLevels([0, 1, 2]);
+      setSelectedNode(null);
+      // Reset navigation history to just the root
+      setNavigationHistory([{node: userNode, levels: [0, 1, 2]}]);
+    }
+  }, [userNode]);
+
+  // Check if a level should be visible
+  const isLevelVisible = useCallback((level: number) => {
+    return visibleLevels.includes(level);
+  }, [visibleLevels]);
 
   // Get nodes at specific level from pre-computed data
   const getNodesAtLevel = useCallback((level: number): NodeWithParent[] => {
     return allLevelsData.get(level) || [];
   }, [allLevelsData]);
 
-  // Check if level exists
-  const levelExists = useCallback((level: number): boolean => {
-    return allLevelsData.has(level) && allLevelsData.get(level)!.length > 0;
-  }, [allLevelsData]);
-
-  // Compact node component for higher levels - enhanced with parent info
-  const CompactNode: React.FC<{
-    node: NodeWithParent;
-    level: number;
-    isExpanded: boolean;
-    hasChildren: boolean;
-  }> = ({ node, level, isExpanded, hasChildren }) => {
-    const isSelected = selectedNode?.id === node.id;
-    const isCurrentUser = node.userId === userId;
-
-    return (
-        <div className="bg-white border rounded-lg hover:shadow-md transition-all duration-200">
-          <div className="p-3">
-            {/* Parent Information */}
-            {level > 0 && node.parentName && (
-                <div className="text-xs text-gray-500 mb-2 flex items-center">
-              <span className="bg-gray-100 px-2 py-1 rounded-full">
-                Under: {node.parentName}
-              </span>
-                </div>
-            )}
-
-            <div className="flex items-center space-x-3">
-              {/* Expand/Collapse Button */}
-              {hasChildren && (
-                  <button
-                      onClick={() => toggleNodeExpansion(node.userId, level)}
-                      className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-                  >
-                    {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  </button>
-              )}
-
-              {/* Node Info */}
-              <div
-                  onClick={() => setSelectedNode(node)}
-                  className={`flex-1 cursor-pointer p-3 rounded-lg transition-colors ${
-                      isCurrentUser ? 'bg-indigo-100 border-2 border-indigo-300' :
-                          isSelected ? 'bg-green-100 border-2 border-green-300' :
-                              'hover:bg-gray-50 border border-transparent'
-                  }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        isCurrentUser ? 'bg-indigo-500 text-white' :
-                            isSelected ? 'bg-green-500 text-white' :
-                                'bg-gray-200 text-gray-600'
-                    }`}>
-                      <Users className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {node.userData?.firstName || 'User'} {node.userData?.lastName || ''}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        ID: {node.sponsorshipNumber}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                    Level {level}
-                  </span>
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        node.position === 'left' ? 'bg-blue-100 text-blue-700' :
-                            node.position === 'right' ? 'bg-green-100 text-green-700' :
-                                'bg-purple-100 text-purple-700'
-                    }`}>
-                    {node.position === 'left' ? 'Left' : node.position === 'right' ? 'Right' : 'Root'}
-                  </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-    );
-  };
-
-  // Enhanced detailed node for lower levels with better children handling
+  // Detailed node component with 3-level constraint
   const DetailedNode: React.FC<{
     node: TreeNode | null;
     position: 'left' | 'right' | 'root';
     level: number;
   }> = ({ node, position, level }) => {
-    if (!node || level > maxVisibleLevels) {
+    if (!node || !isLevelVisible(level)) {
       return (
           <div className="flex flex-col items-center flex-shrink-0" style={{ minWidth: '120px' }}>
             <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
@@ -264,26 +181,27 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
 
     const isSelected = selectedNode?.id === node.id;
     const isCurrentUser = node.userId === userId;
+    const isFocused = focusedNode?.id === node.id;
     const nodeChildren = treeManager.getDirectChildren(node.userId);
     const hasChildren = nodeChildren.left || nodeChildren.right;
-    const isExpanded = expandedNodes.has(node.userId);
 
     return (
         <div className="flex flex-col items-center flex-shrink-0" style={{ minWidth: '120px' }}>
           <div
-              onClick={() => setSelectedNode(node)}
+              onClick={() => handleNodeClick(node, level)}
               className={`relative w-20 h-20 rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-105 ${
                   isCurrentUser ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg' :
-                      isSelected ? 'bg-gradient-to-r from-green-500 to-teal-600 text-white shadow-lg' :
-                          'bg-white border-2 border-gray-200 hover:border-indigo-300 hover:shadow-md'
+                      isFocused ? 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white shadow-lg' :
+                          isSelected ? 'bg-gradient-to-r from-green-500 to-teal-600 text-white shadow-lg' :
+                              'bg-white border-2 border-gray-200 hover:border-indigo-300 hover:shadow-md'
               }`}
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center p-1">
               <Users className={`h-4 w-4 mb-1 ${
-                  isCurrentUser || isSelected ? 'text-white' : 'text-gray-600'
+                  isCurrentUser || isSelected || isFocused ? 'text-white' : 'text-gray-600'
               }`} />
               <p className={`text-xs font-medium text-center leading-tight ${
-                  isCurrentUser || isSelected ? 'text-white' : 'text-gray-900'
+                  isCurrentUser || isSelected || isFocused ? 'text-white' : 'text-gray-900'
               }`}>
                 {(node.userData?.firstName || 'User').substring(0, 8)}
               </p>
@@ -298,18 +216,8 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
             </div>
           </div>
 
-          {/* Expansion Controls */}
-          {hasChildren && level < maxVisibleLevels && (
-              <button
-                  onClick={() => toggleNodeExpansion(node.userId, level)}
-                  className="mt-2 w-6 h-6 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
-              >
-                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </button>
-          )}
-
-          {/* Children (only for loaded levels) */}
-          {level < maxVisibleLevels && isExpanded && hasChildren && loadedLevels.has(level + 1) && (
+          {/* Show children only if they're within the next 2 levels */}
+          {hasChildren && level < Math.max(...visibleLevels) && (
               <div className="mt-4 flex justify-center" style={{ minWidth: '200px' }}>
                 <div className="flex items-start" style={{ gap: '40px' }}>
                   {nodeChildren.left && (
@@ -331,21 +239,11 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
     );
   };
 
-  // Breadth-first level view - enhanced with better organization
+  // Improved level view with parent information
   const LevelView: React.FC<{ level: number }> = ({ level }) => {
     const nodesAtLevel = getNodesAtLevel(level);
 
-    if (nodesAtLevel.length === 0) return null;
-
-    // Group nodes by parent for better organization
-    const nodesByParent = nodesAtLevel.reduce((acc, node) => {
-      const parentKey = node.parentUserId || 'root';
-      if (!acc[parentKey]) {
-        acc[parentKey] = [];
-      }
-      acc[parentKey].push(node);
-      return acc;
-    }, {} as Record<string, NodeWithParent[]>);
+    if (nodesAtLevel.length === 0 || !isLevelVisible(level)) return null;
 
     return (
         <div className="mb-8">
@@ -358,125 +256,84 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
             </h4>
           </div>
 
-          <div className="space-y-6">
-            {Object.entries(nodesByParent).map(([parentKey, nodes]) => (
-                <div key={parentKey} className="bg-gray-50 rounded-lg p-4">
-                  {level > 0 && (
-                      <div className="mb-3">
-                        <h5 className="text-sm font-medium text-gray-700">
-                          Under: {nodes[0]?.parentName || 'Root'}
-                        </h5>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {nodesAtLevel.map((node, index) => {
+              const isSelected = selectedNode?.id === node.id;
+              const isCurrentUser = node.userId === userId;
+              const isFocused = focusedNode?.id === node.id;
+
+              return (
+                  <div
+                      key={`${node.userId}-${index}`}
+                      onClick={() => handleNodeClick(node, level)}
+                      className={`bg-white border rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${
+                          isCurrentUser ? 'bg-indigo-100 border-2 border-indigo-300' :
+                              isFocused ? 'bg-yellow-100 border-2 border-yellow-300' :
+                                  isSelected ? 'bg-green-100 border-2 border-green-300' : 'hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          isCurrentUser ? 'bg-indigo-500 text-white' :
+                              isFocused ? 'bg-yellow-500 text-white' :
+                                  isSelected ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+                      }`}>
+                        <Users className="h-5 w-5" />
                       </div>
-                  )}
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">
+                          {node.userData?.firstName || 'User'} {node.userData?.lastName || ''}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          ID: {node.sponsorshipNumber}
+                        </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {nodes.map((node, index) => {
-                      const children = treeManager.getDirectChildren(node.userId);
-                      const hasChildren = children.left || children.right;
-                      const isExpanded = expandedNodes.has(node.userId);
-
-                      return (
-                          <CompactNode
-                              key={`${node.userId}-${index}`}
-                              node={node}
-                              level={level}
-                              isExpanded={isExpanded}
-                              hasChildren={hasChildren}
-                          />
-                      );
-                    })}
+                        {/* Parent information */}
+                        {level > 0 && node.parentName && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Parent: {node.parentName}
+                            </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                        Level {level}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          node.position === 'left' ? 'bg-blue-100 text-blue-700' :
+                              node.position === 'right' ? 'bg-green-100 text-green-700' :
+                                  'bg-purple-100 text-purple-700'
+                      }`}>
+                        {node.position === 'left' ? 'Left' : node.position === 'right' ? 'Right' : 'Root'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-            ))}
+              );
+            })}
           </div>
         </div>
     );
   };
 
   const renderTreeView = () => {
-    const sortedLoadedLevels = Array.from(loadedLevels).sort((a, b) => a - b);
-    const maxLoadedLevel = Math.max(...sortedLoadedLevels);
-    const hasMoreLevels = maxLoadedLevel < actualMaxDepth;
-
     switch (viewMode) {
-      case 'breadth-first':
+      case 'levels':
         return (
             <div className="space-y-6">
-              {sortedLoadedLevels.map(level => (
+              {visibleLevels.map(level => (
                   <LevelView key={level} level={level} />
               ))}
-
-              {hasMoreLevels && (
-                  <div className="text-center py-6 border-t border-gray-200">
-                    <button
-                        onClick={loadMoreLevels}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-                    >
-                      Load More Levels ({maxLoadedLevel + 1} - {Math.min(actualMaxDepth, maxLoadedLevel + 3)})
-                    </button>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Showing {maxLoadedLevel + 1} of {actualMaxDepth + 1} levels
-                    </p>
-                  </div>
-              )}
-
-              {!hasMoreLevels && actualMaxDepth > 0 && (
-                  <div className="text-center py-4 text-gray-500">
-                    <p>All levels loaded (0 - {actualMaxDepth})</p>
-                  </div>
-              )}
             </div>
         );
 
-      case 'compact':
-        return (
-            <div className="space-y-8">
-              <DetailedNode node={userNode} position="root" level={0} />
-
-              {/* Show compact level views for levels beyond the tree view */}
-              {sortedLoadedLevels.filter(l => l > 2).map(level => (
-                  <LevelView key={level} level={level} />
-              ))}
-
-              {hasMoreLevels && (
-                  <div className="text-center py-6 border-t border-gray-200">
-                    <button
-                        onClick={loadMoreLevels}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-                    >
-                      Load More Levels ({maxLoadedLevel + 1} - {Math.min(actualMaxDepth, maxLoadedLevel + 3)})
-                    </button>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Showing {maxLoadedLevel + 1} of {actualMaxDepth + 1} levels
-                    </p>
-                  </div>
-              )}
-            </div>
-        );
-
-      case 'detailed':
-        return (
-            <div className="space-y-8">
-              <DetailedNode node={userNode} position="root" level={0} />
-
-              {maxVisibleLevels < actualMaxDepth && (
-                  <div className="text-center py-6 border-t border-gray-200">
-                    <button
-                        onClick={() => setMaxVisibleLevels(prev => Math.min(actualMaxDepth + 1, prev + 3))}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-                    >
-                      Show More Levels in Tree View
-                    </button>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Tree view showing {maxVisibleLevels} of {actualMaxDepth + 1} levels
-                    </p>
-                  </div>
-              )}
-            </div>
-        );
-
+      case 'tree':
       default:
-        return <DetailedNode node={userNode} position="root" level={0} />;
+        return (
+            <div className="space-y-8">
+              <DetailedNode node={focusedNode} position="root" level={focusedNode?.level || 0} />
+            </div>
+        );
     }
   };
 
@@ -497,7 +354,7 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Binary Tree Structure</h3>
-              <p className="text-gray-600">Complete MLM network hierarchy - all levels</p>
+              <p className="text-gray-600">Showing {visibleLevels.length} levels at a time</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
@@ -509,10 +366,38 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
                     onChange={(e) => setViewMode(e.target.value as ViewMode)}
                     className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="detailed">Tree View</option>
-                  <option value="compact">Hybrid View</option>
-                  <option value="breadth-first">Level by Level</option>
+                  <option value="tree">Tree View</option>
+                  <option value="levels">Level View</option>
                 </select>
+              </div>
+
+              {/* Navigation Controls */}
+              <div className="flex items-center space-x-2">
+                <button
+                    onClick={navigateToPreviousLevels}
+                    disabled={navigationHistory.length <= 1}
+                    className={`p-2 rounded-lg flex items-center ${
+                        navigationHistory.length <= 1
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                    }`}
+                    title="Previous Levels"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+
+                <button
+                    onClick={navigateToRoot}
+                    disabled={focusedNode?.userId === userNode.userId}
+                    className={`p-2 rounded-lg flex items-center ${
+                        focusedNode?.userId === userNode.userId
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                    }`}
+                    title="Back to Root"
+                >
+                  <Home className="h-4 w-4" />
+                </button>
               </div>
 
               {/* Zoom Controls */}
@@ -532,22 +417,18 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
                 >
                   <Plus className="h-4 w-4" />
                 </button>
-              </div>
 
-              {/* Reset Button */}
-              <button
-                  onClick={() => {
-                    setZoomLevel(1);
-                    setExpandedNodes(new Set([userId]));
-                    setSelectedNode(null);
-                    setLoadedLevels(new Set([0, 1, 2]));
-                    setMaxVisibleLevels(5);
-                  }}
-                  className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                  title="Reset View"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
+                <button
+                    onClick={() => {
+                      setZoomLevel(1);
+                      navigateToRoot();
+                    }}
+                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    title="Reset View"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -577,8 +458,8 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
                   <div className="text-sm text-gray-600">Total Levels</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{loadedLevels.size}</div>
-                  <div className="text-sm text-gray-600">Loaded Levels</div>
+                  <div className="text-2xl font-bold text-red-600">{visibleLevels.length}</div>
+                  <div className="text-sm text-gray-600">Visible Levels</div>
                 </div>
               </div>
             </div>
@@ -608,20 +489,36 @@ const BinaryTreeVisualizer: React.FC<BinaryTreeVisualizerProps> = ({
           </div>
 
           {/* Navigation Helper */}
-          <div className="flex items-center justify-center p-3 bg-gray-50 border-t border-gray-200">
+          <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
             <div className="flex items-center space-x-4 text-sm text-gray-600">
               <div className="flex items-center space-x-1">
                 <Eye className="h-4 w-4" />
-                <span>Viewing {loadedLevels.size} levels</span>
+                <span>Viewing levels {Math.min(...visibleLevels)} - {Math.max(...visibleLevels)}</span>
               </div>
               <div className="flex items-center space-x-1">
                 <Grid3X3 className="h-4 w-4" />
-                <span>{expandedNodes.size} nodes expanded</span>
+                <span>Total depth: {actualMaxDepth + 1}</span>
               </div>
-              <div className="flex items-center space-x-1">
-                <TrendingUp className="h-4 w-4" />
-                <span>Max depth: {actualMaxDepth}</span>
-              </div>
+              {focusedNode && focusedNode.userId !== userNode.userId && (
+                  <div className="flex items-center space-x-1">
+                    <Users className="h-4 w-4" />
+                    <span>Focused on: {focusedNode.userData?.firstName}</span>
+                  </div>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <button
+                  onClick={navigateToPreviousLevels}
+                  disabled={navigationHistory.length <= 1}
+                  className={`px-2 py-1 rounded ${
+                      navigationHistory.length <= 1
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-indigo-600 hover:bg-indigo-100'
+                  }`}
+              >
+                Previous
+              </button>
             </div>
           </div>
         </div>

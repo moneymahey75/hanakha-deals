@@ -17,9 +17,8 @@ const Footer: React.FC = () => {
                 <img
                   src={settings.logoUrl}
                   alt={settings.siteName}
-                  className="h-12 w-12 rounded-xl object-cover shadow-lg"
+                  className="h-20 w-100 rounded-xl object-cover shadow-lg"
                 />
-                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-xl"></div>
               </div>
               <div>
                 <span className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
@@ -27,7 +26,7 @@ const Footer: React.FC = () => {
                 <span className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
                   {settings.siteName}
                 </span>
-                <p className="text-sm text-gray-400">Premium MLM Platform</p>
+                <p className="text-sm text-gray-400">All Deals. One Sphere.</p>
               </div>
             </div>
             <p className="text-gray-300 mb-6 leading-relaxed max-w-md">

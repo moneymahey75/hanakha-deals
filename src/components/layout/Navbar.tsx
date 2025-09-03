@@ -59,7 +59,7 @@ const Navbar: React.FC = () => {
                 <img
                   src={settings.logoUrl}
                   alt={settings.siteName}
-                  className="h-10 w-10 rounded-xl object-cover shadow-md group-hover:shadow-lg transition-shadow duration-300"
+                  className="h-20 w-100 rounded-xl object-cover group-hover:shadow-lg transition-shadow duration-300"
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
@@ -67,7 +67,7 @@ const Navbar: React.FC = () => {
                 <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
                   {settings.siteName}
                 </span>
-                <span className="text-xs text-gray-500 -mt-1">Premium MLM Platform</span>
+                <span className="text-xs text-gray-500 -mt-1">All Deals. One Sphere.</span>
               </div>
             </Link>
           </div>

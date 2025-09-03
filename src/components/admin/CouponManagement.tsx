@@ -26,6 +26,7 @@ import {
   Users,
   TrendingUp
 } from 'lucide-react';
+import {useAdminAuth} from "../../contexts/AdminAuthContext.tsx";
 
 interface Coupon {
   tc_id: string;
@@ -57,7 +58,15 @@ interface Coupon {
   };
 }
 
+interface Company {
+  tc_id: string;
+  tc_company_name: string;
+  tc_official_email: string;
+  tc_verification_status: string;
+}
+
 const CouponManagement: React.FC = () => {
+  const { admin, hasPermission, getSubAdmins, createSubAdmin, updateSubAdmin, deleteSubAdmin, resetSubAdminPassword, logout } = useAdminAuth();
   const { user } = useAuth();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +77,7 @@ const CouponManagement: React.FC = () => {
   const [showCouponDetails, setShowCouponDetails] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const notification = useNotification();
 
   const [newCoupon, setNewCoupon] = useState({
@@ -88,8 +98,31 @@ const CouponManagement: React.FC = () => {
 
   useEffect(() => {
     loadCoupons();
+    loadCompanies();
   }, []);
 
+  const loadCompanies = async () => {
+    try {
+      console.log('🔍 Loading companies for coupon assignment...');
+
+      const { data, error } = await supabase
+          .from('tbl_companies')
+          .select('tc_id, tc_company_name, tc_official_email, tc_verification_status')
+          .eq('tc_verification_status', 'verified')
+          .order('tc_company_name');
+
+      if (error) {
+        console.error('❌ Failed to load companies:', error);
+        throw error;
+      }
+
+      setCompanies(data || []);
+      console.log('✅ Companies loaded for coupon assignment:', data?.length || 0);
+    } catch (error) {
+      console.error('Failed to load companies:', error);
+      notification.showError('Load Failed', 'Failed to load companies');
+    }
+  };
   const loadCoupons = async () => {
     try {
       setLoading(true);
@@ -135,14 +168,28 @@ const CouponManagement: React.FC = () => {
 
   const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id) return;
+    console.log('🎯 Form submitted');
+    
+    if (!user?.id) {
+      console.error('❌ No user ID found');
+      notification.showError('Error', 'User not authenticated');
+      return;
+    }
+
+    if (!newCoupon.company_id) {
+      notification.showError('Company Required', 'Please select a company for this coupon');
+      return;
+    }
+
+    console.log('📦 Form data:', user);
+    console.log('📦 Form data:', newCoupon);
 
     try {
       const { error } = await supabase
         .from('tbl_coupons')
         .insert({
           tc_created_by: user.id,
-          tc_company_id: newCoupon.company_id || null,
+          tc_company_id: newCoupon.company_id,
           tc_title: newCoupon.title,
           tc_description: newCoupon.description,
           tc_coupon_code: newCoupon.coupon_code,
@@ -274,8 +321,10 @@ const CouponManagement: React.FC = () => {
     const matchesStatus = 
       statusFilter === 'all' || coupon.tc_status === statusFilter;
 
-    const matchesCompany = 
-      companyFilter === 'all' || coupon.tc_company_id === companyFilter;
+    const matchesCompany =
+        companyFilter === 'all' ||
+        (companyFilter === 'admin' && !coupon.tc_company_id) ||
+        coupon.tc_company_id === companyFilter;
 
     return matchesSearch && matchesStatus && matchesCompany;
   });
@@ -413,7 +462,12 @@ const CouponManagement: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             >
               <option value="all">All Companies</option>
-              {/* Add company options dynamically */}
+              <option value="admin">Admin Created</option>
+              {companies.map(company => (
+                  <option key={company.tc_id} value={company.tc_id}>
+                    {company.tc_company_name}
+                  </option>
+              ))}
             </select>
           </div>
         </div>
@@ -438,6 +492,9 @@ const CouponManagement: React.FC = () => {
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Valid From
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Valid Until
@@ -474,6 +531,11 @@ const CouponManagement: React.FC = () => {
                       </div>
                       <div className="text-xs text-gray-400">
                         {coupon.company_info?.name || 'Admin Created'}
+                        {coupon.tc_company_id && (
+                            <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                            Company
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -521,6 +583,13 @@ const CouponManagement: React.FC = () => {
                     {coupon.tc_status.charAt(0).toUpperCase() + coupon.tc_status.slice(1)}
                   </span>
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Calendar className="h-4 w-4 mr-1" />
+                    {new Date(coupon.tc_valid_from).toLocaleDateString()}
+                  </div>
+                </td>
+
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-1" />
@@ -744,6 +813,26 @@ const CouponManagement: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Company *
+                </label>
+                <select
+                    value={newCoupon.company_id}
+                    onChange={(e) => setNewCoupon(prev => ({ ...prev, company_id: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                >
+                  <option value="">Select Company</option>
+                  {companies.map(company => (
+                      <option key={company.tc_id} value={company.tc_id}>
+                        {company.tc_company_name} ({company.tc_official_email})
+                      </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Select the company this coupon belongs to</p>
               </div>
 
               <div>

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface GeneralSettings {
   siteName: string;
@@ -9,6 +10,8 @@ interface GeneralSettings {
   mobileVerificationRequired: boolean;
   referralMandatory: boolean;
   defaultParentAccount: string;
+  jobSeekerVideoUrl?: string;
+  jobProviderVideoUrl?: string;
 }
 
 interface SMSGateway {
@@ -40,10 +43,12 @@ interface AdminContextType {
   smsGateway: SMSGateway;
   emailSMTP: EmailSMTP;
   subscriptionPlans: SubscriptionPlan[];
+  loading: boolean;
   updateSettings: (settings: Partial<GeneralSettings>) => void;
   updateSMSGateway: (gateway: SMSGateway) => void;
   updateEmailSMTP: (smtp: EmailSMTP) => void;
   updateSubscriptionPlans: (plans: SubscriptionPlan[]) => void;
+  refreshSettings: () => Promise<void>;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -57,7 +62,10 @@ export const useAdmin = () => {
 };
 
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [settings, setSettings] = useState<GeneralSettings>({
+  const [loading, setLoading] = useState(true);
+
+  // Default settings as fallback
+  const defaultSettings: GeneralSettings = {
     siteName: 'HanakhaDeals',
     logoUrl: 'https://images.pexels.com/photos/1779487/pexels-photo-1779487.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
     dateFormat: 'DD/MM/YYYY',
@@ -65,8 +73,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
     referralMandatory: false,
-    defaultParentAccount: 'admin-default'
-  });
+    defaultParentAccount: 'admin-default',
+    jobSeekerVideoUrl: '',
+    jobProviderVideoUrl: ''
+  };
+
+  const [settings, setSettings] = useState<GeneralSettings>(defaultSettings);
 
   const [smsGateway, setSMSGateway] = useState<SMSGateway>({
     provider: 'Twilio (via Supabase)',
@@ -86,29 +98,102 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([
     {
       id: '1',
-      tsp_name: 'Basic Plan',
-      tsp_price: 50,
-      tsp_duration_days: 30,
-      tsp_features: ['MLM Tree Access', 'Basic Dashboard', 'Email Support'],
-      tsp_is_active: true
+      name: 'Basic Plan',
+      price: 50,
+      duration: 30,
+      features: ['MLM Tree Access', 'Basic Dashboard', 'Email Support'],
+      isActive: true
     },
     {
       id: '2',
-      tsp_name: 'Premium Plan',
-      tsp_price: 100,
-      tsp_duration_days: 30,
-      tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics'],
-      tsp_is_active: true
+      name: 'Premium Plan',
+      price: 100,
+      duration: 30,
+      features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics'],
+      isActive: true
     },
     {
       id: '3',
-      tsp_name: 'Enterprise Plan',
-      tsp_price: 200,
-      tsp_duration_days: 30,
-      tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics', 'Custom Branding', 'API Access'],
-      tsp_is_active: true
+      name: 'Enterprise Plan',
+      price: 200,
+      duration: 30,
+      features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics', 'Custom Branding', 'API Access'],
+      isActive: true
     }
   ]);
+
+  // Function to load settings from database
+  const loadSettings = async () => {
+    try {
+      setLoading(true);
+
+      const { data: settingsData, error } = await supabase
+          .from('tbl_system_settings')
+          .select('tss_setting_key, tss_setting_value');
+
+      if (error) {
+        console.error('Error loading settings:', error);
+        return;
+      }
+
+      if (settingsData && settingsData.length > 0) {
+        const loadedSettings: Partial<GeneralSettings> = {};
+
+        settingsData.forEach((setting) => {
+          try {
+            const value = JSON.parse(setting.tss_setting_value);
+
+            switch (setting.tss_setting_key) {
+              case 'site_name':
+                loadedSettings.siteName = value;
+                break;
+              case 'logo_url':
+                loadedSettings.logoUrl = value;
+                break;
+              case 'date_format':
+                loadedSettings.dateFormat = value;
+                break;
+              case 'timezone':
+                loadedSettings.timezone = value;
+                break;
+              case 'email_verification_required':
+                loadedSettings.emailVerificationRequired = value;
+                break;
+              case 'mobile_verification_required':
+                loadedSettings.mobileVerificationRequired = value;
+                break;
+              case 'referral_mandatory':
+                loadedSettings.referralMandatory = value;
+                break;
+              case 'default_parent_account':
+                loadedSettings.defaultParentAccount = value;
+                break;
+              case 'job_seeker_video_url':
+                loadedSettings.jobSeekerVideoUrl = value;
+                break;
+              case 'job_provider_video_url':
+                loadedSettings.jobProviderVideoUrl = value;
+                break;
+            }
+          } catch (parseError) {
+            console.error(`Error parsing setting ${setting.tss_setting_key}:`, parseError);
+          }
+        });
+
+        // Merge loaded settings with defaults
+        setSettings(prev => ({ ...prev, ...loadedSettings }));
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load settings on component mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   const updateSettings = (newSettings: Partial<GeneralSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
@@ -126,15 +211,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSubscriptionPlans(plans);
   };
 
+  const refreshSettings = async () => {
+    await loadSettings();
+  };
+
   const value = {
     settings,
     smsGateway,
     emailSMTP,
     subscriptionPlans,
+    loading,
     updateSettings,
     updateSMSGateway,
     updateEmailSMTP,
-    updateSubscriptionPlans
+    updateSubscriptionPlans,
+    refreshSettings
   };
 
   return (

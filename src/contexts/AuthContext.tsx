@@ -412,7 +412,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           p_registration_number: userData.registrationNumber,
           p_gstin: userData.gstin,
           p_website_url: userData.websiteUrl,
-          p_official_email: userData.officialEmail,
+          p_official_email: userData.email,
           p_affiliate_code: userData.affiliateCode
         });
 

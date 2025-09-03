@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
   full_name text NOT NULL,
   role admin_role NOT NULL DEFAULT 'sub_admin',
   permissions jsonb DEFAULT '{
-    "users": {"read": false, "write": false, "delete": false},
+    "customers": {"read": false, "write": false, "delete": false},
     "companies": {"read": false, "write": false, "delete": false},
     "subscriptions": {"read": false, "write": false, "delete": false},
     "payments": {"read": false, "write": false, "delete": false},

@@ -22,13 +22,15 @@ interface SubAdmin {
   email: string;
   fullName: string;
   permissions: {
-    users: { read: boolean; write: boolean; delete: boolean };
+    customers: { read: boolean; write: boolean; delete: boolean };
     companies: { read: boolean; write: boolean; delete: boolean };
     subscriptions: { read: boolean; write: boolean; delete: boolean };
     payments: { read: boolean; write: boolean; delete: boolean };
     settings: { read: boolean; write: boolean; delete: boolean };
     admins: { read: boolean; write: boolean; delete: boolean };
-    reports: { read: boolean; write: boolean; delete: boolean };
+    coupons: { read: boolean, write: boolean, delete: boolean },
+    dailytasks: { read: boolean, write: boolean, delete: boolean },
+    wallets: { read: boolean, write: boolean, delete: boolean },
   };
   isActive: boolean;
   createdBy: string;
@@ -50,13 +52,15 @@ const AdminManagement: React.FC = () => {
     email: '',
     fullName: '',
     permissions: {
-      users: { read: false, write: false, delete: false },
+      customers: { read: false, write: false, delete: false },
       companies: { read: false, write: false, delete: false },
       subscriptions: { read: false, write: false, delete: false },
       payments: { read: false, write: false, delete: false },
       settings: { read: false, write: false, delete: false },
       admins: { read: false, write: false, delete: false },
-      reports: { read: false, write: false, delete: false }
+      coupons: { read: false, write: false, delete: false },
+      dailytasks: { read: false, write: false, delete: false },
+      wallets: { read: false, write: false, delete: false },
     }
   });
 
@@ -85,17 +89,20 @@ const AdminManagement: React.FC = () => {
         email: '',
         fullName: '',
         permissions: {
-          users: { read: false, write: false, delete: false },
+          customers: { read: false, write: false, delete: false },
           companies: { read: false, write: false, delete: false },
+          coupons: { read: false, write: false, delete: false },
+          dailytasks: { read: false, write: false, delete: false },
+          wallets: { read: false, write: false, delete: false },
           subscriptions: { read: false, write: false, delete: false },
           payments: { read: false, write: false, delete: false },
           settings: { read: false, write: false, delete: false },
           admins: { read: false, write: false, delete: false },
-          reports: { read: false, write: false, delete: false }
         }
       });
       loadSubAdmins();
     } catch (error) {
+      // Error is already handled by the notification system
       console.error('Failed to create sub-admin:', error);
     }
   };
@@ -130,17 +137,63 @@ const AdminManagement: React.FC = () => {
     }
   };
 
-  const updatePermission = (module: string, action: string, value: boolean) => {
+  const handleGlobalSelectAll = (select: boolean) => {
+    setNewSubAdmin(prev => {
+      const updatedPermissions = { ...prev.permissions };
+
+      Object.keys(updatedPermissions).forEach(module => {
+        updatedPermissions[module] = {
+          read: select,
+          write: select,
+          delete: select
+        };
+      });
+
+      return {
+        ...prev,
+        permissions: updatedPermissions
+      };
+    });
+  };
+
+  const handleModuleSelectAll = (module: string, select: boolean) => {
     setNewSubAdmin(prev => ({
       ...prev,
       permissions: {
         ...prev.permissions,
         [module]: {
-          ...prev.permissions[module],
-          [action]: value
+          read: select,
+          write: select,
+          delete: select
         }
       }
     }));
+  };
+
+  const updatePermission = (module: string, action: string, value: boolean) => {
+    setNewSubAdmin(prev => {
+      const updatedPermissions = { ...prev.permissions };
+
+      if (action === 'read' && !value) {
+        // If read is being disabled, disable write and delete too
+        updatedPermissions[module] = {
+          read: false,
+          write: false,
+          delete: false
+        };
+      } else {
+        // Otherwise update just the specific permission
+        updatedPermissions[module] = {
+          ...updatedPermissions[module],
+          [action]: value
+        };
+      }
+
+      return {
+        ...prev,
+        permissions: updatedPermissions
+      };
+    });
   };
 
   const filteredSubAdmins = subAdmins.filter(subAdmin => {
@@ -431,113 +484,177 @@ const AdminManagement: React.FC = () => {
 
       {/* Create Sub-Admin Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Create New Sub-Admin</h3>
-            <form onSubmit={handleCreateSubAdmin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newSubAdmin.fullName}
-                  onChange={(e) => setNewSubAdmin(prev => ({ ...prev, fullName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={newSubAdmin.email}
-                  onChange={(e) => setNewSubAdmin(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-4">Permissions</label>
-                <div className="space-y-4">
-                  {Object.keys(newSubAdmin.permissions).map((module) => (
-                    <div key={module} className="border border-gray-200 rounded-lg p-4">
-                      <h4 className="font-medium text-gray-900 mb-3 capitalize">{module}</h4>
-                      <div className="grid grid-cols-3 gap-4">
-                        {['read', 'write', 'delete'].map((action) => (
-                          <label key={action} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={newSubAdmin.permissions[module][action]}
-                              onChange={(e) => updatePermission(module, action, e.target.checked)}
-                              className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 capitalize">{action}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-4">Create New Sub-Admin</h3>
+              <form onSubmit={handleCreateSubAdmin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                  <input
+                      type="text"
+                      required
+                      value={newSubAdmin.fullName}
+                      onChange={(e) => setNewSubAdmin(prev => ({ ...prev, fullName: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  />
                 </div>
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                  <input
+                      type="email"
+                      required
+                      value={newSubAdmin.email}
+                      onChange={(e) => setNewSubAdmin(prev => ({ ...prev, email: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  />
+                </div>
 
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Create Sub-Admin
-                </button>
-              </div>
-            </form>
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Permissions</label>
+                    <div className="flex space-x-2">
+                      <button
+                          type="button"
+                          onClick={() => handleGlobalSelectAll(true)}
+                          className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-md hover:bg-green-200"
+                      >
+                        Select All
+                      </button>
+                      <button
+                          type="button"
+                          onClick={() => handleGlobalSelectAll(false)}
+                          className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+                      >
+                        Deselect All
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {Object.keys(newSubAdmin.permissions).map((module) => (
+                        <div key={module} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-medium text-gray-900 capitalize">{module}</h4>
+                            <div className="flex space-x-2">
+                              <button
+                                  type="button"
+                                  onClick={() => handleModuleSelectAll(module, true)}
+                                  className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                              >
+                                All
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => handleModuleSelectAll(module, false)}
+                                  className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                              >
+                                None
+                              </button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            {['read', 'write', 'delete'].map((action) => (
+                                <label key={action} className="flex items-center">
+                                  <input
+                                      type="checkbox"
+                                      checked={newSubAdmin.permissions[module][action]}
+                                      onChange={(e) => updatePermission(module, action, e.target.checked)}
+                                      disabled={action !== 'read' && !newSubAdmin.permissions[module].read}
+                                      className="rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-700 capitalize">{action}</span>
+                                </label>
+                            ))}
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                      type="button"
+                      onClick={() => setShowCreateModal(false)}
+                      className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                      type="submit"
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Create Sub-Admin
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
       )}
 
       {/* Permissions Modal */}
       {showPermissionsModal && selectedSubAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4">
-              Permissions for {selectedSubAdmin.fullName}
-            </h3>
-            <div className="space-y-3">
-              {Object.entries(selectedSubAdmin.permissions).map(([module, perms]: [string, any]) => (
-                <div key={module} className="border border-gray-200 rounded-lg p-3">
-                  <h4 className="font-medium text-gray-900 mb-2 capitalize">{module}</h4>
-                  <div className="flex space-x-4 text-sm">
-                    <span className={`flex items-center ${perms.read ? 'text-green-600' : 'text-gray-400'}`}>
-                      {perms.read ? <Check className="h-4 w-4 mr-1" /> : <X className="h-4 w-4 mr-1" />}
-                      Read
-                    </span>
-                    <span className={`flex items-center ${perms.write ? 'text-green-600' : 'text-gray-400'}`}>
-                      {perms.write ? <Check className="h-4 w-4 mr-1" /> : <X className="h-4 w-4 mr-1" />}
-                      Write
-                    </span>
-                    <span className={`flex items-center ${perms.delete ? 'text-green-600' : 'text-gray-400'}`}>
-                      {perms.delete ? <Check className="h-4 w-4 mr-1" /> : <X className="h-4 w-4 mr-1" />}
-                      Delete
-                    </span>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+              <h3 className="text-lg font-semibold mb-4">
+                Permissions for {selectedSubAdmin.fullName}
+              </h3>
+
+              {/* Permissions Table with Scrollbar */}
+              <div className="overflow-y-auto flex-1">
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Table Header */}
+                  <div className="grid grid-cols-4 bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <div className="font-medium text-gray-900 text-lg">Module</div>
+                    <div className="font-medium text-gray-900 text-lg text-center">Read</div>
+                    <div className="font-medium text-gray-900 text-lg text-center">Write</div>
+                    <div className="font-medium text-gray-900 text-lg text-center">Delete</div>
+                  </div>
+
+                  {/* Table Rows */}
+                  <div className="divide-y divide-gray-200">
+                    {Object.entries(selectedSubAdmin.permissions).map(([module, perms]: [string, any]) => (
+                        <div key={module} className="grid grid-cols-4 px-6 py-4 hover:bg-gray-50">
+                          {/* Module Name */}
+                          <div className="font-medium text-gray-900 capitalize flex items-center text-md">
+                            {module}
+                          </div>
+
+                          {/* Read Permission */}
+                          <div className="flex items-center justify-center">
+                <span className={perms.read ? 'text-green-600' : 'text-gray-400'}>
+                  {perms.read ? <Check className="h-6 w-6" /> : <X className="h-6 w-6" />}
+                </span>
+                          </div>
+
+                          {/* Write Permission */}
+                          <div className="flex items-center justify-center">
+                <span className={perms.write ? 'text-green-600' : 'text-gray-400'}>
+                  {perms.write ? <Check className="h-6 w-6" /> : <X className="h-6 w-6" />}
+                </span>
+                          </div>
+
+                          {/* Delete Permission */}
+                          <div className="flex items-center justify-center">
+                <span className={perms.delete ? 'text-green-600' : 'text-gray-400'}>
+                  {perms.delete ? <Check className="h-6 w-6" /> : <X className="h-6 w-6" />}
+                </span>
+                          </div>
+                        </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="flex justify-end pt-4">
-              <button
-                onClick={() => setShowPermissionsModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-              >
-                Close
-              </button>
+              </div>
+
+              <div className="flex justify-end pt-4 mt-4 border-t border-gray-200">
+                <button
+                    onClick={() => setShowPermissionsModal(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
       )}
     </div>
   );

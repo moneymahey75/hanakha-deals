@@ -67,13 +67,15 @@ const AdminDashboard: React.FC = () => {
     email: '',
     fullName: '',
     permissions: {
-      users: { read: false, write: false, delete: false },
+      customers: { read: false, write: false, delete: false },
       companies: { read: false, write: false, delete: false },
+      coupons: { read: false, write: false, delete: false },
+      dailytasks: { read: false, write: false, delete: false },
+      wallets: { read: false, write: false, delete: false },
       subscriptions: { read: false, write: false, delete: false },
       payments: { read: false, write: false, delete: false },
       settings: { read: false, write: false, delete: false },
       admins: { read: false, write: false, delete: false },
-      reports: { read: false, write: false, delete: false }
     }
   });
 
@@ -104,13 +106,15 @@ const AdminDashboard: React.FC = () => {
         email: '',
         fullName: '',
         permissions: {
-          users: { read: false, write: false, delete: false },
+          customers: { read: false, write: false, delete: false },
           companies: { read: false, write: false, delete: false },
+          coupons: { read: false, write: false, delete: false },
+          dailytasks: { read: false, write: false, delete: false },
+          wallets: { read: false, write: false, delete: false },
           subscriptions: { read: false, write: false, delete: false },
           payments: { read: false, write: false, delete: false },
           settings: { read: false, write: false, delete: false },
           admins: { read: false, write: false, delete: false },
-          reports: { read: false, write: false, delete: false }
         }
       });
       loadSubAdmins();
@@ -191,11 +195,11 @@ const AdminDashboard: React.FC = () => {
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3, permission: null },
-    { id: 'users', label: 'Users', icon: Users, permission: 'users' },
+    { id: 'customers', label: 'Customers', icon: Users, permission: 'customers' },
     { id: 'companies', label: 'Companies', icon: Building, permission: 'companies' },
-    { id: 'coupons', label: 'Coupons', icon: Gift, permission: 'companies' },
-    { id: 'tasks', label: 'Daily Tasks', icon: Calendar, permission: 'users' },
-    { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'payments' },
+    { id: 'coupons', label: 'Coupons', icon: Gift, permission: 'coupons' },
+    { id: 'tasks', label: 'Daily Tasks', icon: Calendar, permission: 'dailytasks' },
+    { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'wallets' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
@@ -301,7 +305,7 @@ const AdminDashboard: React.FC = () => {
               </h2>
               <p className="text-gray-600 mt-1">
                 {activeTab === 'overview' && 'System overview and statistics'}
-                {activeTab === 'users' && 'Manage customer accounts and profiles'}
+                {activeTab === 'customers' && 'Manage customer accounts and profiles'}
                 {activeTab === 'companies' && 'Manage company registrations and verifications'}
                 {activeTab === 'coupons' && 'Manage coupons and sharing rewards'}
                 {activeTab === 'tasks' && 'Create and manage daily tasks for customers'}
@@ -378,7 +382,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'users' && hasPermission('users', 'read') && (
+          {activeTab === 'customers' && hasPermission('customers', 'read') && (
             <CustomerManagement />
           )}
 

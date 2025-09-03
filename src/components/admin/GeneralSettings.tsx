@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { Settings, Upload, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const GeneralSettings: React.FC = () => {
-    const { settings, updateSettings } = useAdmin();
+    const { settings, updateSettings, loading, refreshSettings } = useAdmin();
     const [formData, setFormData] = useState({
         siteName: settings.siteName,
         logoUrl: settings.logoUrl,
@@ -14,6 +14,7 @@ const GeneralSettings: React.FC = () => {
     });
     const [saving, setSaving] = useState(false);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
         setFormData({
@@ -59,6 +60,9 @@ const GeneralSettings: React.FC = () => {
             // Update context
             updateSettings(formData);
 
+            // Refresh settings from database to ensure sync
+            await refreshSettings();
+
             setSaveResult({
                 success: true,
                 message: 'General settings updated successfully!'
@@ -80,6 +84,110 @@ const GeneralSettings: React.FC = () => {
             [e.target.name]: e.target.value
         }));
     };
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            setSaveResult({
+                success: false,
+                message: 'Please select a valid image file'
+            });
+            return;
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            setSaveResult({
+                success: false,
+                message: 'Image file size must be less than 5MB'
+            });
+            return;
+        }
+
+        setUploading(true);
+        setSaveResult(null);
+
+        try {
+            // Create a unique filename
+            const fileExt = file.name.split('.').pop();
+            const fileName = `logo-${Date.now()}.${fileExt}`;
+
+            // Upload to Supabase Storage
+            const { data, error } = await supabase.storage
+                .from('logos')
+                .upload(fileName, file, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (error) {
+                // If storage bucket doesn't exist, create a public URL from the file
+                console.warn('Storage upload failed, using fallback method:', error);
+
+                // Convert file to base64 data URL for preview
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const dataUrl = e.target?.result as string;
+                    setFormData(prev => ({
+                        ...prev,
+                        logoUrl: dataUrl
+                    }));
+
+                    // Also update the admin context immediately
+                    updateSettings({ logoUrl: dataUrl });
+
+                    setSaveResult({
+                        success: true,
+                        message: 'Logo uploaded successfully! Click Save Settings to apply changes.'
+                    });
+                };
+                reader.readAsDataURL(file);
+                return;
+            }
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('logos')
+                .getPublicUrl(fileName);
+
+            // Update form data with new URL
+            setFormData(prev => ({
+                ...prev,
+                logoUrl: publicUrl
+            }));
+
+            // Also update the admin context immediately
+            updateSettings({ logoUrl: publicUrl });
+
+            setSaveResult({
+                success: true,
+                message: 'Logo uploaded successfully! Click Save Settings to apply changes.'
+            });
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            setSaveResult({
+                success: false,
+                message: 'Failed to upload logo. Please try again.'
+            });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-3 text-gray-600">Loading settings...</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-white rounded-xl shadow-sm p-6">
@@ -108,8 +216,8 @@ const GeneralSettings: React.FC = () => {
                         <span className={`text-sm font-medium ${
                             saveResult.success ? 'text-green-800' : 'text-red-800'
                         }`}>
-              {saveResult.message}
-            </span>
+                            {saveResult.message}
+                        </span>
                     </div>
                 </div>
             )}
@@ -147,13 +255,33 @@ const GeneralSettings: React.FC = () => {
                                 className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 placeholder="https://example.com/logo.png"
                             />
-                            <button
-                                type="button"
-                                className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2"
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleLogoUpload}
+                                className="hidden"
+                                id="logo-upload"
+                            />
+                            <label
+                                htmlFor="logo-upload"
+                                className={`px-4 py-3 rounded-lg transition-colors flex items-center space-x-2 cursor-pointer ${
+                                    uploading
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : 'bg-gray-600 hover:bg-gray-700'
+                                } text-white`}
                             >
-                                <Upload className="h-4 w-4" />
-                                <span>Upload</span>
-                            </button>
+                                {uploading ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                        <span>Uploading...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Upload className="h-4 w-4" />
+                                        <span>Upload</span>
+                                    </>
+                                )}
+                            </label>
                         </div>
                         {formData.logoUrl && (
                             <div className="mt-2">

@@ -16,7 +16,7 @@ const CompanyRegister: React.FC = () => {
     registrationNumber: '',
     gstin: '',
     websiteUrl: '',
-    officialEmail: '',
+    email: '',
     affiliateCode: '',
     password: '',
     confirmPassword: '',
@@ -78,7 +78,7 @@ const CompanyRegister: React.FC = () => {
 
     try {
       console.log('📝 Calling register function with company data:', {
-        email: formData.officialEmail,
+        email: formData.email,
         companyName: formData.companyName,
         registrationNumber: formData.registrationNumber
       });
@@ -269,7 +269,7 @@ const CompanyRegister: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="officialEmail" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                   Official Email Address *
                 </label>
                 <div className="relative">
@@ -277,11 +277,11 @@ const CompanyRegister: React.FC = () => {
                     <Mail className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="officialEmail"
-                    name="officialEmail"
+                    id="email"
+                    name="email"
                     type="email"
                     required
-                    value={formData.officialEmail}
+                    value={formData.email}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="company@example.com"

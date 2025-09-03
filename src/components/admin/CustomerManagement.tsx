@@ -21,7 +21,12 @@ import {
     AlertCircle,
     CreditCard,
     User,
-    Settings
+    Settings,
+    ChevronLeft,
+    ChevronRight,
+    ChevronsLeft,
+    ChevronsRight,
+    MoreHorizontal
 } from 'lucide-react';
 
 interface Customer {
@@ -55,9 +60,64 @@ interface Transaction {
     };
 }
 
+// Skeleton Loader for Table Rows
+const TableSkeleton: React.FC<{ rows?: number }> = ({ rows = 5 }) => {
+    return (
+        <>
+            {Array.from({ length: rows }).map((_, index) => (
+                <tr key={index} className="animate-pulse">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10 bg-gray-200 rounded-full"></div>
+                            <div className="ml-4">
+                                <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
+                                <div className="h-3 bg-gray-200 rounded w-20 mb-1"></div>
+                                <div className="h-3 bg-gray-200 rounded w-24"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="h-4 bg-gray-200 rounded w-32 mb-1"></div>
+                        <div className="h-3 bg-gray-200 rounded w-28"></div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex space-x-2">
+                            <div className="h-6 bg-gray-200 rounded-full w-16"></div>
+                            <div className="h-6 bg-gray-200 rounded-full w-18"></div>
+                        </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex space-x-2">
+                            <div className="h-8 w-8 bg-gray-200 rounded"></div>
+                            <div className="h-8 w-8 bg-gray-200 rounded"></div>
+                        </div>
+                    </td>
+                </tr>
+            ))}
+        </>
+    );
+};
+
+// Loader Component
+const Loader: React.FC = () => {
+    return (
+        <div className="flex flex-col items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-600">Loading customers...</p>
+        </div>
+    );
+};
+
 const CustomerManagement: React.FC = () => {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
+    const [listLoading, setListLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -66,90 +126,99 @@ const CustomerManagement: React.FC = () => {
     const [showCustomerDetails, setShowCustomerDetails] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [activeTab, setActiveTab] = useState('profile');
+
+    // Enhanced Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [totalCount, setTotalCount] = useState(0);
+
     const notification = useNotification();
 
-    useEffect(() => {
-        loadCustomers();
-    }, []);
-
+    // Load customers with pagination
     const loadCustomers = async () => {
         try {
             setLoading(true);
+            setListLoading(true);
             setError(null);
 
             console.log('🔍 Loading customers from database...');
 
-            // Use the correct table structure with tbl_ prefix
-            try {
-                const { data: customers, error } = await supabase
-                    .from('tbl_users')
-                    .select(`
-                        tu_id,
-                        tu_email,
-                        tu_user_type,
-                        tu_is_verified,
-                        tu_email_verified,
-                        tu_mobile_verified,
-                        tu_is_active,
-                        tu_created_at,
-                        tu_updated_at,
-                        tbl_user_profiles (
-                          tup_id,
-                          tup_first_name,
-                          tup_last_name,
-                          tup_username,
-                          tup_mobile,
-                          tup_gender,
-                          tup_sponsorship_number,
-                          tup_parent_account,
-                          tup_created_at,
-                          tup_updated_at
-                        )
-                      `)
-                    .eq('tu_user_type', 'customer')
-                    .order('tu_created_at', { ascending: false });
+            // Build the base query
+            let query = supabase
+                .from('tbl_users')
+                .select(`
+                    tu_id,
+                    tu_email,
+                    tu_user_type,
+                    tu_is_verified,
+                    tu_email_verified,
+                    tu_mobile_verified,
+                    tu_is_active,
+                    tu_created_at,
+                    tu_updated_at,
+                    tbl_user_profiles (
+                      tup_id,
+                      tup_first_name,
+                      tup_last_name,
+                      tup_username,
+                      tup_mobile,
+                      tup_gender,
+                      tup_sponsorship_number,
+                      tup_parent_account,
+                      tup_created_at,
+                      tup_updated_at
+                    )
+                `, { count: 'exact' })
+                .eq('tu_user_type', 'customer');
 
-                if (error) {
-                    console.error('❌ Failed to load customers:', error);
-                    throw error;
-                }
-
-                console.log('✅ Customers loaded:', customers);
-                setCustomers(customers || []);
-            } catch (dbError) {
-                console.error('❌ Database error:', dbError);
-                setError('Failed to load customers. Please check your database connection.');
+            // Apply filters if any
+            if (searchTerm) {
+                query = query.or(`tu_email.ilike.%${searchTerm}%,tbl_user_profiles.tup_first_name.ilike.%${searchTerm}%,tbl_user_profiles.tup_last_name.ilike.%${searchTerm}%,tbl_user_profiles.tup_username.ilike.%${searchTerm}%,tbl_user_profiles.tup_sponsorship_number.ilike.%${searchTerm}%`);
             }
+
+            if (statusFilter !== 'all') {
+                query = query.eq('tu_is_active', statusFilter === 'active');
+            }
+
+            if (verificationFilter !== 'all') {
+                query = query.eq('tu_is_verified', verificationFilter === 'verified');
+            }
+
+            // Apply pagination and ordering
+            query = query
+                .order('tu_created_at', { ascending: false })
+                .range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1);
+
+            const { data: customers, error, count } = await query;
+
+            if (error) {
+                console.error('❌ Failed to load customers:', error);
+                throw error;
+            }
+
+            console.log('✅ Customers loaded:', customers);
+            setCustomers(customers || []);
+            setTotalCount(count || 0);
+
         } catch (error) {
             console.error('❌ Failed to load customers:', error);
             setError('Failed to load customers. Please try again.');
             notification.showError('Load Failed', 'Failed to load customer data from database');
         } finally {
             setLoading(false);
+            setListLoading(false);
         }
     };
 
-    const filteredCustomers = customers.filter(customer => {
-        const matchesSearch =
-            (customer.tu_email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (customer.tbl_user_profiles?.tup_first_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (customer.tbl_user_profiles?.tup_last_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (customer.tbl_user_profiles?.tup_username?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (customer.tbl_user_profiles?.tup_sponsorship_number?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    // Reload when filters or pagination change
+    useEffect(() => {
+        loadCustomers();
+    }, [searchTerm, statusFilter, verificationFilter, currentPage, itemsPerPage]);
 
-        const matchesStatus =
-            statusFilter === 'all' ||
-            (statusFilter === 'active' && customer.tu_is_active) ||
-            (statusFilter === 'inactive' && !customer.tu_is_active);
-
-        const matchesVerification =
-            verificationFilter === 'all' ||
-            (verificationFilter === 'verified' && customer.tu_is_verified) ||
-            (verificationFilter === 'unverified' && !customer.tu_is_verified);
-
-        return matchesSearch && matchesStatus && matchesVerification;
-    });
-
+    // Reset to first page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, statusFilter, verificationFilter]);
 
     const handleViewCustomer = (customer: Customer) => {
         setSelectedCustomer(customer);
@@ -162,7 +231,7 @@ const CustomerManagement: React.FC = () => {
         try {
             // Try new structure first
             let { error } = await supabase
-                .from('users')
+                .from('tbl_users')
                 .update({ is_active: !currentStatus })
                 .eq('id', customer.tu_id);
 
@@ -191,22 +260,76 @@ const CustomerManagement: React.FC = () => {
         }
     };
 
-    if (loading) {
+    // Pagination logic
+    const totalPages = Math.ceil(totalCount / itemsPerPage);
+
+    // Improved pagination with limited page numbers
+    const getPageNumbers = () => {
+        const pageNumbers = [];
+        const maxVisiblePages = 5;
+
+        if (totalPages <= maxVisiblePages) {
+            // Show all pages if total pages is less than max visible
+            for (let i = 1; i <= totalPages; i++) {
+                pageNumbers.push(i);
+            }
+        } else {
+            // Always include first page
+            pageNumbers.push(1);
+
+            // Calculate start and end of visible page range
+            let startPage = Math.max(2, currentPage - 1);
+            let endPage = Math.min(totalPages - 1, currentPage + 1);
+
+            // Adjust if we're near the beginning
+            if (currentPage <= 3) {
+                endPage = 4;
+            }
+
+            // Adjust if we're near the end
+            if (currentPage >= totalPages - 2) {
+                startPage = totalPages - 3;
+            }
+
+            // Add ellipsis after first page if needed
+            if (startPage > 2) {
+                pageNumbers.push('...');
+            }
+
+            // Add middle pages
+            for (let i = startPage; i <= endPage; i++) {
+                pageNumbers.push(i);
+            }
+
+            // Add ellipsis before last page if needed
+            if (endPage < totalPages - 1) {
+                pageNumbers.push('...');
+            }
+
+            // Always include last page
+            if (totalPages > 1) {
+                pageNumbers.push(totalPages);
+            }
+        }
+
+        return pageNumbers;
+    };
+
+    const paginate = (pageNumber: number | string) => {
+        if (pageNumber !== '...' && typeof pageNumber === 'number') {
+            setCurrentPage(pageNumber);
+        }
+    };
+
+    if (loading && customers.length === 0) {
         return (
             <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="animate-pulse">
-                    <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-                    <div className="space-y-4">
-                        {[...Array(5)].map((_, i) => (
-                            <div key={i} className="h-16 bg-gray-200 rounded"></div>
-                        ))}
-                    </div>
-                </div>
+                <Loader />
             </div>
         );
     }
 
-    if (error) {
+    if (error && customers.length === 0) {
         return (
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="text-center py-12">
@@ -214,7 +337,7 @@ const CustomerManagement: React.FC = () => {
                     <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to Load Customers</h3>
                     <p className="text-gray-600 mb-4">{error}</p>
                     <button
-                        onClick={loadCustomers}
+                        onClick={() => loadCustomers()}
                         className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
                     >
                         <Users className="h-4 w-4" />
@@ -234,7 +357,7 @@ const CustomerManagement: React.FC = () => {
                     setSelectedCustomer(null);
                     setEditMode(false);
                 }}
-                onUpdate={loadCustomers}
+                onUpdate={() => loadCustomers()}
                 editMode={editMode}
                 setEditMode={setEditMode}
                 activeTab={activeTab}
@@ -256,8 +379,27 @@ const CustomerManagement: React.FC = () => {
                             <p className="text-gray-600">Manage and monitor customer accounts</p>
                         </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                        Total: {customers.length} customers
+                    <div className="flex items-center space-x-4">
+                        <div className="text-sm text-gray-500">
+                            Total: {totalCount} customers
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <label className="text-sm text-gray-600">Show:</label>
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                                className="border border-gray-300 rounded-lg px-3 py-1 focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                            <span className="text-sm text-gray-600">per page</span>
+                        </div>
                     </div>
                 </div>
 
@@ -330,108 +472,193 @@ const CustomerManagement: React.FC = () => {
                     </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredCustomers.map((customer) => (
-                        <tr key={customer.tu_id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center">
-                                    <div className="flex-shrink-0 h-10 w-10">
-                                        <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                        <span className="text-white font-medium text-sm">
-                          {customer.tbl_user_profiles?.tup_first_name?.charAt(0) || 'U'}
-                        </span>
-                                        </div>
-                                    </div>
-                                    <div className="ml-4">
-                                        <div className="text-sm font-medium text-gray-900">
-                                            {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                            @{customer.tbl_user_profiles?.tup_username}
-                                        </div>
-                                        <div className="text-xs text-gray-400">
-                                            {customer.tbl_user_profiles?.tup_sponsorship_number}
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">{customer.tu_email}</div>
-                                <div className="text-sm text-gray-500">{customer.tbl_user_profiles?.tup_mobile}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex space-x-2">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        customer.tu_email_verified
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                    }`}>
-                      <Mail className="h-3 w-3 mr-1" />
-                        {customer.tu_email_verified ? 'Email ✓' : 'Email ✗'}
-                    </span>
-                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                        customer.tu_mobile_verified
-                                            ? 'bg-green-100 text-green-800'
-                                            : 'bg-red-100 text-red-800'
-                                    }`}>
-                      <Phone className="h-3 w-3 mr-1" />
-                                        {customer.tu_mobile_verified ? 'Mobile ✓' : 'Mobile ✗'}
-                    </span>
-                                </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      customer.tu_is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                  }`}>
-                    {customer.tu_is_active ? (
-                        <>
-                            <UserCheck className="h-3 w-3 mr-1" />
-                            Active
-                        </>
+                    {listLoading ? (
+                        <TableSkeleton rows={itemsPerPage} />
                     ) : (
                         <>
-                            <UserX className="h-3 w-3 mr-1" />
-                            Inactive
+                            {customers.map((customer) => (
+                                <tr key={customer.tu_id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                            <div className="flex-shrink-0 h-10 w-10">
+                                                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                                                        <span className="text-white font-medium text-sm">
+                                                            {customer.tbl_user_profiles?.tup_first_name?.charAt(0) || 'U'}
+                                                        </span>
+                                                </div>
+                                            </div>
+                                            <div className="ml-4">
+                                                <div className="text-sm font-medium text-gray-900">
+                                                    {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
+                                                </div>
+                                                <div className="text-sm text-gray-500">
+                                                    @{customer.tbl_user_profiles?.tup_username}
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    {customer.tbl_user_profiles?.tup_sponsorship_number}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-sm text-gray-900">{customer.tu_email}</div>
+                                        <div className="text-sm text-gray-500">{customer.tbl_user_profiles?.tup_mobile}</div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex space-x-2">
+                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                    customer.tu_email_verified
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                    <Mail className="h-3 w-3 mr-1" />
+                                                    {customer.tu_email_verified ? 'Email ✓' : 'Email ✗'}
+                                                </span>
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                customer.tu_mobile_verified
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : 'bg-red-100 text-red-800'
+                                            }`}>
+                                                    <Phone className="h-3 w-3 mr-1" />
+                                                {customer.tu_mobile_verified ? 'Mobile ✓' : 'Mobile ✗'}
+                                                </span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                customer.tu_is_active
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : 'bg-red-100 text-red-800'
+                                            }`}>
+                                                {customer.tu_is_active ? (
+                                                    <>
+                                                        <UserCheck className="h-3 w-3 mr-1" />
+                                                        Active
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <UserX className="h-3 w-3 mr-1" />
+                                                        Inactive
+                                                    </>
+                                                )}
+                                            </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <div className="flex items-center">
+                                            <Calendar className="h-4 w-4 mr-1" />
+                                            {new Date(customer.tu_created_at).toLocaleDateString()}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => handleViewCustomer(customer)}
+                                                className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                                                title="View Details"
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleToggleStatus(customer, customer.tu_is_active)}
+                                                className={`p-1 rounded ${
+                                                    customer.tu_is_active
+                                                        ? 'text-red-600 hover:text-red-800 hover:bg-red-50'
+                                                        : 'text-green-600 hover:text-green-800 hover:bg-green-50'
+                                                }`}
+                                                title={customer.tu_is_active ? 'Deactivate' : 'Activate'}
+                                            >
+                                                {customer.tu_is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
                         </>
                     )}
-                  </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <div className="flex items-center">
-                                    <Calendar className="h-4 w-4 mr-1" />
-                                    {new Date(customer.tu_created_at).toLocaleDateString()}
-                                </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <div className="flex space-x-2">
-                                    <button
-                                        onClick={() => handleViewCustomer(customer)}
-                                        className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
-                                        title="View Details"
-                                    >
-                                        <Eye className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleToggleStatus(customer, customer.tu_is_active)}
-                                        className={`p-1 rounded ${
-                                            customer.tu_is_active
-                                                ? 'text-red-600 hover:text-red-800 hover:bg-red-50'
-                                                : 'text-green-600 hover:text-green-800 hover:bg-green-50'
-                                        }`}
-                                        title={customer.tu_is_active ? 'Deactivate' : 'Activate'}
-                                    >
-                                        {customer.tu_is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
                     </tbody>
                 </table>
             </div>
 
-            {filteredCustomers.length === 0 && (
+            {/* Enhanced Pagination Controls */}
+            {totalCount > 0 && (
+                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <div className="text-sm text-gray-700">
+                        Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                        <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalCount)}</span> of{' '}
+                        <span className="font-medium">{totalCount}</span> customers
+                    </div>
+
+                    <div className="flex items-center space-x-1">
+                        <button
+                            onClick={() => setCurrentPage(1)}
+                            disabled={currentPage === 1}
+                            className={`px-3 py-1 rounded-md ${
+                                currentPage === 1
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                            title="First Page"
+                        >
+                            <ChevronsLeft className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={() => paginate(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className={`px-3 py-1 rounded-md ${
+                                currentPage === 1
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+
+                        {getPageNumbers().map((page, index) => (
+                            <button
+                                key={index}
+                                onClick={() => paginate(page)}
+                                className={`px-3 py-1 rounded-md ${
+                                    page === currentPage
+                                        ? 'bg-blue-600 text-white'
+                                        : page === '...'
+                                            ? 'bg-transparent text-gray-500 cursor-default'
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                                disabled={page === '...'}
+                            >
+                                {page === '...' ? <MoreHorizontal className="h-4 w-4" /> : page}
+                            </button>
+                        ))}
+
+                        <button
+                            onClick={() => paginate(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className={`px-3 py-1 rounded-md ${
+                                currentPage === totalPages
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className={`px-3 py-1 rounded-md ${
+                                currentPage === totalPages
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                            title="Last Page"
+                        >
+                            <ChevronsRight className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Empty State */}
+            {!listLoading && customers.length === 0 && (
                 <div className="text-center py-12">
                     <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
@@ -510,18 +737,20 @@ const CustomerDetails: React.FC<{
     };
 
     const handleSaveEdit = async () => {
-        if (!customer || !editData) return;
+        if (!customer) return;
 
         try {
             // Update tbl_users table
+            console.log('Edit Data:', editData);
+
             const { error: userError } = await supabase
                 .from('tbl_users')
                 .update({
                     tu_email: editData.email,
-                    tu_is_verified: editData.isVerified,
-                    tu_email_verified: editData.emailVerified,
-                    tu_mobile_verified: editData.mobileVerified,
-                    tu_is_active: editData.isActive
+                    tu_is_verified: editData.email_verified || editData.mobile_verified,
+                    tu_email_verified: editData.email_verified,
+                    tu_mobile_verified: editData.mobile_verified,
+                    tu_is_active: editData.is_active
                 })
                 .eq('tu_id', customer.tu_id);
 
@@ -531,8 +760,8 @@ const CustomerDetails: React.FC<{
             const { error: profileError } = await supabase
                 .from('tbl_user_profiles')
                 .update({
-                    tup_first_name: editData.firstName,
-                    tup_last_name: editData.lastName,
+                    tup_first_name: editData.first_name,
+                    tup_last_name: editData.last_name,
                     tup_username: editData.username,
                     tup_mobile: editData.mobile,
                     tup_gender: editData.gender

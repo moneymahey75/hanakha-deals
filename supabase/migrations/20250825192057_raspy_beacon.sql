@@ -610,3 +610,19 @@ INSERT INTO tbl_daily_tasks (
 -- For now, we'll create a function that can be called manually or via cron
 COMMENT ON FUNCTION expire_daily_tasks() IS 'Run this function daily at midnight to expire tasks';
 COMMENT ON FUNCTION assign_daily_tasks_to_users() IS 'Run this function when new daily tasks are created';
+
+CREATE OR REPLACE FUNCTION update_wallets_updated_at()
+    RETURNS trigger AS $$
+BEGIN
+    NEW.tw_updated_at = now();
+RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+SELECT
+    trigger_name,
+    event_object_table,
+    event_object_schema AS table_schema
+FROM information_schema.triggers
+WHERE trigger_name LIKE '%update_updated_at%';
