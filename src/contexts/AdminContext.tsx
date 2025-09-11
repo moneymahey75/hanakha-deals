@@ -12,6 +12,12 @@ interface GeneralSettings {
   defaultParentAccount: string;
   jobSeekerVideoUrl?: string;
   jobProviderVideoUrl?: string;
+  paymentMode?: boolean;
+  usdtAddress?: string;
+  subscriptionContractAddress?: string;
+  investmentContractAddress?: string;
+  subscriptionWalletAddress?: string;
+  investmentWalletAddress?: string;
 }
 
 interface SMSGateway {
@@ -73,9 +79,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
     referralMandatory: false,
-    defaultParentAccount: 'admin-default',
+    defaultParentAccount: '',
     jobSeekerVideoUrl: '',
-    jobProviderVideoUrl: ''
+    jobProviderVideoUrl: '',
+    paymentMode: false,
+    usdtAddress: '',
+    subscriptionContractAddress: '',
+    investmentContractAddress: '',
+    subscriptionWalletAddress: '',
+    investmentWalletAddress: ''
   };
 
   const [settings, setSettings] = useState<GeneralSettings>(defaultSettings);
@@ -173,6 +185,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'job_provider_video_url':
                 loadedSettings.jobProviderVideoUrl = value;
+                break;
+              case 'payment_mode':
+                loadedSettings.paymentMode = value;
+                break;
+              case 'usdt_address':
+                loadedSettings.usdtAddress = value;
+                break;
+              case 'subscription_contract_address':
+                loadedSettings.subscriptionContractAddress = value;
+                break;
+              case 'investment_contract_address':
+                loadedSettings.investmentContractAddress = value;
+                break;
+              case 'subscription_wallet_address':
+                loadedSettings.subscriptionWalletAddress = value;
+                break;
+              case 'investment_wallet_address':
+                loadedSettings.investmentWalletAddress = value;
                 break;
             }
           } catch (parseError) {

@@ -6,6 +6,7 @@ import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
 import SMTPSettings from '../../components/admin/SMTPSettings';
 import SMSSettings from '../../components/admin/SMSSettings';
+import PaymentSettings from '../../components/admin/PaymentSettings';
 import AdminManagement from '../../components/admin/AdminManagement';
 import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
 import CompanyManagement from '../../components/admin/CompanyManagement';
@@ -216,7 +217,8 @@ const AdminDashboard: React.FC = () => {
     { id: 'general', label: 'General Settings', icon: Globe },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck },
     { id: 'smtp', label: 'Email Settings', icon: FileText },
-    { id: 'sms', label: 'SMS Settings', icon: FileText }
+    { id: 'sms', label: 'SMS Settings', icon: FileText },
+    { id: 'payment', label: 'Payment Settings', icon: FileText }
   ];
 
   return (
@@ -394,7 +396,7 @@ const AdminDashboard: React.FC = () => {
             <CouponManagement />
           )}
 
-          {activeTab === 'tasks' && hasPermission('users', 'read') && (
+          {activeTab === 'tasks' && hasPermission('dailytasks', 'read') && (
             <DailyTaskManagement />
           )}
 
@@ -450,6 +452,7 @@ const AdminDashboard: React.FC = () => {
                   {settingsTab === 'registration' && <RegistrationSettings />}
                   {settingsTab === 'smtp' && <SMTPSettings />}
                   {settingsTab === 'sms' && <SMSSettings />}
+                  {settingsTab === 'payment' && <PaymentSettings />}
                 </div>
               </div>
             </div>

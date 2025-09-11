@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import {
   Calendar,
   Plus,
@@ -15,10 +15,10 @@ import {
   X,
   Link as LinkIcon,
   Target,
-  Clock,
   Users,
   Award,
-  CalendarClock
+  CalendarClock,
+  Edit
 } from 'lucide-react';
 
 interface DailyTask {
@@ -43,13 +43,14 @@ interface DailyTask {
 }
 
 const DailyTaskManagement: React.FC = () => {
-  const { user } = useAuth();
+  const { admin, loading: authLoading } = useAdminAuth();
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('today');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const notification = useNotification();
 
@@ -68,10 +69,24 @@ const DailyTaskManagement: React.FC = () => {
     is_active: true
   });
 
+  const [editTask, setEditTask] = useState({
+    id: '',
+    task_type: 'coupon_share' as 'coupon_share' | 'social_share' | 'video_share' | 'custom',
+    title: '',
+    description: '',
+    content_url: '',
+    coupon_id: '',
+    reward_amount: 0.5,
+    task_date: '',
+    expires_at: '',
+    is_active: true
+  });
+
   useEffect(() => {
-    loadTasks();
-    // eslint-disable-next-line
-  }, [selectedDate]);
+    if (!authLoading) {
+      loadTasks();
+    }
+  }, [selectedDate, authLoading]);
 
   const loadTasks = async () => {
     try {
@@ -108,8 +123,16 @@ const DailyTaskManagement: React.FC = () => {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id) {
-      notification.showError('Error', 'User not authenticated');
+
+    // Debug: Check what the admin object contains
+    console.log('Admin object:', admin);
+
+    // Get the admin ID - try different possible property names
+    const adminId = admin?.tau_id || admin?.id || admin?.admin_id;
+
+    if (!adminId) {
+      console.error('Admin ID not found. Admin object:', admin);
+      notification.showError('Error', 'Admin not authenticated. Please log in again.');
       return;
     }
 
@@ -117,7 +140,7 @@ const DailyTaskManagement: React.FC = () => {
       const { error } = await supabase
           .from('tbl_daily_tasks')
           .insert({
-            tdt_created_by: user.id,
+            tdt_created_by: adminId,
             tdt_task_type: newTask.task_type,
             tdt_title: newTask.title,
             tdt_description: newTask.description,
@@ -135,8 +158,39 @@ const DailyTaskManagement: React.FC = () => {
       setShowCreateModal(false);
       resetNewTask();
       loadTasks();
-    } catch (error) {
-      notification.showError('Creation Failed', 'Failed to create daily task');
+    } catch (error: any) {
+      console.error('Create task error:', error);
+      notification.showError('Creation Failed', error.message || 'Failed to create daily task');
+    }
+  };
+
+  const handleEditTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const { error } = await supabase
+          .from('tbl_daily_tasks')
+          .update({
+            tdt_task_type: editTask.task_type,
+            tdt_title: editTask.title,
+            tdt_description: editTask.description,
+            tdt_content_url: editTask.content_url,
+            tdt_coupon_id: editTask.coupon_id || null,
+            tdt_reward_amount: editTask.reward_amount,
+            tdt_task_date: editTask.task_date,
+            tdt_expires_at: new Date(editTask.expires_at).toISOString(),
+            tdt_is_active: editTask.is_active
+          })
+          .eq('tdt_id', editTask.id);
+
+      if (error) throw error;
+
+      notification.showSuccess('Task Updated', 'Daily task has been updated successfully');
+      setShowEditModal(false);
+      loadTasks();
+    } catch (error: any) {
+      console.error('Edit task error:', error);
+      notification.showError('Update Failed', error.message || 'Failed to update daily task');
     }
   };
 
@@ -169,6 +223,22 @@ const DailyTaskManagement: React.FC = () => {
       expires_at: new Date(new Date().setHours(23, 59, 59, 999)).toISOString(),
       is_active: true
     });
+  };
+
+  const openEditModal = (task: DailyTask) => {
+    setEditTask({
+      id: task.tdt_id,
+      task_type: task.tdt_task_type,
+      title: task.tdt_title,
+      description: task.tdt_description || '',
+      content_url: task.tdt_content_url || '',
+      coupon_id: task.tdt_coupon_id || '',
+      reward_amount: task.tdt_reward_amount,
+      task_date: task.tdt_task_date,
+      expires_at: task.tdt_expires_at,
+      is_active: task.tdt_is_active
+    });
+    setShowEditModal(true);
   };
 
   const getTaskIcon = (taskType: string) => {
@@ -224,6 +294,34 @@ const DailyTaskManagement: React.FC = () => {
       })
     };
   };
+
+  if (authLoading) {
+    return (
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                  <div key={i} className="h-16 bg-gray-200 rounded"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+    );
+  }
+
+  if (!admin) {
+    return (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center">
+          <div className="py-12">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Authentication Required</h3>
+            <p className="text-gray-600 mb-4">
+              Please sign in to manage daily tasks
+            </p>
+          </div>
+        </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -432,6 +530,12 @@ const DailyTaskManagement: React.FC = () => {
                             <span>View</span>
                           </button>
                           <button
+                              onClick={() => openEditModal(task)}
+                              className="bg-yellow-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-yellow-700 transition-colors"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
                               onClick={() => handleDeleteTask(task.tdt_id)}
                               className="bg-red-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
                           >
@@ -606,11 +710,32 @@ const DailyTaskManagement: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3 mt-6 pt-4 border-t border-gray-200">
+                  <button
+                      onClick={() => {
+                        setShowTaskDetails(false);
+                        openEditModal(selectedTask);
+                      }}
+                      className="flex-1 bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Edit className="h-4 w-4" />
+                    <span>Edit Task</span>
+                  </button>
+                  <button
+                      onClick={() => handleDeleteTask(selectedTask.tdt_id)}
+                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete Task</span>
+                  </button>
+                </div>
               </div>
             </div>
         )}
 
-        {/* Create Task Modal - Simplified */}
+        {/* Create Task Modal */}
         {showCreateModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -748,6 +873,149 @@ const DailyTaskManagement: React.FC = () => {
                     >
                       <Save className="h-4 w-4" />
                       <span>Create Task</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+        )}
+
+        {/* Edit Task Modal */}
+        {showEditModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Edit Daily Task</h3>
+                  <button
+                      onClick={() => {
+                        setShowEditModal(false);
+                      }}
+                      className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleEditTask} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Task Type *
+                    </label>
+                    <select
+                        value={editTask.task_type}
+                        onChange={(e) => setEditTask(prev => ({ ...prev, task_type: e.target.value as any }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="coupon_share">Coupon Share</option>
+                      <option value="social_share">Social Share</option>
+                      <option value="video_share">Video Share</option>
+                      <option value="custom">Custom Task</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Task Title *
+                      </label>
+                      <input
+                          type="text"
+                          required
+                          value={editTask.title}
+                          onChange={(e) => setEditTask(prev => ({ ...prev, title: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="e.g., Share Summer Sale Coupon"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Reward Amount (USDT) *
+                      </label>
+                      <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.01"
+                          value={editTask.reward_amount}
+                          onChange={(e) => setEditTask(prev => ({ ...prev, reward_amount: parseFloat(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="0.50"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                        value={editTask.description}
+                        onChange={(e) => setEditTask(prev => ({ ...prev, description: e.target.value }))}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Describe what users need to do..."
+                    />
+                  </div>
+
+                  {(editTask.task_type === 'social_share' || editTask.task_type === 'video_share') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Content URL *
+                        </label>
+                        <input
+                            type="url"
+                            required
+                            value={editTask.content_url}
+                            onChange={(e) => setEditTask(prev => ({ ...prev, content_url: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="https://instagram.com/p/example or https://youtube.com/watch?v=example"
+                        />
+                      </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Task Date *
+                    </label>
+                    <input
+                        type="date"
+                        required
+                        value={editTask.task_date}
+                        onChange={(e) => setEditTask(prev => ({ ...prev, task_date: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                        type="checkbox"
+                        id="edit_is_active"
+                        checked={editTask.is_active}
+                        onChange={(e) => setEditTask(prev => ({ ...prev, is_active: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="edit_is_active" className="ml-2 block text-sm text-gray-700">
+                      Task is active and available to customers
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                    <button
+                        type="button"
+                        onClick={() => {
+                          setShowEditModal(false);
+                        }}
+                        className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      <span>Update Task</span>
                     </button>
                   </div>
                 </form>
