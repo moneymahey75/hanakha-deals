@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMLM } from '../../contexts/MLMContext';
-import BinaryTreeVisualizer from '../../components/mlm/BinaryTreeVisualizer';
 import ReferralLinkGenerator from '../../components/mlm/ReferralLinkGenerator';
 import TransactionsDashboard from '../../components/customer/TransactionsDashboard';
 import DailyTasksDashboard from '../../components/customer/DailyTasksDashboard';
@@ -33,6 +32,7 @@ import {
   Bell,
   HelpCircle
 } from 'lucide-react';
+import MyNetwork from "../../components/mlm/MyNetwork.tsx";
 
 // Define interfaces for the data we expect from the API
 interface DashboardStats {
@@ -90,7 +90,6 @@ const CustomerDashboard: React.FC = () => {
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'network', label: 'My Network', icon: Users },
-    { id: 'tree', label: 'Binary Tree', icon: GitBranch },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare },
     { id: 'interactions', label: 'My Coupons', icon: Ticket },
@@ -424,79 +423,21 @@ const CustomerDashboard: React.FC = () => {
 
                 {activeTab === 'network' && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Network Overview</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                        <div className="bg-blue-50 p-6 rounded-lg">
-                          <h4 className="font-semibold text-blue-900">Direct Referrals</h4>
-                          <p className="text-2xl font-bold text-blue-600 mt-2">{dashboardStats.directReferrals}</p>
-                        </div>
-                        <div className="bg-green-50 p-6 rounded-lg">
-                          <h4 className="font-semibold text-green-900">Total Network</h4>
-                          <p className="text-2xl font-bold text-green-600 mt-2">{dashboardStats.totalDownline}</p>
-                        </div>
-                        <div className="bg-purple-50 p-6 rounded-lg">
-                          <h4 className="font-semibold text-purple-900">Left Side</h4>
-                          <p className="text-2xl font-bold text-purple-600 mt-2">{dashboardStats.leftSideCount}</p>
-                        </div>
-                        <div className="bg-yellow-50 p-6 rounded-lg">
-                          <h4 className="font-semibold text-yellow-900">Right Side</h4>
-                          <p className="text-2xl font-bold text-yellow-600 mt-2">{dashboardStats.rightSideCount}</p>
-                        </div>
-                      </div>
-
-                      {/* Network Balance */}
-                      <div className="bg-white border border-gray-200 rounded-lg p-6">
-                        <h4 className="font-semibold text-gray-900 mb-4">Network Balance</h4>
-                        <div className="flex items-center space-x-4">
-                          <div className="flex-1">
-                            <div className="flex justify-between text-sm mb-1">
-                              <span>Left Side</span>
-                              <span>{dashboardStats.leftSideCount} members</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                  className="bg-blue-600 h-2 rounded-full"
-                                  style={{
-                                    width: `${dashboardStats.totalDownline > 0 ? (dashboardStats.leftSideCount / dashboardStats.totalDownline) * 100 : 0}%`
-                                  }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between text-sm mb-1">
-                              <span>Right Side</span>
-                              <span>{dashboardStats.rightSideCount} members</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                  className="bg-green-600 h-2 rounded-full"
-                                  style={{
-                                    width: `${dashboardStats.totalDownline > 0 ? (dashboardStats.rightSideCount / dashboardStats.totalDownline) * 100 : 0}%`
-                                  }}
-                              ></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                )}
-
-                {activeTab === 'tree' && (
-                    <div>
                       {treeLoading ? (
                           <div className="text-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                            <p className="text-gray-500 mt-2">Loading tree data...</p>
+                            <p className="text-gray-500 mt-2">Loading network data...</p>
                           </div>
                       ) : (
-                          <BinaryTreeVisualizer
-                              userId={user?.id || ''}
+                          <MyNetwork
                               treeData={treeData}
-                              showStats={true}
+                              dashboardStats={dashboardStats}
+                              userId={user?.id || ''}
                           />
                       )}
                     </div>
                 )}
+
 
                 {activeTab === 'transactions' && (
                     <div>
