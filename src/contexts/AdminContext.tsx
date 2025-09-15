@@ -8,6 +8,7 @@ interface GeneralSettings {
   timezone: string;
   emailVerificationRequired: boolean;
   mobileVerificationRequired: boolean;
+  eitherVerificationRequired: boolean;
   referralMandatory: boolean;
   defaultParentAccount: string;
   jobSeekerVideoUrl?: string;
@@ -46,13 +47,13 @@ interface SubscriptionPlan {
 
 interface AdminContextType {
   settings: GeneralSettings;
-  smsGateway: SMSGateway;
-  emailSMTP: EmailSMTP;
+  smsSettings: SMSGateway; // Renamed from smsGateway
+  emailSettings: EmailSMTP; // Renamed from emailSMTP
   subscriptionPlans: SubscriptionPlan[];
   loading: boolean;
   updateSettings: (settings: Partial<GeneralSettings>) => void;
-  updateSMSGateway: (gateway: SMSGateway) => void;
-  updateEmailSMTP: (smtp: EmailSMTP) => void;
+  updateSMSSettings: (gateway: SMSGateway) => void; // Renamed
+  updateEmailSettings: (smtp: EmailSMTP) => void; // Renamed
   updateSubscriptionPlans: (plans: SubscriptionPlan[]) => void;
   refreshSettings: () => Promise<void>;
 }
@@ -78,6 +79,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     timezone: 'UTC',
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
+    eitherVerificationRequired: true,
     referralMandatory: false,
     defaultParentAccount: '',
     jobSeekerVideoUrl: '',
@@ -153,7 +155,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         settingsData.forEach((setting) => {
           try {
-            const value = JSON.parse(setting.tss_setting_value);
+            let value;
+
+            // Try to parse as JSON first
+            try {
+              value = JSON.parse(setting.tss_setting_value);
+            } catch (parseError) {
+              // If parsing fails, use the raw string value
+              value = setting.tss_setting_value;
+            }
 
             switch (setting.tss_setting_key) {
               case 'site_name':
@@ -173,6 +183,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'mobile_verification_required':
                 loadedSettings.mobileVerificationRequired = value;
+                break;
+              case 'either_verification_required':
+                loadedSettings.eitherVerificationRequired = value;
                 break;
               case 'referral_mandatory':
                 loadedSettings.referralMandatory = value;
@@ -204,9 +217,34 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'investment_wallet_address':
                 loadedSettings.investmentWalletAddress = value;
                 break;
+                // Add cases for SMS and SMTP settings
+              case 'sms_gateway_provider':
+                // You might want to handle these differently
+                break;
+              case 'sms_gateway_account_sid':
+                // You might want to handle these differently
+                break;
+              case 'sms_gateway_auth_token':
+                // You might want to handle these differently
+                break;
+              case 'sms_gateway_from_number':
+                // You might want to handle these differently
+                break;
+              case 'smtp_host':
+                // You might want to handle these differently
+                break;
+              case 'smtp_username':
+                // You might want to handle these differently
+                break;
+              case 'smtp_password':
+                // You might want to handle these differently
+                break;
+              case 'smtp_encryption':
+                // You might want to handle these differently
+                break;
             }
-          } catch (parseError) {
-            console.error(`Error parsing setting ${setting.tss_setting_key}:`, parseError);
+          } catch (error) {
+            console.error(`Error processing setting ${setting.tss_setting_key}:`, error);
           }
         });
 

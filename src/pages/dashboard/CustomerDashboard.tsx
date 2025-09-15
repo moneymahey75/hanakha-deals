@@ -89,13 +89,13 @@ const CustomerDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'network', label: 'My Network', icon: Users },
-    { id: 'transactions', label: 'Transactions', icon: CreditCard },
-    { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare },
     { id: 'interactions', label: 'My Coupons', icon: Ticket },
-    { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
+    { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare },
+    { id: 'network', label: 'My Network', icon: Users },
     { id: 'payments', label: 'Payment History', icon: CreditCard },
+    { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
+    { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
     // { id: 'settings', label: 'Settings', icon: Settings },
     // { id: 'help', label: 'Help & Support', icon: HelpCircle }

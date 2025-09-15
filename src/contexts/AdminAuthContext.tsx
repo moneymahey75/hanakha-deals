@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, sessionManager } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useNotification } from '../components/ui/NotificationProvider';
 
 interface AdminUser {

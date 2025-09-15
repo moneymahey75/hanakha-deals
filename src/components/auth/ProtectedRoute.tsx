@@ -2,17 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { sessionUtils } from '../../utils/sessionUtils';
+import { supabase } from '../../lib/supabase';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   userType: 'customer' | 'company' | 'admin';
+  requiresVerification?: boolean;
+  requiresSubscription?: boolean;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) => {
-  const { user, loading } = useAuth();
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+                                                         children,
+                                                         userType,
+                                                         requiresVerification = true,
+                                                         requiresSubscription = true
+                                                       }) => {
+  const { user, loading, checkVerificationStatus } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
+  const [verificationStatus, setVerificationStatus] = useState<{
+    needsVerification: boolean;
+    settings: any;
+  } | null>(null);
 
   useEffect(() => {
     // Additional session check when route changes
@@ -30,6 +42,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) =
           console.log('🔒 No valid session found in ProtectedRoute');
           // Session will be cleared by sessionUtils, no need to clear here
         }
+
+        // If user exists and verification is required, check verification status
+        if (user && requiresVerification) {
+          console.log('🔍 Checking verification status for user:', user.id);
+          const status = await checkVerificationStatus(user.id);
+          setVerificationStatus(status);
+          console.log('📋 Verification status:', status);
+        }
       } catch (error) {
         console.error('❌ Error checking session in ProtectedRoute:', error);
       } finally {
@@ -38,7 +58,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) =
     };
 
     checkSession();
-  }, [location.pathname, loading]);
+  }, [location.pathname, loading, user?.id, requiresVerification, checkVerificationStatus]);
 
   // Show loading spinner while checking authentication
   if (loading || isChecking) {
@@ -74,14 +94,83 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, userType }) =
     return <Navigate to={`/${userType}/login`} replace state={{ from: location }} />;
   }
 
-  // Check if user has active subscription (mandatory for all authenticated pages except payment)
-  if (user.userType !== 'admin' && !user.hasActiveSubscription) {
-    // Allow access to payment and subscription-plans pages only
-    if (location.pathname !== '/payment' && 
-        location.pathname !== '/subscription-plans' && 
-        !location.pathname.startsWith('/verify-otp')) {
+  // Check verification status if required
+  if (requiresVerification && verificationStatus?.needsVerification) {
+    // Allow access to verification page itself
+    if (!location.pathname.startsWith('/verify-otp')) {
+      console.log('🔐 User needs verification, redirecting to verify-otp');
+
+      // Get user mobile number for verification
+      const getUserMobile = async () => {
+        try {
+          const { data: profileData } = await supabase
+              .from('tbl_user_profiles')
+              .select('tup_mobile')
+              .eq('tup_user_id', user.id)
+              .single();
+
+          return profileData?.tup_mobile || '';
+        } catch (error) {
+          console.warn('Could not fetch user mobile:', error);
+          return '';
+        }
+      };
+
+      // Get mobile and redirect
+      getUserMobile().then(mobile => {
+        navigate('/verify-otp', {
+          state: {
+            userId: user.id,
+            email: user.email,
+            mobile: mobile,
+            verificationSettings: {
+              emailRequired: verificationStatus.settings?.emailVerificationRequired || false,
+              mobileRequired: verificationStatus.settings?.mobileVerificationRequired || false,
+              eitherRequired: verificationStatus.settings?.eitherVerificationRequired || false
+            },
+            from: location
+          },
+          replace: true
+        });
+      });
+
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Redirecting to verification...</p>
+            </div>
+          </div>
+      );
+    }
+  }
+
+  // Check if user has active subscription (mandatory for all authenticated pages except specific pages)
+  if (requiresSubscription && user.userType !== 'admin' && !user.hasActiveSubscription) {
+    // Allow access to specific pages without subscription
+    const allowedWithoutSubscription = [
+      '/payment',
+      '/subscription-plans',
+      '/verify-otp'
+    ];
+
+    const isAllowedPage = allowedWithoutSubscription.some(path =>
+        location.pathname === path || location.pathname.startsWith(path)
+    );
+
+    if (!isAllowedPage) {
       console.log('🔒 No active subscription, redirecting to subscription plans');
-      return <Navigate to="/subscription-plans" replace state={{ from: location, requiresSubscription: true }} />;
+      return (
+          <Navigate
+              to="/subscription-plans"
+              replace
+              state={{
+                from: location,
+                requiresSubscription: true,
+                message: 'Please select a subscription plan to continue using our services.'
+              }}
+          />
+      );
     }
   }
 

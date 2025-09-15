@@ -8,8 +8,8 @@ const AdminLogin: React.FC = () => {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: 'admin@mlmplatform.com',
+    password: 'Admin@123456'
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');

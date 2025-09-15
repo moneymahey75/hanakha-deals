@@ -104,8 +104,6 @@ Default admin credentials:
 - [ ] Environment variables configured
 - [ ] Database migrations applied
 - [ ] Edge functions deployed
-- [ ] SMTP settings configured and tested
-- [ ] SMS settings configured and tested
 - [ ] Admin password changed
 - [ ] SSL certificate active (automatic with Netlify)
 - [ ] Custom domain configured (optional)

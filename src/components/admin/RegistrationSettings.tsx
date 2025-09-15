@@ -6,7 +6,8 @@ const RegistrationSettings: React.FC = () => {
     const [formData, setFormData] = useState({
         emailVerificationRequired: true,
         mobileVerificationRequired: true,
-        referralMandatory: false
+        referralMandatory: false,
+        eitherVerificationRequired: false // New field
     });
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -23,7 +24,12 @@ const RegistrationSettings: React.FC = () => {
                 const { data, error } = await supabase
                     .from('tbl_system_settings')
                     .select('tss_setting_key, tss_setting_value')
-                    .in('tss_setting_key', ['email_verification_required', 'mobile_verification_required', 'referral_mandatory']);
+                    .in('tss_setting_key', [
+                        'email_verification_required',
+                        'mobile_verification_required',
+                        'referral_mandatory',
+                        'either_verification_required' // New setting
+                    ]);
 
                 if (error) {
                     console.warn('Failed to load settings from database, using defaults:', error);
@@ -31,7 +37,8 @@ const RegistrationSettings: React.FC = () => {
                     setFormData({
                         emailVerificationRequired: true,
                         mobileVerificationRequired: true,
-                        referralMandatory: false
+                        referralMandatory: false,
+                        eitherVerificationRequired: false
                     });
                 } else {
                     const settingsMap = data?.reduce((acc: any, setting: any) => {
@@ -43,6 +50,7 @@ const RegistrationSettings: React.FC = () => {
                             if (setting.tss_setting_key === 'email_verification_required') acc[setting.tss_setting_key] = true;
                             if (setting.tss_setting_key === 'mobile_verification_required') acc[setting.tss_setting_key] = true;
                             if (setting.tss_setting_key === 'referral_mandatory') acc[setting.tss_setting_key] = false;
+                            if (setting.tss_setting_key === 'either_verification_required') acc[setting.tss_setting_key] = false;
                         }
                         return acc;
                     }, {}) || {};
@@ -50,7 +58,8 @@ const RegistrationSettings: React.FC = () => {
                     setFormData({
                         emailVerificationRequired: settingsMap.email_verification_required ?? true,
                         mobileVerificationRequired: settingsMap.mobile_verification_required ?? true,
-                        referralMandatory: settingsMap.referral_mandatory ?? false
+                        referralMandatory: settingsMap.referral_mandatory ?? false,
+                        eitherVerificationRequired: settingsMap.either_verification_required ?? false
                     });
                 }
             } catch (dbError) {
@@ -59,7 +68,8 @@ const RegistrationSettings: React.FC = () => {
                 setFormData({
                     emailVerificationRequired: true,
                     mobileVerificationRequired: true,
-                    referralMandatory: false
+                    referralMandatory: false,
+                    eitherVerificationRequired: false
                 });
             }
         } catch (error) {
@@ -68,7 +78,8 @@ const RegistrationSettings: React.FC = () => {
             setFormData({
                 emailVerificationRequired: true,
                 mobileVerificationRequired: true,
-                referralMandatory: false
+                referralMandatory: false,
+                eitherVerificationRequired: false
             });
         } finally {
             setLoading(false);
@@ -98,6 +109,11 @@ const RegistrationSettings: React.FC = () => {
                         tss_setting_key: 'referral_mandatory',
                         tss_setting_value: JSON.stringify(formData.referralMandatory),
                         tss_description: 'Make referral code mandatory for registration'
+                    },
+                    {
+                        tss_setting_key: 'either_verification_required',
+                        tss_setting_value: JSON.stringify(formData.eitherVerificationRequired),
+                        tss_description: 'Allow users to verify either email or mobile (but not both)'
                     }
                 ];
 
@@ -136,10 +152,37 @@ const RegistrationSettings: React.FC = () => {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: checked
-        }));
+
+        // Handle the eitherVerificationRequired toggle
+        if (name === 'eitherVerificationRequired' && checked) {
+            // If enabling "either verification", disable both email and mobile verification
+            setFormData(prev => ({
+                ...prev,
+                eitherVerificationRequired: checked,
+                emailVerificationRequired: false,
+                mobileVerificationRequired: false
+            }));
+        } else if (name === 'emailVerificationRequired' && checked) {
+            // If enabling email verification, disable "either verification"
+            setFormData(prev => ({
+                ...prev,
+                emailVerificationRequired: checked,
+                eitherVerificationRequired: false
+            }));
+        } else if (name === 'mobileVerificationRequired' && checked) {
+            // If enabling mobile verification, disable "either verification"
+            setFormData(prev => ({
+                ...prev,
+                mobileVerificationRequired: checked,
+                eitherVerificationRequired: false
+            }));
+        } else {
+            // For all other cases, just update the field that changed
+            setFormData(prev => ({
+                ...prev,
+                [name]: checked
+            }));
+        }
     };
 
     if (loading) {
@@ -183,8 +226,8 @@ const RegistrationSettings: React.FC = () => {
                         <span className={`text-sm font-medium ${
                             saveResult.success ? 'text-green-800' : 'text-red-800'
                         }`}>
-              {saveResult.message}
-            </span>
+                            {saveResult.message}
+                        </span>
                     </div>
                 </div>
             )}
@@ -211,9 +254,19 @@ const RegistrationSettings: React.FC = () => {
                                             name="emailVerificationRequired"
                                             checked={formData.emailVerificationRequired}
                                             onChange={handleChange}
+                                            disabled={formData.eitherVerificationRequired}
                                             className="sr-only peer"
                                         />
-                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                        <div className={`w-11 h-6 rounded-full peer 
+                                            ${formData.eitherVerificationRequired
+                                            ? 'bg-gray-300'
+                                            : 'bg-gray-200 peer-checked:bg-blue-600'} 
+                                            peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 
+                                            after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                                            after:bg-white after:border-gray-300 after:border after:rounded-full 
+                                            after:h-5 after:w-5 after:transition-all 
+                                            ${formData.emailVerificationRequired ? 'after:translate-x-full after:border-white' : ''}`}>
+                                        </div>
                                     </label>
                                 </div>
                                 <div className="mt-3 text-sm text-gray-500">
@@ -221,6 +274,9 @@ const RegistrationSettings: React.FC = () => {
                                         <span className="text-green-600">✓ Email verification is required</span>
                                     ) : (
                                         <span className="text-gray-500">Email verification is optional</span>
+                                    )}
+                                    {formData.eitherVerificationRequired && (
+                                        <span className="text-gray-500"> (disabled when "Either Verification" is enabled)</span>
                                     )}
                                 </div>
                             </div>
@@ -247,9 +303,19 @@ const RegistrationSettings: React.FC = () => {
                                             name="mobileVerificationRequired"
                                             checked={formData.mobileVerificationRequired}
                                             onChange={handleChange}
+                                            disabled={formData.eitherVerificationRequired}
                                             className="sr-only peer"
                                         />
-                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                        <div className={`w-11 h-6 rounded-full peer 
+                                            ${formData.eitherVerificationRequired
+                                            ? 'bg-gray-300'
+                                            : 'bg-gray-200 peer-checked:bg-green-600'} 
+                                            peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 
+                                            after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                                            after:bg-white after:border-gray-300 after:border after:rounded-full 
+                                            after:h-5 after:w-5 after:transition-all 
+                                            ${formData.mobileVerificationRequired ? 'after:translate-x-full after:border-white' : ''}`}>
+                                        </div>
                                     </label>
                                 </div>
                                 <div className="mt-3 text-sm text-gray-500">
@@ -257,6 +323,58 @@ const RegistrationSettings: React.FC = () => {
                                         <span className="text-green-600">✓ Mobile verification is required</span>
                                     ) : (
                                         <span className="text-gray-500">Mobile verification is optional</span>
+                                    )}
+                                    {formData.eitherVerificationRequired && (
+                                        <span className="text-gray-500"> (disabled when "Either Verification" is enabled)</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Either Verification */}
+                    <div className="border border-gray-200 rounded-lg p-6">
+                        <div className="flex items-start space-x-4">
+                            <div className="bg-orange-100 p-2 rounded-lg mt-1">
+                                <UserCheck className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-lg font-medium text-gray-900">Either Verification</h4>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            Allow users to verify either email or mobile (but not both required)
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            name="eitherVerificationRequired"
+                                            checked={formData.eitherVerificationRequired}
+                                            onChange={handleChange}
+                                            disabled={formData.emailVerificationRequired || formData.mobileVerificationRequired}
+                                            className="sr-only peer"
+                                        />
+                                        <div className={`w-11 h-6 rounded-full peer 
+                                            ${(formData.emailVerificationRequired || formData.mobileVerificationRequired)
+                                            ? 'bg-gray-300'
+                                            : 'bg-gray-200 peer-checked:bg-orange-600'} 
+                                            peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 
+                                            after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                                            after:bg-white after:border-gray-300 after:border after:rounded-full 
+                                            after:h-5 after:w-5 after:transition-all 
+                                            ${formData.eitherVerificationRequired ? 'after:translate-x-full after:border-white' : ''}`}>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div className="mt-3 text-sm text-gray-500">
+                                    {formData.eitherVerificationRequired ? (
+                                        <span className="text-orange-600">✓ Users can verify either email or mobile</span>
+                                    ) : (
+                                        <span className="text-gray-500">Both email and mobile verification are controlled separately</span>
+                                    )}
+                                    {(formData.emailVerificationRequired || formData.mobileVerificationRequired) && (
+                                        <span className="text-gray-500"> (disabled when email or mobile verification is enabled)</span>
                                     )}
                                 </div>
                             </div>
@@ -307,8 +425,14 @@ const RegistrationSettings: React.FC = () => {
                         <p className="mb-2">Based on your current settings, users will need to:</p>
                         <ol className="list-decimal list-inside space-y-1">
                             <li>Complete registration form</li>
-                            {formData.emailVerificationRequired && <li>Verify email address via OTP</li>}
-                            {formData.mobileVerificationRequired && <li>Verify mobile number via SMS OTP</li>}
+                            {formData.eitherVerificationRequired ? (
+                                <li>Verify either email address or mobile number via OTP</li>
+                            ) : (
+                                <>
+                                    {formData.emailVerificationRequired && <li>Verify email address via OTP</li>}
+                                    {formData.mobileVerificationRequired && <li>Verify mobile number via SMS OTP</li>}
+                                </>
+                            )}
                             <li>Choose and pay for subscription plan</li>
                             <li>Access dashboard and start using the platform</li>
                         </ol>

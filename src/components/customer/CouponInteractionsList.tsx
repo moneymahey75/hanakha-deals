@@ -20,7 +20,7 @@ import {
 
 interface CouponInteraction {
     tci_id: string;
-    tci_interaction_type: 'viewed' | 'liked' | 'disliked' | 'used' | 'unused';
+    tci_interaction_type: 'liked' | 'disliked' | 'used' | 'unused';
     tci_feedback_text: string;
     tci_created_at: string;
     tci_updated_at: string;
@@ -41,7 +41,7 @@ const CouponInteractionsList: React.FC = () => {
     const { user } = useAuth();
     const [interactions, setInteractions] = useState<CouponInteraction[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState<'all' | 'liked' | 'disliked' | 'used' | 'unused' | 'viewed'>('all');
+    const [filter, setFilter] = useState<'all' | 'liked' | 'disliked' | 'used' | 'unused'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const notification = useNotification();
 
@@ -141,7 +141,6 @@ const CouponInteractionsList: React.FC = () => {
             case 'disliked': return <ThumbsDown className="h-5 w-5 text-red-600" />;
             case 'used': return <CheckCircle className="h-5 w-5 text-blue-600" />;
             case 'unused': return <XCircle className="h-5 w-5 text-gray-600" />;
-            case 'viewed': return <Eye className="h-5 w-5 text-purple-600" />;
             default: return <Gift className="h-5 w-5 text-orange-600" />;
         }
     };
@@ -152,7 +151,6 @@ const CouponInteractionsList: React.FC = () => {
             case 'disliked': return 'Disliked';
             case 'used': return 'Used';
             case 'unused': return 'Not Used';
-            case 'viewed': return 'Viewed';
             default: return 'Interacted';
         }
     };
@@ -258,7 +256,6 @@ const CouponInteractionsList: React.FC = () => {
                         <option value="disliked">Disliked</option>
                         <option value="used">Used</option>
                         <option value="unused">Not Used</option>
-                        <option value="viewed">Viewed</option>
                     </select>
                 </div>
 
@@ -274,8 +271,8 @@ const CouponInteractionsList: React.FC = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {['all', 'liked', 'disliked', 'used', 'viewed'].map(type => {
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {['all', 'liked', 'disliked', 'used'].map(type => {
                     const count = type === 'all'
                         ? interactions.length
                         : interactions.filter(i => i.tci_interaction_type === type).length;

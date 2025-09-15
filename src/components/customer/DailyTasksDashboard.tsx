@@ -227,11 +227,9 @@ const DailyTasksDashboard: React.FC = () => {
                 }
             });
         }, 1000);
-
-        saveCouponInteraction(taskId, 'viewed');
     };
 
-    const saveCouponInteraction = async (couponId: string, interactionType: 'viewed' | 'liked' | 'disliked' | 'used' | 'unused', feedbackText: string = '') => {
+    const saveCouponInteraction = async (couponId: string, interactionType: 'liked' | 'disliked' | 'used' | 'unused', feedbackText: string = '') => {
         if (!user?.id) return;
 
         try {

@@ -4,8 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import GeneralSettings from '../../components/admin/GeneralSettings';
 import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
-import SMTPSettings from '../../components/admin/SMTPSettings';
-import SMSSettings from '../../components/admin/SMSSettings';
 import PaymentSettings from '../../components/admin/PaymentSettings';
 import AdminManagement from '../../components/admin/AdminManagement';
 import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
@@ -216,8 +214,6 @@ const AdminDashboard: React.FC = () => {
   const settingsTabs = [
     { id: 'general', label: 'General Settings', icon: Globe },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck },
-    { id: 'smtp', label: 'Email Settings', icon: FileText },
-    { id: 'sms', label: 'SMS Settings', icon: FileText },
     { id: 'payment', label: 'Payment Settings', icon: FileText }
   ];
 
@@ -450,8 +446,6 @@ const AdminDashboard: React.FC = () => {
                 <div className="flex-1 p-6">
                   {settingsTab === 'general' && <GeneralSettings />}
                   {settingsTab === 'registration' && <RegistrationSettings />}
-                  {settingsTab === 'smtp' && <SMTPSettings />}
-                  {settingsTab === 'sms' && <SMSSettings />}
                   {settingsTab === 'payment' && <PaymentSettings />}
                 </div>
               </div>

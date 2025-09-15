@@ -3,8 +3,27 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
 import { sendOTP, checkSponsorshipNumberExists } from '../../lib/supabase';
-import { Eye, EyeOff, User, Mail, Phone, Users } from 'lucide-react';
+import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
+
+// Country codes data
+const countryCodes = [
+  { code: '+91', country: 'India', flag: '🇮🇳' },
+  { code: '+972', country: 'Israel', flag: '🇮🇱' },
+  { code: '+1', country: 'United States', flag: '🇺🇸' },
+  { code: '+44', country: 'United Kingdom', flag: '🇬🇧' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺' },
+  { code: '+86', country: 'China', flag: '🇨🇳' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪' },
+  { code: '+33', country: 'France', flag: '🇫🇷' },
+  { code: '+81', country: 'Japan', flag: '🇯🇵' },
+  { code: '+82', country: 'South Korea', flag: '🇰🇷' },
+  { code: '+34', country: 'Spain', flag: '🇪🇸' },
+  { code: '+39', country: 'Italy', flag: '🇮🇹' },
+  { code: '+55', country: 'Brazil', flag: '🇧🇷' },
+  { code: '+7', country: 'Russia', flag: '🇷🇺' },
+  { code: '+27', country: 'South Africa', flag: '🇿🇦' },
+];
 
 const CustomerRegister: React.FC = () => {
   const { register } = useAuth();
@@ -18,6 +37,7 @@ const CustomerRegister: React.FC = () => {
     userName: '',
     email: '',
     mobile: '',
+    mobileCountryCode: '+91', // Default to India
     parentAccount: '',
     gender: '',
     password: '',
@@ -30,6 +50,7 @@ const CustomerRegister: React.FC = () => {
   const [error, setError] = useState('');
   const [validatingReferral, setValidatingReferral] = useState(false);
   const [referralValid, setReferralValid] = useState<boolean | null>(null);
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   // Extract referral code from URL query parameter
   useEffect(() => {
@@ -77,6 +98,13 @@ const CustomerRegister: React.FC = () => {
       return;
     }
 
+    // Validate mobile number format (10 digits)
+    if (formData.mobile && !/^\d{10}$/.test(formData.mobile)) {
+      setError('Mobile number must be exactly 10 digits');
+      setIsSubmitting(false);
+      return;
+    }
+
     // Validate referral code if provided
     if (formData.parentAccount) {
       console.log('🔍 Validating referral code:', formData.parentAccount);
@@ -101,27 +129,71 @@ const CustomerRegister: React.FC = () => {
         email: formData.email,
         firstName: formData.firstName,
         lastName: formData.lastName,
-        userName: formData.userName
+        userName: formData.userName,
+        mobile: formData.mobileCountryCode + formData.mobile // Combine country code and mobile number
       });
 
-      const userId = await register(formData, 'customer');
+      const userId = await register({
+        ...formData,
+        mobile: formData.mobileCountryCode + formData.mobile // Combine for registration
+      }, 'customer');
 
       console.log('✅ Registration successful, checking verification requirements...');
+      console.log('📋 Current verification settings:', {
+        emailVerificationRequired: settings.emailVerificationRequired,
+        mobileVerificationRequired: settings.mobileVerificationRequired,
+        eitherVerificationRequired: settings.eitherVerificationRequired
+      });
 
-      if (settings.mobileVerificationRequired) {
-        console.log('📱 Mobile verification required, redirecting to OTP...');
-        // Send OTP immediately after registration
+      // Determine if any verification is required
+      const needsVerification = settings.emailVerificationRequired ||
+          settings.mobileVerificationRequired ||
+          settings.eitherVerificationRequired;
+
+      if (needsVerification) {
+        console.log('🔐 Verification required, redirecting to OTP page...');
+
+        // Send OTP based on verification settings
         try {
-          console.log('📤 Sending mobile OTP for verification...');
-          await sendOTP(userId, formData.mobile, 'mobile');
-          console.log('✅ Mobile OTP sent successfully');
+          if (settings.emailVerificationRequired) {
+            console.log('📧 Sending email OTP...');
+            await sendOTP(userId, formData.email, 'email');
+            console.log('✅ Email OTP sent successfully');
+          }
+
+          if (settings.mobileVerificationRequired) {
+            console.log('📱 Sending mobile OTP...');
+            // Use the combined mobile number with country code for OTP
+            await sendOTP(userId, formData.mobileCountryCode + formData.mobile, 'mobile');
+            console.log('✅ Mobile OTP sent successfully');
+          }
+
+          if (settings.eitherVerificationRequired) {
+            // For "either verification", we'll send both but user only needs to verify one
+            console.log('🔄 Either verification enabled - sending both OTPs');
+            await sendOTP(userId, formData.email, 'email');
+            await sendOTP(userId, formData.mobileCountryCode + formData.mobile, 'mobile');
+          }
         } catch (otpError) {
           console.warn('⚠️ Failed to send OTP, but registration was successful:', otpError);
           // Don't fail registration if OTP sending fails
         }
-        navigate('/verify-otp');
+
+        // Redirect to verification page with settings context
+        navigate('/verify-otp', {
+          state: {
+            userId,
+            email: formData.email,
+            mobile: formData.mobileCountryCode + formData.mobile, // Pass combined mobile number
+            verificationSettings: {
+              emailRequired: settings.emailVerificationRequired,
+              mobileRequired: settings.mobileVerificationRequired,
+              eitherRequired: settings.eitherVerificationRequired
+            }
+          }
+        });
       } else {
-        console.log('💳 No mobile verification required, redirecting to subscription plans...');
+        console.log('💳 No verification required, redirecting to subscription plans...');
         navigate('/subscription-plans');
       }
     } catch (err) {
@@ -134,6 +206,18 @@ const CustomerRegister: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
+
+    // For mobile number, validate it's only digits and limit to 10 characters
+    if (name === 'mobile') {
+      if (value === '' || (/^\d*$/.test(value) && value.length <= 10)) {
+        setFormData(prev => ({
+          ...prev,
+          [name]: value
+        }));
+      }
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
@@ -143,6 +227,14 @@ const CustomerRegister: React.FC = () => {
     if (name === 'parentAccount') {
       setReferralValid(null);
     }
+  };
+
+  const handleCountryCodeSelect = (code: string) => {
+    setFormData(prev => ({
+      ...prev,
+      mobileCountryCode: code
+    }));
+    setShowCountryDropdown(false);
   };
 
   // Function to validate referral code
@@ -174,6 +266,9 @@ const CustomerRegister: React.FC = () => {
 
     return () => clearTimeout(timeoutId);
   }, [formData.parentAccount]);
+
+  // Get selected country details
+  const selectedCountry = countryCodes.find(country => country.code === formData.mobileCountryCode);
 
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -259,7 +354,7 @@ const CustomerRegister: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address *
+                    Email Address {settings.emailVerificationRequired || settings.eitherVerificationRequired ? '*' : ''}
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -269,7 +364,7 @@ const CustomerRegister: React.FC = () => {
                         id="email"
                         name="email"
                         type="email"
-                        required
+                        required={settings.emailVerificationRequired || settings.eitherVerificationRequired}
                         value={formData.email}
                         onChange={handleChange}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -280,23 +375,58 @@ const CustomerRegister: React.FC = () => {
 
                 <div>
                   <label htmlFor="mobile" className="block text-sm font-medium text-gray-700 mb-2">
-                    Mobile Number {settings.mobileVerificationRequired ? '*' : ''}
+                    Mobile Number {settings.mobileVerificationRequired || settings.eitherVerificationRequired ? '*' : ''}
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Phone className="h-5 w-5 text-gray-400" />
+                  <div className="flex space-x-2">
+                    {/* Country Code Dropdown */}
+                    <div className="relative">
+                      <button
+                          type="button"
+                          onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                          className="flex items-center space-x-1 pl-3 pr-2 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white h-full"
+                      >
+                        <span>{selectedCountry?.flag}</span>
+                        <span>{selectedCountry?.code}</span>
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      </button>
+
+                      {showCountryDropdown && (
+                          <div className="absolute z-10 mt-1 w-48 max-h-60 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                            {countryCodes.map((country) => (
+                                <div
+                                    key={country.code}
+                                    onClick={() => handleCountryCodeSelect(country.code)}
+                                    className="flex items-center px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                                >
+                                  <span className="mr-2">{country.flag}</span>
+                                  <span className="flex-1">{country.country}</span>
+                                  <span className="text-gray-500">{country.code}</span>
+                                </div>
+                            ))}
+                          </div>
+                      )}
                     </div>
-                    <input
-                        id="mobile"
-                        name="mobile"
-                        type="tel"
-                        required={settings.mobileVerificationRequired}
-                        value={formData.mobile}
-                        onChange={handleChange}
-                        className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="+1234567890"
-                    />
+
+                    {/* Mobile Number Input */}
+                    <div className="flex-1 relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Phone className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                          id="mobile"
+                          name="mobile"
+                          type="tel"
+                          required={settings.mobileVerificationRequired || settings.eitherVerificationRequired}
+                          value={formData.mobile}
+                          onChange={handleChange}
+                          className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="1234567890"
+                          maxLength={10}
+                          pattern="[0-9]{10}"
+                      />
+                    </div>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">Enter 10-digit mobile number</p>
                 </div>
               </div>
 
