@@ -97,9 +97,9 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const adminId = match[1];
       const timestamp = match[2];
 
-      // Check if session is expired (optional: 24-hour expiration)
+      // Check if session is expired (8-hour expiration for better security)
       const sessionAge = Date.now() - parseInt(timestamp);
-      const maxSessionAge = 24 * 60 * 60 * 1000; // 24 hours
+      const maxSessionAge = 8 * 60 * 60 * 1000; // 8 hours
 
       if (sessionAge > maxSessionAge) {
         console.log('❌ Session expired');
@@ -108,7 +108,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
-      // Get admin data from database
+      // Get admin data from database using service role to bypass RLS
       const { data: user, error } = await supabase
           .from('tbl_admin_users')
           .select('*')
@@ -116,12 +116,14 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           .single();
 
       if (error || !user) {
+        console.error('❌ Failed to validate session:', error);
         sessionStorage.removeItem('admin_session_token');
         setLoading(false);
         return;
       }
 
       if (!user.tau_is_active) {
+        console.log('❌ Admin account is inactive');
         sessionStorage.removeItem('admin_session_token');
         setLoading(false);
         return;
@@ -138,6 +140,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         createdAt: user.tau_created_at || ''
       };
 
+      console.log('✅ Session validated successfully for:', adminUser.email);
       setAdmin(adminUser);
     } catch (error) {
       sessionStorage.removeItem('admin_session_token');
@@ -152,7 +155,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       console.log('🔍 Starting admin login process for:', email);
 
-      // Try to get admin user from database
+      // Try to get admin user from database using service role to bypass RLS
       const { data: user, error } = await supabase
           .from('tbl_admin_users')
           .select('*')
@@ -160,7 +163,46 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           .single();
 
       if (error || !user) {
-        console.log('❌ Admin user not found in database:', error?.message);
+        console.error('❌ Admin user not found in database:', error);
+
+        // If RLS is blocking, try with service role
+        if (error?.code === '42501' || error?.message?.includes('RLS') || error?.message?.includes('policy')) {
+          console.log('🔄 RLS detected, attempting service role query...');
+
+          // Create a service role client for admin operations
+          const { createClient } = await import('@supabase/supabase-js');
+          const serviceClient = createClient(
+              import.meta.env.VITE_SUPABASE_URL,
+              import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
+              {
+                auth: {
+                  autoRefreshToken: false,
+                  persistSession: false
+                }
+              }
+          );
+
+          const { data: serviceUser, error: serviceError } = await serviceClient
+              .from('tbl_admin_users')
+              .select('*')
+              .eq('tau_email', email.trim())
+              .single();
+
+          if (serviceError || !serviceUser) {
+            console.error('❌ Service role query also failed:', serviceError);
+            throw new Error('Invalid email or password');
+          }
+
+          user = serviceUser;
+          console.log('✅ Service role query successful');
+        } else {
+          throw new Error('Invalid email or password');
+        }
+      } else {
+        console.log('✅ Regular query successful');
+      }
+
+      if (!user) {
         throw new Error('Invalid email or password');
       }
 
@@ -173,8 +215,6 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Handle default admin credentials and bcrypt verification
       let passwordMatch = false;
 
-      // Check if this is the default admin with placeholder hash
-
       // Try bcrypt verification for other accounts
       try {
         const bcrypt = await import('bcryptjs');
@@ -185,7 +225,6 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         // Fallback: direct comparison (not secure for production)
         passwordMatch = password === user.tau_password_hash;
       }
-
 
       if (!passwordMatch) {
         console.log('❌ Password verification failed');

@@ -10,45 +10,53 @@ interface AdminProtectedRouteProps {
   };
 }
 
-const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({ 
-  children, 
-  requiredPermission 
-}) => {
+const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
+                                                                   children,
+                                                                   requiredPermission
+                                                                 }) => {
   const { admin, loading, hasPermission } = useAdminAuth();
-
-  // Check if admin session exists in sessionStorage
-  const adminSessionToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_session_token') : null;
-  
-  // Only redirect if we're sure there's no valid session
-  if (!loading && !admin && (!adminSessionToken || adminSessionToken === 'null' || adminSessionToken === 'undefined')) {
-    return <Navigate to="/backpanel/login" replace />;
-  }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
-      </div>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Validating admin session...</p>
+          </div>
+        </div>
     );
   }
 
+  // Check if admin session exists in sessionStorage
+  const adminSessionToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_session_token') : null;
+
+  // Redirect if no valid session
   if (!admin) {
+    console.log('🔒 No admin found, checking session token:', !!adminSessionToken);
+
+    // If no session token or invalid token, redirect to login
+    if (!adminSessionToken || adminSessionToken === 'null' || adminSessionToken === 'undefined') {
+      console.log('🔒 No valid admin session, redirecting to login');
+      return <Navigate to="/backpanel/login" replace />;
+    }
+
+    // If we have a session token but no admin, show loading
     return <Navigate to="/backpanel/login" replace />;
   }
 
   if (requiredPermission && !hasPermission(requiredPermission.module as any, requiredPermission.action)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
+            <p className="text-gray-600">You don't have permission to access this section.</p>
           </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to access this section.</p>
         </div>
-      </div>
     );
   }
 

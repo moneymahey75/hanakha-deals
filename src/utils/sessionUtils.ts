@@ -84,6 +84,34 @@ export const sessionUtils = {
     return publicPages.includes(window.location.pathname);
   },
 
+  // Validate admin session token format and expiration
+  validateAdminSession: (): boolean => {
+    const adminToken = sessionStorage.getItem('admin_session_token');
+
+    if (!adminToken || adminToken === 'null' || adminToken === 'undefined') {
+      return false;
+    }
+
+    // Check token format: "admin-session-{id}-{timestamp}"
+    const match = adminToken.match(/^admin-session-(.+)-(\d+)$/);
+    if (!match) {
+      sessionStorage.removeItem('admin_session_token');
+      return false;
+    }
+
+    const timestamp = parseInt(match[2]);
+    const sessionAge = Date.now() - timestamp;
+    const maxSessionAge = 8 * 60 * 60 * 1000; // 8 hours
+
+    if (sessionAge > maxSessionAge) {
+      console.log('❌ Admin session expired');
+      sessionStorage.removeItem('admin_session_token');
+      return false;
+    }
+
+    return true;
+  },
+
   // Session event listeners for tab/window events
   setupSessionListeners: () => {
     if (typeof window === 'undefined') return;
@@ -103,11 +131,10 @@ export const sessionUtils = {
           await new Promise(resolve => setTimeout(resolve, 100));
 
           const sessionInfo = sessionUtils.getSessionInfo();
-          const adminSessionToken = sessionStorage.getItem('admin_session_token');
 
           // For admin area, check admin session
           if (sessionUtils.isInAdminArea()) {
-            if (!adminSessionToken || adminSessionToken === 'null' || adminSessionToken === 'undefined') {
+            if (!sessionUtils.validateAdminSession()) {
               if (window.location.pathname !== '/backpanel/login') {
                 console.log('🔒 No valid admin session, redirecting to admin login');
                 window.location.href = '/backpanel/login';
@@ -162,16 +189,31 @@ export const sessionUtils = {
             }
           }
         }
+
+        // Handle admin session changed in another tab
+        if (e.key === 'admin_session_token' && e.newValue && e.newValue !== e.oldValue) {
+          if (sessionUtils.isInAdminArea() && !sessionUtils.isOnLoginPage()) {
+            console.log('🔄 Admin session changed in another tab, reloading...');
+            window.location.reload();
+          }
+        }
       } catch (error) {
         console.error('❌ Error in storage event handler:', error);
       }
     });
 
-    // Handle beforeunload (optional - for better UX, you might want to keep sessions)
+    // Handle page unload - extend admin session if active
     window.addEventListener('beforeunload', () => {
-      // Optional: Clear sessions on page close
-      // Commented out for better UX - sessions will persist across browser sessions
-      // sessionUtils.clearAllSessions();
+      // Update admin session timestamp to prevent premature expiration
+      const adminToken = sessionStorage.getItem('admin_session_token');
+      if (adminToken && sessionUtils.validateAdminSession()) {
+        const match = adminToken.match(/^admin-session-(.+)-(\d+)$/);
+        if (match) {
+          const adminId = match[1];
+          const newToken = `admin-session-${adminId}-${Date.now()}`;
+          sessionStorage.setItem('admin_session_token', newToken);
+        }
+      }
     });
 
     console.log('✅ Session listeners setup completed');

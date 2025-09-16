@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useNavigate } from 'react-router-dom';
+import { sessionUtils } from '../../utils/sessionUtils';
 import GeneralSettings from '../../components/admin/GeneralSettings';
 import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
@@ -61,6 +62,7 @@ const AdminDashboard: React.FC = () => {
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [selectedSubAdmin, setSelectedSubAdmin] = useState<SubAdmin | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sessionCheckInterval, setSessionCheckInterval] = useState<NodeJS.Timeout | null>(null);
 
   const [newSubAdmin, setNewSubAdmin] = useState({
     email: '',
@@ -78,6 +80,33 @@ const AdminDashboard: React.FC = () => {
     }
   });
 
+  // Setup session monitoring for admin dashboard
+  useEffect(() => {
+    // Check admin session every 30 seconds
+    const interval = setInterval(() => {
+      if (!sessionUtils.validateAdminSession()) {
+        console.log('🔒 Admin session invalid, redirecting to login');
+        handleLogout();
+      }
+    }, 30000); // Check every 30 seconds
+
+    setSessionCheckInterval(interval);
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (sessionCheckInterval) {
+        clearInterval(sessionCheckInterval);
+      }
+    };
+  }, [sessionCheckInterval]);
   useEffect(() => {
     if (activeTab === 'admins' && hasPermission('admins', 'read')) {
       loadSubAdmins();
@@ -157,6 +186,15 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // Clear session check interval
+    if (sessionCheckInterval) {
+      clearInterval(sessionCheckInterval);
+      setSessionCheckInterval(null);
+    }
+
+    // Clear admin session
+    sessionStorage.removeItem('admin_session_token');
+
     logout();
     navigate('/backpanel/login');
   };
@@ -218,364 +256,364 @@ const AdminDashboard: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Vertical Sidebar */}
-      <div className={`bg-white shadow-lg transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col`}>
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            {!sidebarCollapsed && (
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Admin Panel</h1>
-                <p className="text-xs text-gray-500">Management Dashboard</p>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Admin Info */}
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-r from-red-500 to-orange-500 w-10 h-10 rounded-xl flex items-center justify-center">
-              <Shield className="h-5 w-5 text-white" />
-            </div>
-            {!sidebarCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {admin?.fullName}
-                </p>
-                <p className="text-xs text-gray-500 capitalize">
-                  {admin?.role === 'super_admin' ? 'Super Admin' : 'Sub Admin'}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
-          {visibleTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center space-x-3 px-3 py-3 rounded-xl text-left transition-all duration-200 ${
-                activeTab === tab.id
-                  ? 'bg-red-50 text-red-600 border border-red-200'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-              title={sidebarCollapsed ? tab.label : ''}
-            >
-              <tab.icon className="h-5 w-5 flex-shrink-0" />
+      <div className="min-h-screen bg-gray-50 flex">
+        {/* Vertical Sidebar */}
+        <div className={`bg-white shadow-lg transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col`}>
+          {/* Header */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
               {!sidebarCollapsed && (
-                <span className="font-medium">{tab.label}</span>
+                  <div>
+                    <h1 className="text-lg font-bold text-gray-900">Admin Panel</h1>
+                    <p className="text-xs text-gray-500">Management Dashboard</p>
+                  </div>
               )}
-            </button>
-          ))}
-        </nav>
-
-        {/* Logout Button */}
-        <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center space-x-3 px-3 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-200"
-            title={sidebarCollapsed ? 'Logout' : ''}
-          >
-            <LogOut className="h-5 w-5 flex-shrink-0" />
-            {!sidebarCollapsed && <span className="font-medium">Logout</span>}
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header */}
-        <div className="bg-white shadow-sm border-b border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                {tabs.find(tab => tab.id === activeTab)?.label || 'Dashboard'}
-              </h2>
-              <p className="text-gray-600 mt-1">
-                {activeTab === 'overview' && 'System overview and statistics'}
-                {activeTab === 'customers' && 'Manage customer accounts and profiles'}
-                {activeTab === 'companies' && 'Manage company registrations and verifications'}
-                {activeTab === 'coupons' && 'Manage coupons and sharing rewards'}
-                {activeTab === 'tasks' && 'Create and manage daily tasks for customers'}
-                {activeTab === 'wallets' && 'Monitor user wallets and transactions'}
-                {activeTab === 'subscriptions' && 'Manage subscription plans and pricing'}
-                {activeTab === 'payments' && 'View payment transactions and history'}
-                {activeTab === 'admins' && 'Manage sub-administrators and permissions'}
-                {activeTab === 'settings' && 'Configure system settings and preferences'}
-              </p>
-            </div>
-            <div className="text-sm text-gray-500">
-              Last updated: {new Date().toLocaleString()}
+              <button
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-auto p-6">
-          {activeTab === 'overview' && (
-            <div>
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {stats.map((stat, index) => (
-                  <div key={index} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                        <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                        <p className="text-sm text-green-600 mt-1">{stat.change}</p>
-                      </div>
-                      <div className={`${stat.color} p-3 rounded-lg`}>
-                        <stat.icon className="h-6 w-6 text-white" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          {/* Admin Info */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-r from-red-500 to-orange-500 w-10 h-10 rounded-xl flex items-center justify-center">
+                <Shield className="h-5 w-5 text-white" />
               </div>
-
-              {/* Recent Activity */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white rounded-xl shadow-sm p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <Activity className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="text-sm font-medium">New user registration</p>
-                        <p className="text-xs text-gray-500">2 minutes ago</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <DollarSign className="h-5 w-5 text-green-600" />
-                      <div>
-                        <p className="text-sm font-medium">Payment received</p>
-                        <p className="text-xs text-gray-500">5 minutes ago</p>
-                      </div>
-                    </div>
+              {!sidebarCollapsed && (
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {admin?.fullName}
+                    </p>
+                    <p className="text-xs text-gray-500 capitalize">
+                      {admin?.role === 'super_admin' ? 'Super Admin' : 'Sub Admin'}
+                    </p>
                   </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-sm p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                      <span className="text-sm font-medium">Database</span>
-                      <span className="text-sm text-green-600">Online</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                      <span className="text-sm font-medium">Payment Gateway</span>
-                      <span className="text-sm text-green-600">Active</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {activeTab === 'customers' && hasPermission('customers', 'read') && (
-            <CustomerManagement />
-          )}
-
-          {activeTab === 'companies' && hasPermission('companies', 'read') && (
-            <CompanyManagement />
-          )}
-
-          {activeTab === 'coupons' && hasPermission('companies', 'read') && (
-            <CouponManagement />
-          )}
-
-          {activeTab === 'tasks' && hasPermission('dailytasks', 'read') && (
-            <DailyTaskManagement />
-          )}
-
-          {activeTab === 'wallets' && hasPermission('payments', 'read') && (
-            <WalletManagement />
-          )}
-
-          {activeTab === 'subscriptions' && hasPermission('subscriptions', 'read') && (
-            <SubscriptionManagement />
-          )}
-
-          {activeTab === 'payments' && hasPermission('payments', 'read') && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Management</h3>
-              <p className="text-gray-600">Payment management interface will be displayed here.</p>
-            </div>
-          )}
-
-          {activeTab === 'admins' && hasPermission('admins', 'read') && (
-            <AdminManagement />
-          )}
-
-          {activeTab === 'settings' && hasPermission('settings', 'read') && (
-            <div className="bg-white rounded-xl shadow-sm">
-              {/* Vertical Settings Navigation */}
-              <div className="flex">
-                <div className="w-64 border-r border-gray-200">
-                  <div className="p-4 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
-                    <p className="text-sm text-gray-600">Configure system preferences</p>
-                  </div>
-                  <nav className="p-4 space-y-2">
-                    {settingsTabs.map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => setSettingsTab(tab.id)}
-                        className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-left transition-all duration-200 ${
-                          settingsTab === tab.id
-                            ? 'bg-blue-50 text-blue-600 border border-blue-200'
+          {/* Navigation */}
+          <nav className="flex-1 p-4 space-y-2">
+            {visibleTabs.map((tab) => (
+                <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center space-x-3 px-3 py-3 rounded-xl text-left transition-all duration-200 ${
+                        activeTab === tab.id
+                            ? 'bg-red-50 text-red-600 border border-red-200'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                        }`}
-                      >
-                        <tab.icon className="h-5 w-5" />
-                        <span className="font-medium">{tab.label}</span>
-                      </button>
-                    ))}
-                  </nav>
-                </div>
-
-                {/* Settings Content */}
-                <div className="flex-1 p-6">
-                  {settingsTab === 'general' && <GeneralSettings />}
-                  {settingsTab === 'registration' && <RegistrationSettings />}
-                  {settingsTab === 'payment' && <PaymentSettings />}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Access Denied */}
-          {activeTab !== 'overview' && !hasPermission(activeTab as any, 'read') && (
-            <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-              <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Shield className="h-8 w-8 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-              <p className="text-gray-600">You don't have permission to access this section.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Create Sub-Admin Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Create New Sub-Admin</h3>
-            <form onSubmit={handleCreateSubAdmin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newSubAdmin.fullName}
-                  onChange={(e) => setNewSubAdmin(prev => ({ ...prev, fullName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={newSubAdmin.email}
-                  onChange={(e) => setNewSubAdmin(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-4">Permissions</label>
-                <div className="space-y-4">
-                  {Object.keys(newSubAdmin.permissions).map((module) => (
-                    <div key={module} className="border border-gray-200 rounded-lg p-4">
-                      <h4 className="font-medium text-gray-900 mb-3 capitalize">{module}</h4>
-                      <div className="grid grid-cols-3 gap-4">
-                        {['read', 'write', 'delete'].map((action) => (
-                          <label key={action} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={newSubAdmin.permissions[module][action]}
-                              onChange={(e) => updatePermission(module, action, e.target.checked)}
-                              className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 capitalize">{action}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                    }`}
+                    title={sidebarCollapsed ? tab.label : ''}
                 >
-                  Cancel
+                  <tab.icon className="h-5 w-5 flex-shrink-0" />
+                  {!sidebarCollapsed && (
+                      <span className="font-medium">{tab.label}</span>
+                  )}
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Create Sub-Admin
-                </button>
-              </div>
-            </form>
+            ))}
+          </nav>
+
+          {/* Logout Button */}
+          <div className="p-4 border-t border-gray-200">
+            <button
+                onClick={handleLogout}
+                className="w-full flex items-center space-x-3 px-3 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-200"
+                title={sidebarCollapsed ? 'Logout' : ''}
+            >
+              <LogOut className="h-5 w-5 flex-shrink-0" />
+              {!sidebarCollapsed && <span className="font-medium">Logout</span>}
+            </button>
           </div>
         </div>
-      )}
 
-      {/* Permissions Modal */}
-      {showPermissionsModal && selectedSubAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4">
-              Permissions for {selectedSubAdmin.fullName}
-            </h3>
-            <div className="space-y-3">
-              {Object.entries(selectedSubAdmin.permissions).map(([module, perms]: [string, any]) => (
-                <div key={module} className="border border-gray-200 rounded-lg p-3">
-                  <h4 className="font-medium text-gray-900 mb-2 capitalize">{module}</h4>
-                  <div className="flex space-x-4 text-sm">
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Top Header */}
+          <div className="bg-white shadow-sm border-b border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {tabs.find(tab => tab.id === activeTab)?.label || 'Dashboard'}
+                </h2>
+                <p className="text-gray-600 mt-1">
+                  {activeTab === 'overview' && 'System overview and statistics'}
+                  {activeTab === 'customers' && 'Manage customer accounts and profiles'}
+                  {activeTab === 'companies' && 'Manage company registrations and verifications'}
+                  {activeTab === 'coupons' && 'Manage coupons and sharing rewards'}
+                  {activeTab === 'tasks' && 'Create and manage daily tasks for customers'}
+                  {activeTab === 'wallets' && 'Monitor user wallets and transactions'}
+                  {activeTab === 'subscriptions' && 'Manage subscription plans and pricing'}
+                  {activeTab === 'payments' && 'View payment transactions and history'}
+                  {activeTab === 'admins' && 'Manage sub-administrators and permissions'}
+                  {activeTab === 'settings' && 'Configure system settings and preferences'}
+                </p>
+              </div>
+              <div className="text-sm text-gray-500">
+                Last updated: {new Date().toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-auto p-6">
+            {activeTab === 'overview' && (
+                <div>
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    {stats.map((stat, index) => (
+                        <div key={index} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">{stat.title}</p>
+                              <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
+                              <p className="text-sm text-green-600 mt-1">{stat.change}</p>
+                            </div>
+                            <div className={`${stat.color} p-3 rounded-lg`}>
+                              <stat.icon className="h-6 w-6 text-white" />
+                            </div>
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+
+                  {/* Recent Activity */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-white rounded-xl shadow-sm p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                          <Activity className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <p className="text-sm font-medium">New user registration</p>
+                            <p className="text-xs text-gray-500">2 minutes ago</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                          <DollarSign className="h-5 w-5 text-green-600" />
+                          <div>
+                            <p className="text-sm font-medium">Payment received</p>
+                            <p className="text-xs text-gray-500">5 minutes ago</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                          <span className="text-sm font-medium">Database</span>
+                          <span className="text-sm text-green-600">Online</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                          <span className="text-sm font-medium">Payment Gateway</span>
+                          <span className="text-sm text-green-600">Active</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            )}
+
+            {activeTab === 'customers' && hasPermission('customers', 'read') && (
+                <CustomerManagement />
+            )}
+
+            {activeTab === 'companies' && hasPermission('companies', 'read') && (
+                <CompanyManagement />
+            )}
+
+            {activeTab === 'coupons' && hasPermission('companies', 'read') && (
+                <CouponManagement />
+            )}
+
+            {activeTab === 'tasks' && hasPermission('dailytasks', 'read') && (
+                <DailyTaskManagement />
+            )}
+
+            {activeTab === 'wallets' && hasPermission('payments', 'read') && (
+                <WalletManagement />
+            )}
+
+            {activeTab === 'subscriptions' && hasPermission('subscriptions', 'read') && (
+                <SubscriptionManagement />
+            )}
+
+            {activeTab === 'payments' && hasPermission('payments', 'read') && (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Management</h3>
+                  <p className="text-gray-600">Payment management interface will be displayed here.</p>
+                </div>
+            )}
+
+            {activeTab === 'admins' && hasPermission('admins', 'read') && (
+                <AdminManagement />
+            )}
+
+            {activeTab === 'settings' && hasPermission('settings', 'read') && (
+                <div className="bg-white rounded-xl shadow-sm">
+                  {/* Vertical Settings Navigation */}
+                  <div className="flex">
+                    <div className="w-64 border-r border-gray-200">
+                      <div className="p-4 border-b border-gray-200">
+                        <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
+                        <p className="text-sm text-gray-600">Configure system preferences</p>
+                      </div>
+                      <nav className="p-4 space-y-2">
+                        {settingsTabs.map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setSettingsTab(tab.id)}
+                                className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-left transition-all duration-200 ${
+                                    settingsTab === tab.id
+                                        ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                }`}
+                            >
+                              <tab.icon className="h-5 w-5" />
+                              <span className="font-medium">{tab.label}</span>
+                            </button>
+                        ))}
+                      </nav>
+                    </div>
+
+                    {/* Settings Content */}
+                    <div className="flex-1 p-6">
+                      {settingsTab === 'general' && <GeneralSettings />}
+                      {settingsTab === 'registration' && <RegistrationSettings />}
+                      {settingsTab === 'payment' && <PaymentSettings />}
+                    </div>
+                  </div>
+                </div>
+            )}
+
+            {/* Access Denied */}
+            {activeTab !== 'overview' && !hasPermission(activeTab as any, 'read') && (
+                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                  <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Shield className="h-8 w-8 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                  <p className="text-gray-600">You don't have permission to access this section.</p>
+                </div>
+            )}
+          </div>
+        </div>
+
+        {/* Create Sub-Admin Modal */}
+        {showCreateModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <h3 className="text-lg font-semibold mb-4">Create New Sub-Admin</h3>
+                <form onSubmit={handleCreateSubAdmin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                    <input
+                        type="text"
+                        required
+                        value={newSubAdmin.fullName}
+                        onChange={(e) => setNewSubAdmin(prev => ({ ...prev, fullName: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                    <input
+                        type="email"
+                        required
+                        value={newSubAdmin.email}
+                        onChange={(e) => setNewSubAdmin(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-4">Permissions</label>
+                    <div className="space-y-4">
+                      {Object.keys(newSubAdmin.permissions).map((module) => (
+                          <div key={module} className="border border-gray-200 rounded-lg p-4">
+                            <h4 className="font-medium text-gray-900 mb-3 capitalize">{module}</h4>
+                            <div className="grid grid-cols-3 gap-4">
+                              {['read', 'write', 'delete'].map((action) => (
+                                  <label key={action} className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={newSubAdmin.permissions[module][action]}
+                                        onChange={(e) => updatePermission(module, action, e.target.checked)}
+                                        className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700 capitalize">{action}</span>
+                                  </label>
+                              ))}
+                            </div>
+                          </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-4">
+                    <button
+                        type="button"
+                        onClick={() => setShowCreateModal(false)}
+                        className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Create Sub-Admin
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+        )}
+
+        {/* Permissions Modal */}
+        {showPermissionsModal && selectedSubAdmin && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 w-full max-w-lg">
+                <h3 className="text-lg font-semibold mb-4">
+                  Permissions for {selectedSubAdmin.fullName}
+                </h3>
+                <div className="space-y-3">
+                  {Object.entries(selectedSubAdmin.permissions).map(([module, perms]: [string, any]) => (
+                      <div key={module} className="border border-gray-200 rounded-lg p-3">
+                        <h4 className="font-medium text-gray-900 mb-2 capitalize">{module}</h4>
+                        <div className="flex space-x-4 text-sm">
                     <span className={`flex items-center ${perms.read ? 'text-green-600' : 'text-gray-400'}`}>
                       {perms.read ? <Check className="h-4 w-4 mr-1" /> : <X className="h-4 w-4 mr-1" />}
                       Read
                     </span>
-                    <span className={`flex items-center ${perms.write ? 'text-green-600' : 'text-gray-400'}`}>
+                          <span className={`flex items-center ${perms.write ? 'text-green-600' : 'text-gray-400'}`}>
                       {perms.write ? <Check className="h-4 w-4 mr-1" /> : <X className="h-4 w-4 mr-1" />}
-                      Write
+                            Write
                     </span>
-                    <span className={`flex items-center ${perms.delete ? 'text-green-600' : 'text-gray-400'}`}>
+                          <span className={`flex items-center ${perms.delete ? 'text-green-600' : 'text-gray-400'}`}>
                       {perms.delete ? <Check className="h-4 w-4 mr-1" /> : <X className="h-4 w-4 mr-1" />}
-                      Delete
+                            Delete
                     </span>
-                  </div>
+                        </div>
+                      </div>
+                  ))}
                 </div>
-              ))}
+                <div className="flex justify-end pt-4">
+                  <button
+                      onClick={() => setShowPermissionsModal(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-end pt-4">
-              <button
-                onClick={() => setShowPermissionsModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
   );
 };
 
