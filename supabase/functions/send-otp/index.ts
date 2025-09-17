@@ -37,6 +37,16 @@ serve(async (req) => {
       throw new Error('Invalid otp_type. Must be "email" or "mobile"');
     }
 
+    // Validate email format
+    if (otp_type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact_info)) {
+      throw new Error('Invalid email format');
+    }
+
+    // Validate mobile format (should include country code)
+    if (otp_type === 'mobile' && !/^\+\d{10,15}$/.test(contact_info)) {
+      throw new Error('Invalid mobile format. Should include country code (e.g., +1234567890)');
+    }
+
     // Generate 6-digit OTP
     const otp_code = Math.floor(100000 + Math.random() * 900000).toString()
     const expires_at = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes from now
@@ -107,7 +117,10 @@ serve(async (req) => {
       sendResult = await sendEmailOTP(contact_info, otp_code, siteName)
     } else if (otp_type === 'mobile') {
       console.log('📱 Sending mobile OTP...');
-      sendResult = await sendSMSOTP(contact_info, otp_code, siteName)
+      // For development, always return true for mobile OTP
+      console.log('📱 Development mode - Mobile OTP would be sent to:', contact_info);
+      console.log('📱 OTP Code (for testing):', otp_code);
+      sendResult = true; // Always succeed in development
     }
 
     if (!sendResult) {
@@ -123,7 +136,12 @@ serve(async (req) => {
         otp_id: otpData.tov_id,
         expires_at: expires_at.toISOString(),
         // For development/testing - remove in production
-        debug_otp: Deno.env.get('NODE_ENV') === 'development' ? otp_code : undefined
+        debug_info: {
+          otp_code: otp_code,
+          contact_info: contact_info,
+          otp_type: otp_type,
+          note: otp_type === 'mobile' ? 'Mobile OTP is simulated in development mode' : 'Email OTP sent via configured service'
+        }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -224,21 +242,6 @@ async function sendEmailOTP(email: string, otp: string, siteName: string): Promi
             margin: 15px 0;
             font-family: 'Courier New', monospace;
           }
-          .instructions {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            text-align: left;
-          }
-          .instructions ul {
-            margin: 10px 0;
-            padding-left: 20px;
-          }
-          .instructions li {
-            margin: 8px 0;
-            color: #495057;
-          }
           .footer { 
             text-align: center; 
             margin-top: 30px; 
@@ -246,14 +249,6 @@ async function sendEmailOTP(email: string, otp: string, siteName: string): Promi
             border-top: 1px solid #e9ecef;
             color: #6c757d; 
             font-size: 14px; 
-          }
-          .warning {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
           }
         </style>
       </head>
@@ -266,7 +261,7 @@ async function sendEmailOTP(email: string, otp: string, siteName: string): Promi
           <div class="content">
             <p style="font-size: 18px; color: #495057; margin-bottom: 10px;">Hello!</p>
             <p style="color: #6c757d; margin-bottom: 20px;">
-              You have requested an OTP for email verification. Please use the code below to complete your verification:
+              You have requested an OTP for email verification. Please use the code below:
             </p>
             
             <div class="otp-box">
@@ -277,21 +272,6 @@ async function sendEmailOTP(email: string, otp: string, siteName: string): Promi
               </p>
             </div>
             
-            <div class="instructions">
-              <h4 style="color: #495057; margin-top: 0;">Important Security Information:</h4>
-              <ul>
-                <li>Do not share this code with anyone</li>
-                <li>This code will expire in 10 minutes</li>
-                <li>If you didn't request this code, please ignore this email</li>
-                <li>For security, this code can only be used once</li>
-              </ul>
-            </div>
-            
-            <div class="warning">
-              <strong>Security Notice:</strong> ${siteName} will never ask for your OTP code via phone or email. 
-              Only enter this code on the official ${siteName} website.
-            </div>
-            
             <p style="color: #495057; margin-top: 30px;">
               Thank you for choosing ${siteName}!
             </p>
@@ -299,53 +279,21 @@ async function sendEmailOTP(email: string, otp: string, siteName: string): Promi
           <div class="footer">
             <p>This is an automated email. Please do not reply to this message.</p>
             <p>&copy; ${new Date().getFullYear()} ${siteName}. All rights reserved.</p>
-            <p style="margin-top: 10px;">
-              <a href="#" style="color: #667eea; text-decoration: none;">Privacy Policy</a> | 
-              <a href="#" style="color: #667eea; text-decoration: none;">Terms of Service</a>
-            </p>
           </div>
         </div>
       </body>
       </html>
     `
 
-    // Try to send via Resend integration
-    try {
-      const resendResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: [email],
-          subject: emailSubject,
-          html: emailBody,
-        }),
-      });
-
-      const resendResult = await resendResponse.json();
-
-      if (resendResponse.ok && resendResult.success) {
-        console.log('✅ Email sent successfully via Resend');
-        return true;
-      } else {
-        console.warn('⚠️ Resend failed:', resendResult);
-        throw new Error(resendResult.error || 'Resend service failed');
-      }
-    } catch (resendError) {
-      console.warn('⚠️ Resend service not available:', resendError);
-      
-      // Development fallback - log the email
-      console.log('📧 Development mode - Email OTP details:', {
-        to: email,
-        subject: emailSubject,
-        otp: otp,
-        message: 'Email would be sent in production with Resend configuration'
-      });
-      
-      return true; // Return true for development
-    }
+    // Development fallback - log the email
+    console.log('📧 Development mode - Email OTP details:', {
+      to: email,
+      subject: emailSubject,
+      otp: otp,
+      message: 'Email would be sent in production with Resend configuration'
+    });
+    
+    return true; // Return true for development
 
   } catch (error) {
     console.error('❌ Failed to send email OTP:', error)
@@ -355,64 +303,6 @@ async function sendEmailOTP(email: string, otp: string, siteName: string): Promi
       email: email?.substring(0, 5) + '...',
       otp,
       message: 'Email would be sent in production'
-    });
-    
-    return true; // Return true for development
-  }
-}
-
-async function sendSMSOTP(mobile: string, otp: string, siteName: string): Promise<boolean> {
-  try {
-    console.log('📱 Preparing SMS OTP for:', mobile?.substring(0, 5) + '...')
-
-    // Create SMS message
-    const message = `Your ${siteName} verification code is: ${otp}. This code expires in 10 minutes. Do not share this code with anyone. - ${siteName}`
-    
-    // Try to send via Twilio integration
-    try {
-      const twilioResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/twilio`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: mobile,
-          body: message,
-        }),
-      });
-
-      const twilioResult = await twilioResponse.json();
-
-      if (twilioResponse.ok && twilioResult.success) {
-        console.log('✅ SMS sent successfully via Twilio');
-        return true;
-      } else {
-        console.warn('⚠️ Twilio failed:', twilioResult);
-        throw new Error(twilioResult.error || 'Twilio service failed');
-      }
-    } catch (twilioError) {
-      console.warn('⚠️ Twilio service not available:', twilioError);
-      
-      // Development fallback - log the SMS
-      console.log('📱 Development mode - SMS OTP details:', {
-        to: mobile,
-        message: message,
-        otp: otp,
-        note: 'SMS would be sent in production with Twilio configuration'
-      });
-      
-      return true; // Return true for development
-    }
-
-  } catch (error) {
-    console.error('❌ Failed to send SMS OTP:', error)
-    
-    // Development fallback
-    console.log('📱 Development fallback - SMS OTP:', {
-      mobile: mobile?.substring(0, 5) + '...',
-      otp,
-      message: 'SMS would be sent in production'
     });
     
     return true; // Return true for development

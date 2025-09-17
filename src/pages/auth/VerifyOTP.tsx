@@ -53,20 +53,29 @@ const VerifyOTP: React.FC = () => {
         eitherRequired: false
       });
 
-      // Set default OTP type based on settings
-      if (state.verificationSettings?.mobileRequired && (state.mobile || user?.mobile)) {
+      // Set default OTP type based on settings and available contact info
+      if (state.verificationSettings?.mobileRequired && state.mobile) {
         setOtpType('mobile');
-      } else if (state.verificationSettings?.emailRequired && (state.email || user?.email)) {
+      } else if (state.verificationSettings?.emailRequired && state.email) {
         setOtpType('email');
       } else if (state.verificationSettings?.eitherRequired) {
-        // For either verification, default to mobile if available, otherwise email
-        setOtpType((state.mobile || user?.mobile) ? 'mobile' : 'email');
+        // For either verification, prefer mobile if available, otherwise email
+        if (state.mobile) {
+          setOtpType('mobile');
+        } else if (state.email) {
+          setOtpType('email');
+        } else {
+          setOtpType('email'); // fallback
+        }
+      } else {
+        // Default fallback
+        setOtpType('email');
       }
     } else if (user) {
       setCurrentUserId(user.id);
       setContactInfo({
         email: user.email || '',
-        mobile: user.mobile || ''
+        mobile: ''
       });
     }
   }, [location.state, user]);
@@ -83,12 +92,11 @@ const VerifyOTP: React.FC = () => {
   // Send initial OTP only if coming from registration and hasn't been sent yet
   useEffect(() => {
     const state = location.state as any;
-    if (state?.fromRegistration && currentUserId && contactInfo[otpType] && !hasSentInitialOTP && otpSendAttempts === 0) {
+    if (state?.fromRegistration && currentUserId && contactInfo[otpType] && !hasSentInitialOTP) {
       handleSendOTP();
       setHasSentInitialOTP(true);
-      setOtpSendAttempts(1);
     }
-  }, [currentUserId, otpType, contactInfo, location.state, hasSentInitialOTP, otpSendAttempts]);
+  }, [currentUserId, otpType, contactInfo, location.state, hasSentInitialOTP]);
 
   // Reset OTP when type changes
   useEffect(() => {
@@ -288,6 +296,8 @@ const VerifyOTP: React.FC = () => {
       setLastOTPSendTime(now);
       setOtpSendAttempts(prev => prev + 1);
       
+      setError(''); // Clear any previous errors
+      
       const result = await sendOTP(currentUserId, contactInfo[otpType], otpType);
 
       if (!result.success) {
@@ -297,16 +307,30 @@ const VerifyOTP: React.FC = () => {
 
       console.log('✅ OTP sent successfully:', result);
       
-      // Reset error state on successful send
-      setError('');
-      
       // Show success message
-      notification.showSuccess('OTP Sent', `Verification code sent to ${contactInfo[otpType]}`);
+      const contactDisplay = otpType === 'mobile' 
+        ? contactInfo[otpType] 
+        : contactInfo[otpType].replace(/(.{3}).*(@.*)/, '$1***$2');
+      
+      notification.showSuccess('OTP Sent', `Verification code sent to ${contactDisplay}`);
+      
+      // Show debug info in development
+      if (result.debug_info) {
+        console.log('🔧 Development OTP Info:', result.debug_info);
+        if (otpType === 'mobile') {
+          setError(`Development Mode: Use OTP ${result.debug_info.otp_code} (Mobile OTP simulated)`);
+        }
+      }
+      
     } catch (error: any) {
       console.error('Failed to send OTP:', error);
       const errorMessage = error?.message || 'Failed to send OTP. Please try again.';
       setError(errorMessage);
-      notification.showError('Send Failed', errorMessage);
+      
+      // Don't show notification error for mobile in development mode
+      if (!(otpType === 'mobile' && errorMessage.includes('simulated'))) {
+        notification.showError('Send Failed', errorMessage);
+      }
     }
   };
 
@@ -337,21 +361,30 @@ const VerifyOTP: React.FC = () => {
   };
 
   const handleOtpTypeChange = (newType: 'email' | 'mobile') => {
-    if (verificationSettings.eitherRequired ||
+    // Check if the new type is allowed and has contact info
+    const isAllowed = verificationSettings.eitherRequired ||
         (newType === 'email' && verificationSettings.emailRequired) ||
-        (newType === 'mobile' && verificationSettings.mobileRequired)) {
+        (newType === 'mobile' && verificationSettings.mobileRequired);
+        
+    const hasContactInfo = contactInfo[newType] && contactInfo[newType].trim() !== '';
+    
+    if (isAllowed && hasContactInfo) {
       setOtpType(newType);
       setOtp(['', '', '', '', '', '']);
       setError('');
       setOtpSendAttempts(0); // Reset attempts when switching type
       setResendTimer(30);
       setCanResend(false);
+      setLastOTPSendTime(0); // Reset cooldown
+      
       // Send OTP for the new type
       setTimeout(() => {
-        if (contactInfo[newType]) {
-          handleSendOTP();
-        }
+        handleSendOTP();
       }, 100);
+    } else if (!hasContactInfo) {
+      setError(`No ${newType} address provided for verification`);
+    } else {
+      setError(`${newType} verification is not enabled`);
     }
   };
 
@@ -407,12 +440,14 @@ const VerifyOTP: React.FC = () => {
   };
 
   const showTypeSelector = () => {
-    return verificationSettings.eitherRequired && contactInfo.email && contactInfo.mobile;
+    return verificationSettings.eitherRequired && 
+           contactInfo.email && contactInfo.email.trim() !== '' && 
+           contactInfo.mobile && contactInfo.mobile.trim() !== '';
   };
 
   const canSwitchType = (type: 'email' | 'mobile') => {
     if (verificationSettings.eitherRequired) {
-      return contactInfo[type] && !completedVerifications[type];
+      return contactInfo[type] && contactInfo[type].trim() !== '' && !completedVerifications[type];
     }
     return false;
   };
@@ -480,6 +515,7 @@ const VerifyOTP: React.FC = () => {
             {/* OTP Type Selector */}
             {showTypeSelector() && (
                 <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Choose verification method:</h4>
                   <div className="flex space-x-4 justify-center">
                     <button
                         type="button"
@@ -494,7 +530,7 @@ const VerifyOTP: React.FC = () => {
                         }`}
                     >
                       <Smartphone className="h-4 w-4" />
-                      <span>Mobile</span>
+                      <span>Mobile ({contactInfo.mobile})</span>
                       {completedVerifications.mobile && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                     </button>
                     <button
@@ -510,7 +546,7 @@ const VerifyOTP: React.FC = () => {
                         }`}
                     >
                       <Mail className="h-4 w-4" />
-                      <span>Email</span>
+                      <span>Email ({contactInfo.email?.replace(/(.{3}).*(@.*)/, '$1***$2')})</span>
                       {completedVerifications.email && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                     </button>
                   </div>
@@ -611,10 +647,24 @@ const VerifyOTP: React.FC = () => {
                 </p>
               )}
               
+              {/* Switch verification method for either verification */}
+              {verificationSettings.eitherRequired && contactInfo.email && contactInfo.mobile && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-2">Having trouble with {otpType}?</p>
+                  <button
+                    type="button"
+                    onClick={() => handleOtpTypeChange(otpType === 'mobile' ? 'email' : 'mobile')}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Switch to {otpType === 'mobile' ? 'Email' : 'Mobile'} verification
+                  </button>
+                </div>
+              )}
+              
               {/* Help text */}
               <div className="mt-4 text-center">
                 <p className="text-xs text-gray-500">
-                  Having trouble? Check your spam folder or try switching verification method.
+                  Having trouble? Check your spam folder{showTypeSelector() ? ' or try switching verification method above' : ''}.
                 </p>
               </div>
             </div>
