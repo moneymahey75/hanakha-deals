@@ -66,21 +66,25 @@ serve(async (req) => {
       console.error('❌ OTP not found or expired:', findError?.message || 'No matching record');
       
       // Try to increment attempts for any existing unverified OTP
-      const { data: existingOTPs } = await supabase
-        .from('tbl_otp_verifications')
-        .select('tov_id, tov_attempts')
-        .eq('tov_user_id', user_id)
-        .eq('tov_otp_type', otp_type)
-        .eq('tov_is_verified', false)
-        .order('tov_created_at', { ascending: false })
-        .limit(1);
-
-      if (existingOTPs && existingOTPs.length > 0) {
-        const existingOTP = existingOTPs[0];
-        await supabase
+      try {
+        const { data: existingOTPs } = await supabase
           .from('tbl_otp_verifications')
-          .update({ tov_attempts: (existingOTP.tov_attempts || 0) + 1 })
-          .eq('tov_id', existingOTP.tov_id);
+          .select('tov_id, tov_attempts')
+          .eq('tov_user_id', user_id)
+          .eq('tov_otp_type', otp_type)
+          .eq('tov_is_verified', false)
+          .order('tov_created_at', { ascending: false })
+          .limit(1);
+
+        if (existingOTPs && existingOTPs.length > 0) {
+          const existingOTP = existingOTPs[0];
+          await supabase
+            .from('tbl_otp_verifications')
+            .update({ tov_attempts: (existingOTP.tov_attempts || 0) + 1 })
+            .eq('tov_id', existingOTP.tov_id);
+        }
+      } catch (attemptError) {
+        console.warn('Failed to update attempts:', attemptError);
       }
 
       return new Response(

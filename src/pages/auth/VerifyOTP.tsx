@@ -156,7 +156,15 @@ const VerifyOTP: React.FC = () => {
 
     try {
       console.log('🔍 Submitting OTP verification:', { otpString, otpType, userId: currentUserId });
-      const result = await verifyOTPAPI(currentUserId, otpString, otpType);
+      
+      // Add timeout handling for the verification
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Verification timeout - please try again')), 25000)
+      );
+      
+      const verifyPromise = verifyOTPAPI(currentUserId, otpString, otpType);
+      
+      const result = await Promise.race([verifyPromise, timeoutPromise]) as any;
 
       if (!result.success) {
         throw new Error(result.error || 'OTP verification failed');
@@ -207,7 +215,9 @@ const VerifyOTP: React.FC = () => {
       let errorMessage = 'Invalid OTP. Please try again.';
       
       if (err?.message) {
-        if (err.message.includes('expired')) {
+        if (err.message.includes('timeout')) {
+          errorMessage = 'Verification timed out. Please try again.';
+        } else if (err.message.includes('expired')) {
           errorMessage = 'OTP has expired. Please request a new code.';
         } else if (err.message.includes('attempts')) {
           errorMessage = 'Too many failed attempts. Please request a new OTP.';
