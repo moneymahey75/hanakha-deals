@@ -381,12 +381,9 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
   }
 
   try {
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('OTP verification timeout')), 30000)
-    );
-
-    const verifyPromise = supabase.functions.invoke('verify-otp', {
+    console.log('📡 Calling verify-otp edge function...');
+    
+    const { data, error } = await supabase.functions.invoke('verify-otp', {
       body: {
         user_id: userId,
         otp_code: otpCode,
@@ -394,18 +391,19 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
       }
     });
 
-    const { data, error } = await Promise.race([verifyPromise, timeoutPromise]) as any;
-
+    console.log('📡 Edge function response:', { data, error });
     if (error) {
       console.error('❌ Verify OTP error:', error)
       
       // Handle specific error types
-      if (error.message?.includes('timeout')) {
-        throw new Error('Verification timeout. Please try again.');
-      } else if (error.message?.includes('Invalid or expired')) {
+      if (error.message?.includes('Invalid or expired')) {
         throw new Error('Invalid or expired OTP. Please request a new code.');
       } else if (error.message?.includes('Too many')) {
         throw new Error('Too many failed attempts. Please request a new OTP.');
+      } else if (error.message?.includes('FunctionsHttpError')) {
+        throw new Error('Verification service temporarily unavailable. Please try again.');
+      } else if (error.message?.includes('FunctionsFetchError')) {
+        throw new Error('Network error during verification. Please check your connection.');
       } else {
         throw new Error(error.message || 'Failed to verify OTP');
       }
@@ -418,20 +416,33 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
     // Handle error responses from the function
     if (!data.success) {
       console.error('❌ OTP verification failed:', data.error);
-      throw new Error(data.error || 'OTP verification failed');
+      
+      // Handle specific error codes from the edge function
+      if (data.code === 'INVALID_OTP') {
+        throw new Error('Invalid or expired OTP. Please request a new code.');
+      } else if (data.code === 'TOO_MANY_ATTEMPTS') {
+        throw new Error('Too many failed attempts. Please request a new OTP.');
+      } else if (data.code === 'MISSING_PARAMETERS') {
+        throw new Error('Invalid request parameters. Please try again.');
+      } else {
+        throw new Error(data.error || 'OTP verification failed');
+      }
     }
+    
     console.log('✅ OTP verified successfully:', data)
     return data
   } catch (error: any) {
     console.error('❌ OTP verification failed:', error);
     
     // Provide more specific error messages
-    if (error.message?.includes('timeout')) {
-      throw new Error('Verification is taking too long. Please try again.');
-    } else if (error.message?.includes('Invalid or expired')) {
+    if (error.message?.includes('Invalid or expired')) {
       throw new Error('Invalid or expired OTP. Please request a new code.');
     } else if (error.message?.includes('Too many')) {
       throw new Error('Too many failed attempts. Please request a new OTP.');
+    } else if (error.message?.includes('Network error')) {
+      throw new Error('Network connection issue. Please check your internet and try again.');
+    } else if (error.message?.includes('temporarily unavailable')) {
+      throw new Error('Verification service is temporarily unavailable. Please try again in a moment.');
     } else {
       throw new Error(error.message || 'Failed to verify OTP. Please try again.');
     }
