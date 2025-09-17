@@ -155,12 +155,18 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       console.log('🔍 Starting admin login process for:', email);
 
+      let user: any = null;
+      let error: any = null;
+
       // Try to get admin user from database using service role to bypass RLS
-      const { data: user, error } = await supabase
+      const result = await supabase
           .from('tbl_admin_users')
           .select('*')
           .eq('tau_email', email.trim())
           .single();
+
+      user = result.data;
+      error = result.error;
 
       if (error || !user) {
         console.error('❌ Admin user not found in database:', error);
