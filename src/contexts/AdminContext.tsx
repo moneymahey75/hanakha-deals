@@ -141,12 +141,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       setLoading(true);
 
-      const { data: settingsData, error } = await supabase
-          .from('tbl_system_settings')
-          .select('tss_setting_key, tss_setting_value');
+      // Add timeout and better error handling
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+
+      const fetchPromise = supabase
+        .from('tbl_system_settings')
+        .select('tss_setting_key, tss_setting_value');
+
+      const { data: settingsData, error } = await Promise.race([
+        fetchPromise,
+        timeoutPromise
+      ]) as any;
 
       if (error) {
-        console.error('Error loading settings:', error);
+        console.warn('Failed to load settings from database, using defaults:', error);
+        // Don't return early, continue with defaults
+        setSettings(defaultSettings);
         return;
       }
 
@@ -250,9 +262,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Merge loaded settings with defaults
         setSettings(prev => ({ ...prev, ...loadedSettings }));
+      } else {
+        console.log('No settings found in database, using defaults');
+        setSettings(defaultSettings);
       }
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.warn('Database connection failed, using default settings:', error);
+      // Use default settings when database is not accessible
+      setSettings(defaultSettings);
     } finally {
       setLoading(false);
     }
