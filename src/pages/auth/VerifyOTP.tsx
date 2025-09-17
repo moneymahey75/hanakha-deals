@@ -13,8 +13,8 @@ const VerifyOTP: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
-  const [resendTimer, setResendTimer] = useState(30);
-  const [canResend, setCanResend] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0); // Start at 0, no timer initially
+  const [canResend, setCanResend] = useState(true); // Initially true to show Send OTP button
   const [isResending, setIsResending] = useState(false);
   const [otpType, setOtpType] = useState<'email' | 'mobile'>('mobile');
   const [contactInfo, setContactInfo] = useState({ email: '', mobile: '' });
@@ -28,7 +28,6 @@ const VerifyOTP: React.FC = () => {
     mobile: false
   });
   const [currentUserId, setCurrentUserId] = useState('');
-  const [initialOTPSent, setInitialOTPSent] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -98,28 +97,11 @@ const VerifyOTP: React.FC = () => {
     if (resendTimer > 0) {
       const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
       return () => clearTimeout(timer);
-    } else {
+    } else if (resendTimer === 0 && !canResend) {
       setCanResend(true);
     }
-  }, [resendTimer]);
+  }, [resendTimer, canResend]);
 
-  // Send initial OTP when component is ready
-  useEffect(() => {
-    if (!isInitializing && currentUserId && contactInfo[otpType] && !initialOTPSent) {
-      console.log('📤 Sending initial OTP automatically...');
-      sendInitialOTP();
-    }
-  }, [isInitializing, currentUserId, otpType, contactInfo, initialOTPSent]);
-
-  const sendInitialOTP = async () => {
-    try {
-      setInitialOTPSent(true);
-      await handleSendOTP();
-    } catch (error) {
-      console.error('Failed to send initial OTP:', error);
-      setInitialOTPSent(false); // Allow retry
-    }
-  };
   // Reset OTP when type changes
   useEffect(() => {
     setOtp(['', '', '', '', '', '']);
@@ -145,6 +127,22 @@ const VerifyOTP: React.FC = () => {
           otpRefs.current[index + 1]?.focus();
         }, 10);
       }
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text/plain').trim();
+
+    // Only process if pasted data contains exactly 6 digits
+    if (/^\d{6}$/.test(pastedData)) {
+      const newOtp = pastedData.split('').slice(0, 6);
+      setOtp(newOtp as any);
+
+      // Focus on the last input after pasting
+      setTimeout(() => {
+        otpRefs.current[5]?.focus();
+      }, 10);
     }
   };
 
@@ -178,7 +176,7 @@ const VerifyOTP: React.FC = () => {
 
     try {
       console.log('🔍 Submitting OTP verification:', { otpString, otpType, userId: currentUserId });
-      
+
       const result = await verifyOTPAPI(currentUserId, otpString, otpType);
 
       if (!result.success) {
@@ -217,21 +215,16 @@ const VerifyOTP: React.FC = () => {
         if (nextType) {
           notification.showInfo('Next Step', `Please verify your ${nextType} address to complete registration`);
           setOtpType(nextType);
-
-          // Send OTP for the next type after a brief delay
-          setTimeout(() => {
-            if (contactInfo[nextType]) {
-              handleSendOTP();
-            }
-          }, 300);
+          setCanResend(true); // Enable Send OTP button for the next type
+          setResendTimer(0); // Reset timer
         }
       }
 
     } catch (err: any) {
       console.error('❌ OTP verification failed:', err);
-      
+
       let errorMessage = 'Invalid OTP. Please try again.';
-      
+
       if (err?.message) {
         if (err.message.includes('timeout')) {
           errorMessage = 'Verification timed out. Please try again.';
@@ -245,7 +238,7 @@ const VerifyOTP: React.FC = () => {
           errorMessage = err.message;
         }
       }
-      
+
       setError(errorMessage);
       notification.showError('Verification Failed', errorMessage);
 
@@ -300,7 +293,7 @@ const VerifyOTP: React.FC = () => {
       setError('Please wait a moment before requesting another OTP');
       return;
     }
-    
+
     // Limit OTP send attempts
     if (otpSendAttempts >= 5) {
       setError('Too many OTP requests. Please try again later.');
@@ -317,9 +310,9 @@ const VerifyOTP: React.FC = () => {
       console.log('📤 Sending OTP:', { userId: currentUserId, contactInfo: contactInfo[otpType], otpType });
       setLastOTPSendTime(now);
       setOtpSendAttempts(prev => prev + 1);
-      
+
       setError(''); // Clear any previous errors
-      
+
       const result = await sendOTP(currentUserId, contactInfo[otpType], otpType);
 
       if (!result.success) {
@@ -328,14 +321,18 @@ const VerifyOTP: React.FC = () => {
       }
 
       console.log('✅ OTP sent successfully:', result);
-      
+
       // Show success message
-      const contactDisplay = otpType === 'mobile' 
-        ? contactInfo[otpType] 
-        : contactInfo[otpType].replace(/(.{3}).*(@.*)/, '$1***$2');
-      
+      const contactDisplay = otpType === 'mobile'
+          ? contactInfo[otpType]
+          : contactInfo[otpType].replace(/(.{3}).*(@.*)/, '$1***$2');
+
       notification.showSuccess('OTP Sent', `Verification code sent to ${contactDisplay}`);
-      
+
+      // Start the 30-second timer and disable resend button
+      setResendTimer(30);
+      setCanResend(false);
+
       // Show debug info in development
       if (result.debug_info) {
         console.log('🔧 Development OTP Info:', result.debug_info);
@@ -343,12 +340,12 @@ const VerifyOTP: React.FC = () => {
           notification.showInfo('Development Mode', `Use OTP: ${result.debug_info.otp_code} (Mobile OTP simulated)`);
         }
       }
-      
+
     } catch (error: any) {
       console.error('Failed to send OTP:', error);
       const errorMessage = error?.message || 'Failed to send OTP. Please try again.';
       setError(errorMessage);
-      
+
       // Don't show notification error for mobile in development mode
       if (!(otpType === 'mobile' && errorMessage.includes('simulated'))) {
         notification.showError('Send Failed', errorMessage);
@@ -363,8 +360,6 @@ const VerifyOTP: React.FC = () => {
     }
 
     setIsResending(true);
-    setResendTimer(30);
-    setCanResend(false);
     setError('');
     setOtp(['', '', '', '', '', '']); // Clear previous OTP
 
@@ -384,30 +379,24 @@ const VerifyOTP: React.FC = () => {
 
   const handleOtpTypeChange = (newType: 'email' | 'mobile') => {
     console.log('🔄 Switching OTP type from', otpType, 'to', newType);
-    
+
     // Check if the new type is allowed and has contact info
     const isAllowed = verificationSettings.eitherRequired ||
         (newType === 'email' && verificationSettings.emailRequired) ||
         (newType === 'mobile' && verificationSettings.mobileRequired);
-        
+
     const hasContactInfo = contactInfo[newType] && contactInfo[newType].trim() !== '';
     const isAlreadyVerified = completedVerifications[newType];
-    
+
     if (isAllowed && hasContactInfo && !isAlreadyVerified) {
       setOtpType(newType);
       setOtp(['', '', '', '', '', '']);
       setError('');
       setOtpSendAttempts(0); // Reset attempts when switching type
-      setResendTimer(30);
-      setCanResend(false);
-      setLastOTPSendTime(0); // Reset cooldown
-      
+      setResendTimer(0); // Reset timer
+      setCanResend(true); // Enable Send OTP button for new type
+
       notification.showInfo('Verification Type Changed', `Switched to ${newType} verification`);
-      
-      // Send OTP for the new type
-      setTimeout(() => {
-        handleSendOTP();
-      }, 100);
     } else if (isAlreadyVerified) {
       notification.showInfo('Already Verified', `Your ${newType} is already verified`);
     } else if (!hasContactInfo) {
@@ -466,35 +455,36 @@ const VerifyOTP: React.FC = () => {
     if (verificationSettings.eitherRequired) {
       return `Choose your preferred verification method. We'll send a 6-digit code to verify your account.`;
     }
-    return `We've sent a 6-digit verification code to `;
+    return `Enter the 6-digit verification code sent to `;
   };
 
   const showTypeSelector = () => {
-    return verificationSettings.eitherRequired && 
-           contactInfo.email && contactInfo.email.trim() !== '' && 
-           contactInfo.mobile && contactInfo.mobile.trim() !== '';
+    return verificationSettings.eitherRequired &&
+        contactInfo.email && contactInfo.email.trim() !== '' &&
+        contactInfo.mobile && contactInfo.mobile.trim() !== '';
   };
 
   const canSwitchType = (type: 'email' | 'mobile') => {
     // Allow switching if:
     // 1. Either verification is enabled, OR
     // 2. Both email and mobile verification are required (sequential verification)
-    if (verificationSettings.eitherRequired || 
+    if (verificationSettings.eitherRequired ||
         (verificationSettings.emailRequired && verificationSettings.mobileRequired)) {
-      return contactInfo[type] && 
-             contactInfo[type].trim() !== '' && 
-             !completedVerifications[type];
+      return contactInfo[type] &&
+          contactInfo[type].trim() !== '' &&
+          !completedVerifications[type];
     }
     return false;
   };
 
   // Show type selector for either verification OR when both are required
   const showAdvancedTypeSelector = () => {
-    return (verificationSettings.eitherRequired || 
-            (verificationSettings.emailRequired && verificationSettings.mobileRequired)) && 
-           contactInfo.email && contactInfo.email.trim() !== '' && 
-           contactInfo.mobile && contactInfo.mobile.trim() !== '';
+    return (verificationSettings.eitherRequired ||
+            (verificationSettings.emailRequired && verificationSettings.mobileRequired)) &&
+        contactInfo.email && contactInfo.email.trim() !== '' &&
+        contactInfo.mobile && contactInfo.mobile.trim() !== '';
   };
+
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
@@ -514,12 +504,12 @@ const VerifyOTP: React.FC = () => {
               </h2>
               <p className="mt-2 text-gray-600">
                 {getVerificationDescription()}
-              </p>
-              {contactInfo[otpType] && (
-                  <p className="font-semibold text-indigo-600">
+                {contactInfo[otpType] && (
+                    <span className="font-semibold text-indigo-600 block mt-1">
                     {contactInfo[otpType]}
-                  </p>
-              )}
+                  </span>
+                )}
+              </p>
             </div>
 
             {/* Verification Progress */}
@@ -597,30 +587,57 @@ const VerifyOTP: React.FC = () => {
                   </div>
                 </div>
             )}
-            
+
             {/* Progress indicator for either verification */}
             {verificationSettings.eitherRequired && (
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                <h4 className="text-sm font-medium text-blue-700 mb-2">Verification Progress</h4>
-                <p className="text-sm text-blue-600">
-                  You can verify either your email or mobile number to proceed.
-                </p>
-                <div className="mt-2 flex items-center space-x-4">
-                  <div className={`flex items-center space-x-1 ${completedVerifications.email ? 'text-green-600' : 'text-gray-400'}`}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span className="text-sm">Email</span>
-                  </div>
-                  <div className={`flex items-center space-x-1 ${completedVerifications.mobile ? 'text-green-600' : 'text-gray-400'}`}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span className="text-sm">Mobile</span>
+                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                  <h4 className="text-sm font-medium text-blue-700 mb-2">Verification Progress</h4>
+                  <p className="text-sm text-blue-600">
+                    You can verify either your email or mobile number to proceed.
+                  </p>
+                  <div className="mt-2 flex items-center space-x-4">
+                    <div className={`flex items-center space-x-1 ${completedVerifications.email ? 'text-green-600' : 'text-gray-400'}`}>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="text-sm">Email</span>
+                    </div>
+                    <div className={`flex items-center space-x-1 ${completedVerifications.mobile ? 'text-green-600' : 'text-gray-400'}`}>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="text-sm">Mobile</span>
+                    </div>
                   </div>
                 </div>
-              </div>
             )}
 
             {error && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-red-600 text-sm">{error}</p>
+                </div>
+            )}
+
+            {/* Send OTP button - only show if OTP hasn't been sent yet */}
+            {canResend && resendTimer === 0 && (
+                <div className="mb-6 text-center">
+                  <button
+                      onClick={handleSendOTP}
+                      disabled={isSubmitting || isResending}
+                      className={`w-full py-3 px-4 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 ${
+                          otpType === 'mobile'
+                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                              : 'bg-green-600 hover:bg-green-700 text-white'
+                      }`}
+                  >
+                    {isResending ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          <span>Sending OTP...</span>
+                        </>
+                    ) : (
+                        <>
+                          <Mail className="h-5 w-5" />
+                          <span>Send OTP</span>
+                        </>
+                    )}
+                  </button>
                 </div>
             )}
 
@@ -638,18 +655,22 @@ const VerifyOTP: React.FC = () => {
                           type="text"
                           value={digit}
                           onChange={(e) => handleOtpChange(index, e.target.value)}
+                          onPaste={index === 0 ? handlePaste : undefined} // Only handle paste on first input
                           onKeyDown={(e) => handleKeyDown(index, e)}
                           className="w-12 h-12 text-center text-xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                           maxLength={1}
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || resendTimer === 0}
                       />
                   ))}
                 </div>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  Tip: You can paste the entire 6-digit code into any field
+                </p>
               </div>
 
               <button
                   type="submit"
-                  disabled={isSubmitting || otp.join('').length !== 6}
+                  disabled={isSubmitting || otp.join('').length !== 6 || resendTimer === 0}
                   className={`w-full py-3 px-4 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 text-white ${
                       otpType === 'mobile'
                           ? 'bg-indigo-600 hover:bg-indigo-700'
@@ -669,9 +690,13 @@ const VerifyOTP: React.FC = () => {
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600 mb-4">
-                Didn't receive the code?
+                {resendTimer > 0 ? 'Resend OTP in' : "Didn't receive the code?"}
               </p>
-              {canResend ? (
+              {resendTimer > 0 ? (
+                  <p className="text-sm text-gray-500">
+                    {resendTimer} seconds
+                  </p>
+              ) : canResend ? (
                   <button
                       onClick={handleResend}
                       disabled={isSubmitting || isResending}
@@ -680,41 +705,37 @@ const VerifyOTP: React.FC = () => {
                     <RefreshCw className={`h-4 w-4 ${isResending ? 'animate-spin' : ''}`} />
                     <span>{isResending ? 'Sending...' : 'Resend OTP'}</span>
                   </button>
-              ) : (
-                  <p className="text-sm text-gray-500">
-                    Resend OTP in {resendTimer} seconds
+              ) : null}
+
+              {otpSendAttempts > 0 && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Attempts: {otpSendAttempts}/5
                   </p>
               )}
-              
-              {otpSendAttempts > 0 && (
-                <p className="text-xs text-gray-400 mt-2">
-                  Attempts: {otpSendAttempts}/5
-                </p>
-              )}
-              
+
               {/* Switch verification method */}
               {showAdvancedTypeSelector() && !showTypeSelector() && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-xs text-gray-500 mb-2">
-                    {verificationSettings.eitherRequired 
-                      ? `Having trouble with ${otpType}?` 
-                      : `Need to verify ${otpType === 'mobile' ? 'email' : 'mobile'} too?`
-                    }
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => handleOtpTypeChange(otpType === 'mobile' ? 'email' : 'mobile')}
-                    disabled={!canSwitchType(otpType === 'mobile' ? 'email' : 'mobile')}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
-                  >
-                    {verificationSettings.eitherRequired 
-                      ? `Switch to ${otpType === 'mobile' ? 'Email' : 'Mobile'} verification`
-                      : `Verify ${otpType === 'mobile' ? 'Email' : 'Mobile'} instead`
-                    }
-                  </button>
-                </div>
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-xs text-gray-500 mb-2">
+                      {verificationSettings.eitherRequired
+                          ? `Having trouble with ${otpType}?`
+                          : `Need to verify ${otpType === 'mobile' ? 'email' : 'mobile'} too?`
+                      }
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => handleOtpTypeChange(otpType === 'mobile' ? 'email' : 'mobile')}
+                        disabled={!canSwitchType(otpType === 'mobile' ? 'email' : 'mobile')}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {verificationSettings.eitherRequired
+                          ? `Switch to ${otpType === 'mobile' ? 'Email' : 'Mobile'} verification`
+                          : `Verify ${otpType === 'mobile' ? 'Email' : 'Mobile'} instead`
+                      }
+                    </button>
+                  </div>
               )}
-              
+
               {/* Help text */}
               <div className="mt-4 text-center">
                 <p className="text-xs text-gray-500">
