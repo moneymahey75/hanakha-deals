@@ -344,6 +344,8 @@ const VerifyOTP: React.FC = () => {
       setOtp(['', '', '', '', '', '']);
       setError('');
       setOtpSendAttempts(0); // Reset attempts when switching type
+      setResendTimer(30);
+      setCanResend(false);
       // Send OTP for the new type
       setTimeout(() => {
         if (contactInfo[newType]) {
@@ -514,6 +516,26 @@ const VerifyOTP: React.FC = () => {
                   </div>
                 </div>
             )}
+            
+            {/* Progress indicator for either verification */}
+            {verificationSettings.eitherRequired && (
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                <h4 className="text-sm font-medium text-blue-700 mb-2">Verification Progress</h4>
+                <p className="text-sm text-blue-600">
+                  You can verify either your email or mobile number to proceed.
+                </p>
+                <div className="mt-2 flex items-center space-x-4">
+                  <div className={`flex items-center space-x-1 ${completedVerifications.email ? 'text-green-600' : 'text-gray-400'}`}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="text-sm">Email</span>
+                  </div>
+                  <div className={`flex items-center space-x-1 ${completedVerifications.mobile ? 'text-green-600' : 'text-gray-400'}`}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="text-sm">Mobile</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {error && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -588,6 +610,13 @@ const VerifyOTP: React.FC = () => {
                   Attempts: {otpSendAttempts}/5
                 </p>
               )}
+              
+              {/* Help text */}
+              <div className="mt-4 text-center">
+                <p className="text-xs text-gray-500">
+                  Having trouble? Check your spam folder or try switching verification method.
+                </p>
+              </div>
             </div>
           </div>
         </div>

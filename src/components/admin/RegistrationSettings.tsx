@@ -449,16 +449,29 @@ const RegistrationSettings: React.FC = () => {
                             <>
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                                 <span>Saving...</span>
-                            </>
+                            <li>Verify either email address OR mobile number via OTP (user's choice)</li>
                         ) : (
                             <>
                                 <Save className="h-4 w-4" />
                                 <span>Save Registration Settings</span>
+                                {!formData.emailVerificationRequired && !formData.mobileVerificationRequired && (
+                                    <li>No verification required - proceed directly</li>
+                                )}
                             </>
                         )}
                     </button>
                 </div>
             </form>
+                    
+                    {formData.eitherVerificationRequired && (
+                        <div className="mt-3 p-3 bg-blue-100 rounded-lg">
+                            <p className="text-sm font-medium text-blue-800">Either Verification Mode:</p>
+                            <p className="text-xs text-blue-700 mt-1">
+                                Users can choose to verify either their email OR mobile number. 
+                                Once one is verified, they can proceed to subscription plans.
+                            </p>
+                        </div>
+                    )}
         </div>
     );
 };
