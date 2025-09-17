@@ -145,7 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         // Use a single query with joins to reduce connection usage
         const { data: combinedData, error: combinedError } = await supabaseBatch
-            .from('tbl_users')
+          .from('tbl_users')
           .select(`
             *,
             tbl_user_profiles(*),
@@ -155,7 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               tus_end_date
             )
           `)
-            .eq('tu_id', userId);
+          .eq('tu_id', userId)
           .eq('tbl_user_subscriptions.tus_status', 'active')
           .gte('tbl_user_subscriptions.tus_end_date', new Date().toISOString())
           .maybeSingle();
