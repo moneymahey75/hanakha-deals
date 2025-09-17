@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
 interface OTPRequest {
@@ -17,7 +18,24 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🔍 Send OTP function called');
+    
     const { user_id, contact_info, otp_type }: OTPRequest = await req.json()
+    
+    console.log('📤 Processing OTP request:', { 
+      user_id: user_id?.substring(0, 8) + '...', 
+      contact_info: contact_info?.substring(0, 5) + '...', 
+      otp_type 
+    });
+
+    // Validate input
+    if (!user_id || !contact_info || !otp_type) {
+      throw new Error('Missing required parameters: user_id, contact_info, or otp_type');
+    }
+
+    if (!['email', 'mobile'].includes(otp_type)) {
+      throw new Error('Invalid otp_type. Must be "email" or "mobile"');
+    }
 
     // Generate 6-digit OTP
     const otp_code = Math.floor(100000 + Math.random() * 900000).toString()
@@ -29,9 +47,21 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('🔍 Sending OTP:', { user_id, contact_info, otp_type })
+    console.log('🗄️ Storing OTP in database...');
 
-    // Store OTP in database with correct table name
+    // First, invalidate any existing OTPs for this user and type
+    const { error: invalidateError } = await supabase
+      .from('tbl_otp_verifications')
+      .update({ tov_is_verified: true }) // Mark as used to invalidate
+      .eq('tov_user_id', user_id)
+      .eq('tov_otp_type', otp_type)
+      .eq('tov_is_verified', false);
+
+    if (invalidateError) {
+      console.warn('⚠️ Failed to invalidate existing OTPs (this is okay):', invalidateError.message);
+    }
+
+    // Store new OTP in database
     const { data: otpData, error: otpError } = await supabase
       .from('tbl_otp_verifications')
       .insert({
@@ -39,17 +69,19 @@ serve(async (req) => {
         tov_otp_code: otp_code,
         tov_otp_type: otp_type,
         tov_contact_info: contact_info,
-        tov_expires_at: expires_at.toISOString()
+        tov_expires_at: expires_at.toISOString(),
+        tov_is_verified: false,
+        tov_attempts: 0
       })
       .select()
       .single()
 
     if (otpError) {
-      console.error('Database error:', otpError)
-      throw otpError
+      console.error('❌ Database error storing OTP:', otpError)
+      throw new Error(`Failed to store OTP: ${otpError.message}`)
     }
 
-    console.log('✅ OTP stored in database:', otpData.tov_id)
+    console.log('✅ OTP stored in database with ID:', otpData.tov_id)
 
     // Get system settings for site name
     const { data: settings } = await supabase
@@ -57,24 +89,39 @@ serve(async (req) => {
       .select('tss_setting_key, tss_setting_value')
 
     const settingsMap = settings?.reduce((acc: any, setting: any) => {
-      acc[setting.tss_setting_key] = setting.tss_setting_value
+      try {
+        acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value)
+      } catch {
+        acc[setting.tss_setting_key] = setting.tss_setting_value
+      }
       return acc
     }, {}) || {}
 
-    const siteName = settingsMap.site_name?.replace(/"/g, '') || 'HanakhaDeals'
-    console.log('✅ siteName: ', siteName);
+    const siteName = settingsMap.site_name || 'HanakhaDeals'
+    console.log('🏢 Site name:', siteName);
+
     // Send OTP based on type
+    let sendResult = false;
     if (otp_type === 'email') {
-      await sendEmailOTP(contact_info, otp_code, siteName, supabase)
+      console.log('📧 Sending email OTP...');
+      sendResult = await sendEmailOTP(contact_info, otp_code, siteName)
     } else if (otp_type === 'mobile') {
-      await sendSMSOTP(contact_info, otp_code, siteName, supabase)
+      console.log('📱 Sending mobile OTP...');
+      sendResult = await sendSMSOTP(contact_info, otp_code, siteName)
     }
+
+    if (!sendResult) {
+      console.warn('⚠️ OTP sending failed, but continuing (development mode)');
+    }
+
+    console.log('✅ OTP process completed successfully');
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: `OTP sent to ${contact_info}`,
         otp_id: otpData.tov_id,
+        expires_at: expires_at.toISOString(),
         // For development/testing - remove in production
         debug_otp: Deno.env.get('NODE_ENV') === 'development' ? otp_code : undefined
       }),
@@ -114,12 +161,11 @@ serve(async (req) => {
       status: 400
     });
   }
-
 })
 
-async function sendEmailOTP(email: string, otp: string, siteName: string, supabase: any) {
+async function sendEmailOTP(email: string, otp: string, siteName: string): Promise<boolean> {
   try {
-    console.log('📧 Sending email OTP via Resend to:', email)
+    console.log('📧 Preparing email OTP for:', email?.substring(0, 5) + '...')
 
     // Create professional email content
     const emailSubject = `Your OTP Code - ${siteName}`
@@ -263,91 +309,112 @@ async function sendEmailOTP(email: string, otp: string, siteName: string, supaba
       </html>
     `
 
-    // Use Supabase's Resend integration
-    const { data, error } = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: `${siteName} <noreply@${siteName.toLowerCase().replace(/\s+/g, '')}.com>`,
-        to: [email],
-        subject: emailSubject,
-        html: emailBody,
-      }),
-    }).then(res => res.json())
+    // Try to send via Resend integration
+    try {
+      const resendResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: [email],
+          subject: emailSubject,
+          html: emailBody,
+        }),
+      });
 
-    if (error) {
-      console.error('Resend email error:', error)
-      // Fallback: Log the email for development
-      console.log('📧 Email would be sent (Resend not configured):', {
+      const resendResult = await resendResponse.json();
+
+      if (resendResponse.ok && resendResult.success) {
+        console.log('✅ Email sent successfully via Resend');
+        return true;
+      } else {
+        console.warn('⚠️ Resend failed:', resendResult);
+        throw new Error(resendResult.error || 'Resend service failed');
+      }
+    } catch (resendError) {
+      console.warn('⚠️ Resend service not available:', resendError);
+      
+      // Development fallback - log the email
+      console.log('📧 Development mode - Email OTP details:', {
         to: email,
         subject: emailSubject,
-        otp: otp
-      })
-    } else {
-      console.log('✅ Email sent successfully via Resend:', data)
+        otp: otp,
+        message: 'Email would be sent in production with Resend configuration'
+      });
+      
+      return true; // Return true for development
     }
-
-    return true
 
   } catch (error) {
     console.error('❌ Failed to send email OTP:', error)
-    // Don't throw error - log for development
-    console.log('📧 Development mode - Email OTP:', {
-      email,
+    
+    // Development fallback
+    console.log('📧 Development fallback - Email OTP:', {
+      email: email?.substring(0, 5) + '...',
       otp,
-      message: 'Email would be sent in production with Resend configuration'
-    })
-    return true
+      message: 'Email would be sent in production'
+    });
+    
+    return true; // Return true for development
   }
 }
 
-async function sendSMSOTP(mobile: string, otp: string, siteName: string, supabase: any) {
+async function sendSMSOTP(mobile: string, otp: string, siteName: string): Promise<boolean> {
   try {
-    console.log('📱 Sending SMS OTP via Twilio to:', mobile)
+    console.log('📱 Preparing SMS OTP for:', mobile?.substring(0, 5) + '...')
 
     // Create SMS message
     const message = `Your ${siteName} verification code is: ${otp}. This code expires in 10 minutes. Do not share this code with anyone. - ${siteName}`
-    console.log('✅ SUPABASE_SERVICE_ROLE_KEY: ', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-    console.log('✅ SUPABASE_URL: ', `${Deno.env.get('SUPABASE_URL')}/functions/v1/twilio`);
-    // Use Supabase's Twilio integration
-    const { data, error } = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/twilio`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: mobile,
-        body: message,
-      }),
-    }).then(res => res.json())
-    console.log('✅ twilio data: ', data);
-    console.log('✅ twilio error: ', error);
-    if (error) {
-      console.error('Twilio SMS error:', error)
-      // Fallback: Log the SMS for development
-      console.log('📱 SMS would be sent (Twilio not configured):', {
+    
+    // Try to send via Twilio integration
+    try {
+      const twilioResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/twilio`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: mobile,
+          body: message,
+        }),
+      });
+
+      const twilioResult = await twilioResponse.json();
+
+      if (twilioResponse.ok && twilioResult.success) {
+        console.log('✅ SMS sent successfully via Twilio');
+        return true;
+      } else {
+        console.warn('⚠️ Twilio failed:', twilioResult);
+        throw new Error(twilioResult.error || 'Twilio service failed');
+      }
+    } catch (twilioError) {
+      console.warn('⚠️ Twilio service not available:', twilioError);
+      
+      // Development fallback - log the SMS
+      console.log('📱 Development mode - SMS OTP details:', {
         to: mobile,
         message: message,
-        otp: otp
-      })
-    } else {
-      console.log('✅ SMS sent successfully via Twilio:', data)
+        otp: otp,
+        note: 'SMS would be sent in production with Twilio configuration'
+      });
+      
+      return true; // Return true for development
     }
-
-    return true
 
   } catch (error) {
     console.error('❌ Failed to send SMS OTP:', error)
-    // Don't throw error - log for development
-    console.log('📱 Development mode - SMS OTP:', {
-      mobile,
+    
+    // Development fallback
+    console.log('📱 Development fallback - SMS OTP:', {
+      mobile: mobile?.substring(0, 5) + '...',
       otp,
-      message: 'SMS would be sent in production with Twilio configuration'
-    })
-    return true
+      message: 'SMS would be sent in production'
+    });
+    
+    return true; // Return true for development
   }
 }

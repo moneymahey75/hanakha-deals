@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
 interface VerifyOTPRequest {
@@ -17,7 +18,28 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🔍 Verify OTP function called');
+    
     const { user_id, otp_code, otp_type }: VerifyOTPRequest = await req.json()
+
+    console.log('🔐 Processing OTP verification:', { 
+      user_id: user_id?.substring(0, 8) + '...', 
+      otp_type,
+      otp_code: otp_code?.substring(0, 2) + '****'
+    });
+
+    // Validate input
+    if (!user_id || !otp_code || !otp_type) {
+      throw new Error('Missing required parameters: user_id, otp_code, or otp_type');
+    }
+
+    if (!['email', 'mobile'].includes(otp_type)) {
+      throw new Error('Invalid otp_type. Must be "email" or "mobile"');
+    }
+
+    if (!/^\d{6}$/.test(otp_code)) {
+      throw new Error('Invalid OTP format. Must be 6 digits');
+    }
 
     const { createClient } = await import('npm:@supabase/supabase-js@2')
     const supabase = createClient(
@@ -25,9 +47,9 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('🔍 Verifying OTP:', { user_id, otp_type, otp_code })
+    console.log('🔍 Looking for valid OTP in database...');
 
-    // Find the OTP record using correct table and column names
+    // Find the most recent valid OTP record
     const { data: otpRecord, error: findError } = await supabase
       .from('tbl_otp_verifications')
       .select('*')
@@ -41,20 +63,31 @@ serve(async (req) => {
       .single()
 
     if (findError || !otpRecord) {
-      console.error('OTP not found or expired:', findError)
+      console.error('❌ OTP not found or expired:', findError?.message || 'No matching record');
       
-      // Increment attempts for security
-      await supabase
+      // Try to increment attempts for any existing unverified OTP
+      const { data: existingOTPs } = await supabase
         .from('tbl_otp_verifications')
-        .update({ tov_attempts: (otpRecord.tov_attempts || 0) + 1 })
+        .select('tov_id, tov_attempts')
         .eq('tov_user_id', user_id)
         .eq('tov_otp_type', otp_type)
         .eq('tov_is_verified', false)
+        .order('tov_created_at', { ascending: false })
+        .limit(1);
+
+      if (existingOTPs && existingOTPs.length > 0) {
+        const existingOTP = existingOTPs[0];
+        await supabase
+          .from('tbl_otp_verifications')
+          .update({ tov_attempts: (existingOTP.tov_attempts || 0) + 1 })
+          .eq('tov_id', existingOTP.tov_id);
+      }
 
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Invalid or expired OTP. Please request a new code.' 
+          error: 'Invalid or expired OTP. Please request a new code.',
+          code: 'INVALID_OTP'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -63,13 +96,16 @@ serve(async (req) => {
       )
     }
 
+    console.log('✅ Valid OTP found:', otpRecord.tov_id);
+
     // Check attempts limit (max 5 attempts)
     if (otpRecord.tov_attempts >= 5) {
-      console.error('Too many attempts for OTP:', otpRecord.tov_id)
+      console.error('❌ Too many attempts for OTP:', otpRecord.tov_id)
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Too many failed attempts. Please request a new OTP.' 
+          error: 'Too many failed attempts. Please request a new OTP.',
+          code: 'TOO_MANY_ATTEMPTS'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -78,20 +114,25 @@ serve(async (req) => {
       )
     }
 
-    console.log('✅ Valid OTP found, marking as verified')
+    console.log('🔄 Marking OTP as verified...');
 
     // Mark OTP as verified
     const { error: updateOTPError } = await supabase
       .from('tbl_otp_verifications')
-      .update({ tov_is_verified: true })
+      .update({ 
+        tov_is_verified: true,
+        tov_attempts: (otpRecord.tov_attempts || 0) + 1
+      })
       .eq('tov_id', otpRecord.tov_id)
 
     if (updateOTPError) {
-      console.error('Failed to update OTP status:', updateOTPError)
-      throw updateOTPError
+      console.error('❌ Failed to update OTP status:', updateOTPError)
+      throw new Error(`Failed to verify OTP: ${updateOTPError.message}`)
     }
 
-    // Update user verification status using correct table and column names
+    console.log('🔄 Updating user verification status...');
+
+    // Update user verification status
     const updateData: any = {}
     if (otp_type === 'email') {
       updateData.tu_email_verified = true
@@ -107,7 +148,7 @@ serve(async (req) => {
       .eq('tu_id', user_id)
 
     if (updateUserError) {
-      console.warn('Failed to update user verification status:', updateUserError)
+      console.warn('⚠️ Failed to update user verification status:', updateUserError)
       // Don't throw error here as OTP is already verified
     } else {
       console.log('✅ User verification status updated')
@@ -116,9 +157,10 @@ serve(async (req) => {
     // Send welcome email if this was mobile verification (final step)
     if (otp_type === 'mobile') {
       try {
+        console.log('📧 Sending welcome email...');
         await sendWelcomeEmail(user_id, supabase)
       } catch (emailError) {
-        console.warn('Failed to send welcome email:', emailError)
+        console.warn('⚠️ Failed to send welcome email:', emailError)
         // Don't fail the verification if welcome email fails
       }
     }
@@ -129,7 +171,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: `${otp_type} verified successfully`,
-        verification_complete: otp_type === 'mobile'
+        verification_complete: true,
+        next_step: otp_type === 'mobile' ? 'subscription_plans' : 'continue_verification'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -138,11 +181,29 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error verifying OTP:', error)
+    let message = "Unknown error";
+    let stack = null;
+
+    if (error instanceof Error) {
+      message = error.message;
+      stack = error.stack || null;
+    } else if (typeof error === "string") {
+      message = error;
+    } else {
+      try {
+        message = JSON.stringify(error);
+      } catch (_) {
+        message = "Non-serializable error object";
+      }
+    }
+
+    console.error("❌ Error verifying OTP:", { message, stack });
+
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message || 'Verification failed'
+        error: message,
+        code: 'VERIFICATION_FAILED'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -154,9 +215,9 @@ serve(async (req) => {
 
 async function sendWelcomeEmail(userId: string, supabase: any) {
   try {
-    console.log('📧 Sending welcome email for user:', userId)
+    console.log('📧 Preparing welcome email for user:', userId?.substring(0, 8) + '...')
 
-    // Get user data using correct table and column names
+    // Get user data
     const { data: userData } = await supabase
       .from('tbl_users')
       .select(`
@@ -170,8 +231,8 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
       .single()
 
     if (!userData) {
-      console.warn('User data not found for welcome email')
-      return
+      console.warn('⚠️ User data not found for welcome email')
+      return false
     }
 
     // Get system settings
@@ -180,11 +241,15 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
       .select('tss_setting_key, tss_setting_value')
 
     const settingsMap = settings?.reduce((acc: any, setting: any) => {
-      acc[setting.tss_setting_key] = setting.tss_setting_value
+      try {
+        acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value)
+      } catch {
+        acc[setting.tss_setting_key] = setting.tss_setting_value
+      }
       return acc
     }, {}) || {}
 
-    const siteName = settingsMap.site_name?.replace(/"/g, '') || 'HanakhaDeals'
+    const siteName = settingsMap.site_name || 'HanakhaDeals'
     const firstName = userData.tbl_user_profiles?.tup_first_name || 'User'
     const sponsorshipNumber = userData.tbl_user_profiles?.tup_sponsorship_number || 'N/A'
 
@@ -304,29 +369,37 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
       </html>
     `
 
-    // Send welcome email via Resend through Supabase
-    const { data, error } = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: `${siteName} <onboarding@resend.dev>`,
-        to: userData.tu_email,
-        subject: emailSubject,
-        html: emailBody,
-      }),
-    }).then(res => res.json())
+    // Send welcome email via Resend
+    try {
+      const resendResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: userData.tu_email,
+          subject: emailSubject,
+          html: emailBody,
+        }),
+      });
 
-    if (error) {
-      console.error('Failed to send welcome email via Resend:', error)
-    } else {
-      console.log('✅ Welcome email sent successfully')
+      const resendResult = await resendResponse.json();
+
+      if (resendResponse.ok && resendResult.success) {
+        console.log('✅ Welcome email sent successfully')
+        return true
+      } else {
+        console.warn('⚠️ Welcome email failed:', resendResult)
+        return false
+      }
+    } catch (emailError) {
+      console.warn('⚠️ Welcome email service not available:', emailError)
+      return false
     }
 
   } catch (error) {
     console.error('❌ Failed to send welcome email:', error)
-    throw error
+    return false
   }
 }

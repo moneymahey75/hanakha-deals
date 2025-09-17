@@ -307,41 +307,91 @@ export interface OTPVerification {
 export const sendOTP = async (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => {
   console.log('📤 Sending OTP via Supabase edge function:', { userId, contactInfo, otpType })
 
-  const { data, error } = await supabase.functions.invoke('send-otp', {
-    body: {
-      user_id: userId,
-      contact_info: contactInfo,
-      otp_type: otpType
-    }
-  })
-
-  if (error) {
-    console.error('❌ Send OTP error:', error)
-    throw error
+  // Validate inputs before sending
+  if (!userId || !contactInfo || !otpType) {
+    throw new Error('Missing required parameters for OTP sending');
   }
 
-  console.log('✅ OTP sent successfully:', data)
-  return data
+  if (!['email', 'mobile'].includes(otpType)) {
+    throw new Error('Invalid OTP type. Must be email or mobile');
+  }
+
+  // Validate email format
+  if (otpType === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactInfo)) {
+    throw new Error('Invalid email format');
+  }
+
+  // Validate mobile format (should include country code)
+  if (otpType === 'mobile' && !/^\+\d{10,15}$/.test(contactInfo)) {
+    throw new Error('Invalid mobile format. Should include country code (e.g., +1234567890)');
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('send-otp', {
+      body: {
+        user_id: userId,
+        contact_info: contactInfo,
+        otp_type: otpType
+      }
+    })
+
+    if (error) {
+      console.error('❌ Send OTP error:', error)
+      throw new Error(error.message || 'Failed to send OTP')
+    }
+
+    if (!data) {
+      throw new Error('No response data from OTP service')
+    }
+
+    console.log('✅ OTP sent successfully:', data)
+    return data
+  } catch (error: any) {
+    console.error('❌ OTP sending failed:', error);
+    throw new Error(error.message || 'Failed to send OTP. Please try again.');
+  }
 }
 
 export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email' | 'mobile') => {
   console.log('🔍 Verifying OTP via Supabase edge function:', { userId, otpCode, otpType })
 
-  const { data, error } = await supabase.functions.invoke('verify-otp', {
-    body: {
-      user_id: userId,
-      otp_code: otpCode,
-      otp_type: otpType
-    }
-  })
-
-  if (error) {
-    console.error('❌ Verify OTP error:', error)
-    throw error
+  // Validate inputs before verifying
+  if (!userId || !otpCode || !otpType) {
+    throw new Error('Missing required parameters for OTP verification');
   }
 
-  console.log('✅ OTP verified successfully:', data)
-  return data
+  if (!['email', 'mobile'].includes(otpType)) {
+    throw new Error('Invalid OTP type. Must be email or mobile');
+  }
+
+  if (!/^\d{6}$/.test(otpCode)) {
+    throw new Error('Invalid OTP format. Must be 6 digits');
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('verify-otp', {
+      body: {
+        user_id: userId,
+        otp_code: otpCode,
+        otp_type: otpType
+      }
+    })
+
+    if (error) {
+      console.error('❌ Verify OTP error:', error)
+      throw new Error(error.message || 'Failed to verify OTP')
+    }
+
+    if (!data) {
+      throw new Error('No response data from OTP verification service')
+    }
+
+    console.log('✅ OTP verified successfully:', data)
+    return data
+  } catch (error: any) {
+    console.error('❌ OTP verification failed:', error);
+    throw new Error(error.message || 'Failed to verify OTP. Please try again.');
+  }
 }
 
 export const getSubscriptionPlans = async () => {

@@ -13,6 +13,7 @@ const VerifyOTP: React.FC = () => {
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(30);
   const [canResend, setCanResend] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [otpType, setOtpType] = useState<'email' | 'mobile'>('mobile');
   const [contactInfo, setContactInfo] = useState({ email: '', mobile: '' });
   const [verificationSettings, setVerificationSettings] = useState({
@@ -28,6 +29,8 @@ const VerifyOTP: React.FC = () => {
   const [hasSentInitialOTP, setHasSentInitialOTP] = useState(false);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [lastOTPSendTime, setLastOTPSendTime] = useState<number>(0);
+  const [otpSendAttempts, setOtpSendAttempts] = useState<number>(0);
 
   // Initialize refs array
   useEffect(() => {
@@ -80,11 +83,12 @@ const VerifyOTP: React.FC = () => {
   // Send initial OTP only if coming from registration and hasn't been sent yet
   useEffect(() => {
     const state = location.state as any;
-    if (state?.fromRegistration && currentUserId && contactInfo[otpType] && !hasSentInitialOTP) {
+    if (state?.fromRegistration && currentUserId && contactInfo[otpType] && !hasSentInitialOTP && otpSendAttempts === 0) {
       handleSendOTP();
       setHasSentInitialOTP(true);
+      setOtpSendAttempts(1);
     }
-  }, [currentUserId, otpType, contactInfo, location.state, hasSentInitialOTP]);
+  }, [currentUserId, otpType, contactInfo, location.state, hasSentInitialOTP, otpSendAttempts]);
 
   // Reset OTP when type changes
   useEffect(() => {
@@ -127,32 +131,27 @@ const VerifyOTP: React.FC = () => {
     // Prevent multiple submissions
     if (isSubmitting) return;
 
-    setError('');
-    setIsSubmitting(true);
-
+    // Validate OTP input
     const otpString = otp.join('');
     if (otpString.length !== 6) {
       setError('Please enter the complete 6-digit OTP');
-      setIsSubmitting(false);
       return;
     }
+
+    if (!/^\d{6}$/.test(otpString)) {
+      setError('OTP must contain only numbers');
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
 
     try {
       console.log('🔍 Submitting OTP verification:', { otpString, otpType, userId: currentUserId });
       const result = await verifyOTPAPI(currentUserId, otpString, otpType);
 
       if (!result.success) {
-        setError(result.error || 'OTP verification failed');
-        setIsSubmitting(false);
-
-        // Clear OTP fields on error to allow retry
-        setOtp(['', '', '', '', '', '']);
-
-        // Focus on first OTP input
-        setTimeout(() => {
-          otpRefs.current[0]?.focus();
-        }, 100);
-        return;
+        throw new Error(result.error || 'OTP verification failed');
       }
 
       console.log('✅ OTP verification successful');
@@ -196,7 +195,22 @@ const VerifyOTP: React.FC = () => {
 
     } catch (err: any) {
       console.error('❌ OTP verification failed:', err);
-      setError(err?.message || 'Invalid OTP. Please try again.');
+      
+      let errorMessage = 'Invalid OTP. Please try again.';
+      
+      if (err?.message) {
+        if (err.message.includes('expired')) {
+          errorMessage = 'OTP has expired. Please request a new code.';
+        } else if (err.message.includes('attempts')) {
+          errorMessage = 'Too many failed attempts. Please request a new OTP.';
+        } else if (err.message.includes('Invalid')) {
+          errorMessage = 'Invalid OTP code. Please check and try again.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
 
       // Clear OTP fields on error to allow retry
       setOtp(['', '', '', '', '', '']);
@@ -250,13 +264,30 @@ const VerifyOTP: React.FC = () => {
   };
 
   const handleSendOTP = async () => {
+    // Prevent rapid successive requests
+    const now = Date.now();
+    if (now - lastOTPSendTime < 5000) { // 5 second cooldown
+      setError('Please wait a moment before requesting another OTP');
+      return;
+    }
+    
+    // Limit OTP send attempts
+    if (otpSendAttempts >= 5) {
+      setError('Too many OTP requests. Please try again later.');
+      return;
+    }
+
     if (!currentUserId || !contactInfo[otpType]) {
       console.error('Missing user ID or contact info:', { currentUserId, contactInfo, otpType });
+      setError('Missing user information. Please try registering again.');
       return;
     }
 
     try {
       console.log('📤 Sending OTP:', { userId: currentUserId, contactInfo: contactInfo[otpType], otpType });
+      setLastOTPSendTime(now);
+      setOtpSendAttempts(prev => prev + 1);
+      
       const result = await sendOTP(currentUserId, contactInfo[otpType], otpType);
 
       if (!result.success) {
@@ -265,18 +296,27 @@ const VerifyOTP: React.FC = () => {
       }
 
       console.log('✅ OTP sent successfully:', result);
+      
+      // Reset error state on successful send
+      setError('');
+      
+      // Show success message
+      notification.showSuccess('OTP Sent', `Verification code sent to ${contactInfo[otpType]}`);
     } catch (error: any) {
       console.error('Failed to send OTP:', error);
-      setError('Failed to send OTP. Please try again.');
+      const errorMessage = error?.message || 'Failed to send OTP. Please try again.';
+      setError(errorMessage);
+      notification.showError('Send Failed', errorMessage);
     }
   };
 
   const handleResend = async () => {
-    if (!currentUserId || !contactInfo[otpType] || isSubmitting) {
+    if (!currentUserId || !contactInfo[otpType] || isSubmitting || isResending) {
       setError('User information not found. Please try registering again.');
       return;
     }
 
+    setIsResending(true);
     setResendTimer(30);
     setCanResend(false);
     setError('');
@@ -287,7 +327,13 @@ const VerifyOTP: React.FC = () => {
       otpRefs.current[0]?.focus();
     }, 100);
 
-    await handleSendOTP();
+    try {
+      await handleSendOTP();
+    } catch (error) {
+      console.error('Resend failed:', error);
+    } finally {
+      setIsResending(false);
+    }
   };
 
   const handleOtpTypeChange = (newType: 'email' | 'mobile') => {
@@ -297,6 +343,7 @@ const VerifyOTP: React.FC = () => {
       setOtpType(newType);
       setOtp(['', '', '', '', '', '']);
       setError('');
+      setOtpSendAttempts(0); // Reset attempts when switching type
       // Send OTP for the new type
       setTimeout(() => {
         if (contactInfo[newType]) {
@@ -524,16 +571,22 @@ const VerifyOTP: React.FC = () => {
               {canResend ? (
                   <button
                       onClick={handleResend}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isResending}
                       className="inline-flex items-center space-x-2 text-indigo-600 hover:text-indigo-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    <span>Resend OTP</span>
+                    <RefreshCw className={`h-4 w-4 ${isResending ? 'animate-spin' : ''}`} />
+                    <span>{isResending ? 'Sending...' : 'Resend OTP'}</span>
                   </button>
               ) : (
                   <p className="text-sm text-gray-500">
                     Resend OTP in {resendTimer} seconds
                   </p>
+              )}
+              
+              {otpSendAttempts > 0 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Attempts: {otpSendAttempts}/5
+                </p>
               )}
             </div>
           </div>

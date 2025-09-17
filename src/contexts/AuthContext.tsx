@@ -26,6 +26,7 @@ interface AuthContextType {
   verifyOTP: (otp: string) => Promise<void>;
   sendOTPToUser: (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => Promise<any>;
   fetchUserData: (userId: string) => Promise<void>;
+  checkVerificationStatus: (userId: string) => Promise<{ needsVerification: boolean; settings: any }>;
   loading: boolean;
 }
 
@@ -557,6 +558,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendOTPToUser = async (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => {
     try {
       console.log('📤 Sending OTP to user:', { userId, contactInfo, otpType });
+      
+      // Validate inputs
+      if (!userId || !contactInfo || !otpType) {
+        throw new Error('Missing required information for OTP sending');
+      }
+      
       const result = await sendOTP(userId, contactInfo, otpType);
 
       if (!result.success) {
@@ -568,8 +575,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return result;
     } catch (error: any) {
       console.error('❌ Failed to send OTP:', error);
-      notification.showError('Send Failed', error?.message || 'Failed to send OTP');
+      const errorMessage = error?.message || 'Failed to send OTP. Please try again.';
+      notification.showError('Send Failed', errorMessage);
       throw error;
+    }
+  };
+
+  const checkVerificationStatus = async (userId: string) => {
+    try {
+      console.log('🔍 Checking verification status for user:', userId);
+      
+      // Get user verification status
+      const { data: userData, error: userError } = await supabase
+        .from('tbl_users')
+        .select('tu_email_verified, tu_mobile_verified, tu_is_verified')
+        .eq('tu_id', userId)
+        .single();
+
+      if (userError) {
+        console.warn('Could not fetch user verification status:', userError);
+        return { needsVerification: false, settings: null };
+      }
+
+      // Get system settings
+      const { data: settingsData } = await supabase
+        .from('tbl_system_settings')
+        .select('tss_setting_key, tss_setting_value')
+        .in('tss_setting_key', [
+          'email_verification_required',
+          'mobile_verification_required', 
+          'either_verification_required'
+        ]);
+
+      const settings = settingsData?.reduce((acc: any, setting: any) => {
+        try {
+          acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
+        } catch {
+          acc[setting.tss_setting_key] = setting.tss_setting_value;
+        }
+        return acc;
+      }, {}) || {};
+
+      const emailRequired = settings.email_verification_required || false;
+      const mobileRequired = settings.mobile_verification_required || false;
+      const eitherRequired = settings.either_verification_required || false;
+
+      let needsVerification = false;
+
+      if (eitherRequired) {
+        // For either verification, user needs at least one verified
+        needsVerification = !userData.tu_email_verified && !userData.tu_mobile_verified;
+      } else {
+        // Check individual requirements
+        if (emailRequired && !userData.tu_email_verified) {
+          needsVerification = true;
+        }
+        if (mobileRequired && !userData.tu_mobile_verified) {
+          needsVerification = true;
+        }
+      }
+
+      console.log('📋 Verification check result:', {
+        emailVerified: userData.tu_email_verified,
+        mobileVerified: userData.tu_mobile_verified,
+        isVerified: userData.tu_is_verified,
+        emailRequired,
+        mobileRequired,
+        eitherRequired,
+        needsVerification
+      });
+
+      return {
+        needsVerification,
+        settings: {
+          emailVerificationRequired: emailRequired,
+          mobileVerificationRequired: mobileRequired,
+          eitherVerificationRequired: eitherRequired
+        }
+      };
+    } catch (error) {
+      console.error('Error checking verification status:', error);
+      return { needsVerification: false, settings: null };
     }
   };
 
@@ -583,6 +669,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     verifyOTP,
     sendOTPToUser,
     fetchUserData,
+    checkVerificationStatus,
     loading
   };
 
