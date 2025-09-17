@@ -345,9 +345,21 @@ export const sendOTP = async (userId: string, contactInfo: string, otpType: 'ema
     }
 
     console.log('✅ OTP sent successfully:', data)
+    
+    // For mobile OTP in development, show the debug info
+    if (data.debug_info && otpType === 'mobile') {
+      console.log('📱 Mobile OTP Debug Info:', data.debug_info);
+    }
+    
     return data
   } catch (error: any) {
     console.error('❌ OTP sending failed:', error);
+    
+    // For mobile OTP, provide more helpful error message
+    if (otpType === 'mobile') {
+      throw new Error(error.message || 'Mobile OTP is currently in development mode. Check console for test OTP code.');
+    }
+    
     throw new Error(error.message || 'Failed to send OTP. Please try again.');
   }
 }

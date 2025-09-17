@@ -153,59 +153,6 @@ const CustomerRegister: React.FC = () => {
       if (needsVerification) {
         console.log('🔐 Verification required, redirecting to OTP page...');
 
-        // Send OTP based on verification settings
-        try {
-          let otpSent = false;
-          
-          if (settings.emailVerificationRequired) {
-            console.log('📧 Sending email OTP...');
-            try {
-              await sendOTP(userId, userData.email, 'email');
-              otpSent = true;
-            } catch (emailOtpError) {
-              console.warn('⚠️ Email OTP failed:', emailOtpError);
-            }
-            console.log('✅ Email OTP sent successfully');
-          }
-
-          if (settings.mobileVerificationRequired) {
-            console.log('📱 Sending mobile OTP...');
-            try {
-              // Use the combined mobile number with country code for OTP
-              await sendOTP(userId, formData.mobileCountryCode + formData.mobile, 'mobile');
-              otpSent = true;
-            } catch (mobileOtpError) {
-              console.warn('⚠️ Mobile OTP failed:', mobileOtpError);
-            }
-            console.log('✅ Mobile OTP sent successfully');
-          }
-
-          if (settings.eitherVerificationRequired) {
-            // For "either verification", we'll send both but user only needs to verify one
-            console.log('🔄 Either verification enabled - sending both OTPs');
-            try {
-              await sendOTP(userId, userData.email, 'email');
-              otpSent = true;
-            } catch (emailOtpError) {
-              console.warn('⚠️ Email OTP failed for either verification:', emailOtpError);
-            }
-            
-            try {
-              await sendOTP(userId, formData.mobileCountryCode + formData.mobile, 'mobile');
-              otpSent = true;
-            } catch (mobileOtpError) {
-              console.warn('⚠️ Mobile OTP failed for either verification:', mobileOtpError);
-            }
-          }
-          
-          if (!otpSent) {
-            console.warn('⚠️ No OTP was sent successfully, but continuing to verification page');
-          }
-        } catch (otpError) {
-          console.warn('⚠️ Failed to send OTP, but registration was successful:', otpError);
-          // Don't fail registration if OTP sending fails
-        }
-
         // Redirect to verification page with settings context
         navigate('/verify-otp', {
           state: {
