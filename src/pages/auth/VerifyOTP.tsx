@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../components/ui/NotificationProvider';
 import { sendOTP, verifyOTP as verifyOTPAPI } from '../../lib/supabase';
 import { Smartphone, RefreshCw, Mail, CheckCircle2 } from 'lucide-react';
 
 const VerifyOTP: React.FC = () => {
   const { user, fetchUserData } = useAuth();
+  const notification = useNotification();
   const navigate = useNavigate();
   const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +28,8 @@ const VerifyOTP: React.FC = () => {
     mobile: false
   });
   const [currentUserId, setCurrentUserId] = useState('');
-  const [hasSentInitialOTP, setHasSentInitialOTP] = useState(false);
+  const [initialOTPSent, setInitialOTPSent] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [lastOTPSendTime, setLastOTPSendTime] = useState<number>(0);
@@ -40,6 +43,8 @@ const VerifyOTP: React.FC = () => {
   useEffect(() => {
     // Get data from navigation state or user context
     const state = location.state as any;
+
+    console.log('🔍 VerifyOTP component initialized with state:', state);
 
     if (state) {
       setCurrentUserId(state.userId || user?.id || '');
@@ -71,6 +76,13 @@ const VerifyOTP: React.FC = () => {
         // Default fallback
         setOtpType('email');
       }
+
+      console.log('📋 Verification settings loaded:', {
+        emailRequired: state.verificationSettings?.emailRequired,
+        mobileRequired: state.verificationSettings?.mobileRequired,
+        eitherRequired: state.verificationSettings?.eitherRequired,
+        selectedType: state.verificationSettings?.mobileRequired && state.mobile ? 'mobile' : 'email'
+      });
     } else if (user) {
       setCurrentUserId(user.id);
       setContactInfo({
@@ -78,6 +90,8 @@ const VerifyOTP: React.FC = () => {
         mobile: ''
       });
     }
+
+    setIsInitializing(false);
   }, [location.state, user]);
 
   useEffect(() => {
@@ -89,15 +103,23 @@ const VerifyOTP: React.FC = () => {
     }
   }, [resendTimer]);
 
-  // Send initial OTP only if coming from registration and hasn't been sent yet
+  // Send initial OTP when component is ready
   useEffect(() => {
-    const state = location.state as any;
-    if (state?.fromRegistration && currentUserId && contactInfo[otpType] && !hasSentInitialOTP) {
-      handleSendOTP();
-      setHasSentInitialOTP(true);
+    if (!isInitializing && currentUserId && contactInfo[otpType] && !initialOTPSent) {
+      console.log('📤 Sending initial OTP automatically...');
+      sendInitialOTP();
     }
-  }, [currentUserId, otpType, contactInfo, location.state, hasSentInitialOTP]);
+  }, [isInitializing, currentUserId, otpType, contactInfo, initialOTPSent]);
 
+  const sendInitialOTP = async () => {
+    try {
+      setInitialOTPSent(true);
+      await handleSendOTP();
+    } catch (error) {
+      console.error('Failed to send initial OTP:', error);
+      setInitialOTPSent(false); // Allow retry
+    }
+  };
   // Reset OTP when type changes
   useEffect(() => {
     setOtp(['', '', '', '', '', '']);
@@ -157,20 +179,14 @@ const VerifyOTP: React.FC = () => {
     try {
       console.log('🔍 Submitting OTP verification:', { otpString, otpType, userId: currentUserId });
       
-      // Add timeout handling for the verification
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Verification timeout - please try again')), 25000)
-      );
-      
-      const verifyPromise = verifyOTPAPI(currentUserId, otpString, otpType);
-      
-      const result = await Promise.race([verifyPromise, timeoutPromise]) as any;
+      const result = await verifyOTPAPI(currentUserId, otpString, otpType);
 
       if (!result.success) {
         throw new Error(result.error || 'OTP verification failed');
       }
 
       console.log('✅ OTP verification successful');
+      notification.showSuccess('Verification Successful', `${otpType === 'email' ? 'Email' : 'Mobile'} verified successfully!`);
 
       // Update completed verifications
       const newCompletedVerifications = {
@@ -188,6 +204,7 @@ const VerifyOTP: React.FC = () => {
         if (user) {
           await fetchUserData(user.id);
         }
+        notification.showSuccess('Account Verified', 'Your account has been fully verified!');
         // Redirect to subscription plans
         navigate('/subscription-plans', { state: { requiresSubscription: true } });
       } else {
@@ -198,6 +215,7 @@ const VerifyOTP: React.FC = () => {
         // Switch to next required verification type
         const nextType = getNextVerificationType(newCompletedVerifications);
         if (nextType) {
+          notification.showInfo('Next Step', `Please verify your ${nextType} address to complete registration`);
           setOtpType(nextType);
 
           // Send OTP for the next type after a brief delay
@@ -229,6 +247,7 @@ const VerifyOTP: React.FC = () => {
       }
       
       setError(errorMessage);
+      notification.showError('Verification Failed', errorMessage);
 
       // Clear OTP fields on error to allow retry
       setOtp(['', '', '', '', '', '']);
@@ -273,13 +292,6 @@ const VerifyOTP: React.FC = () => {
     return true; // No verification required
   };
 
-  const switchToNextVerificationType = () => {
-    if (verificationSettings.emailRequired && !completedVerifications.email) {
-      setOtpType('email');
-    } else if (verificationSettings.mobileRequired && !completedVerifications.mobile) {
-      setOtpType('mobile');
-    }
-  };
 
   const handleSendOTP = async () => {
     // Prevent rapid successive requests
@@ -328,7 +340,7 @@ const VerifyOTP: React.FC = () => {
       if (result.debug_info) {
         console.log('🔧 Development OTP Info:', result.debug_info);
         if (otpType === 'mobile') {
-          setError(`Development Mode: Use OTP ${result.debug_info.otp_code} (Mobile OTP simulated)`);
+          notification.showInfo('Development Mode', `Use OTP: ${result.debug_info.otp_code} (Mobile OTP simulated)`);
         }
       }
       
@@ -371,14 +383,17 @@ const VerifyOTP: React.FC = () => {
   };
 
   const handleOtpTypeChange = (newType: 'email' | 'mobile') => {
+    console.log('🔄 Switching OTP type from', otpType, 'to', newType);
+    
     // Check if the new type is allowed and has contact info
     const isAllowed = verificationSettings.eitherRequired ||
         (newType === 'email' && verificationSettings.emailRequired) ||
         (newType === 'mobile' && verificationSettings.mobileRequired);
         
     const hasContactInfo = contactInfo[newType] && contactInfo[newType].trim() !== '';
+    const isAlreadyVerified = completedVerifications[newType];
     
-    if (isAllowed && hasContactInfo) {
+    if (isAllowed && hasContactInfo && !isAlreadyVerified) {
       setOtpType(newType);
       setOtp(['', '', '', '', '', '']);
       setError('');
@@ -387,14 +402,20 @@ const VerifyOTP: React.FC = () => {
       setCanResend(false);
       setLastOTPSendTime(0); // Reset cooldown
       
+      notification.showInfo('Verification Type Changed', `Switched to ${newType} verification`);
+      
       // Send OTP for the new type
       setTimeout(() => {
         handleSendOTP();
       }, 100);
+    } else if (isAlreadyVerified) {
+      notification.showInfo('Already Verified', `Your ${newType} is already verified`);
     } else if (!hasContactInfo) {
       setError(`No ${newType} address provided for verification`);
+      notification.showError('Missing Information', `No ${newType} address available for verification`);
     } else {
       setError(`${newType} verification is not enabled`);
+      notification.showError('Not Available', `${newType} verification is not enabled`);
     }
   };
 
@@ -442,7 +463,6 @@ const VerifyOTP: React.FC = () => {
   };
 
   const getVerificationDescription = () => {
-    const currentContact = contactInfo[otpType];
     if (verificationSettings.eitherRequired) {
       return `Choose your preferred verification method. We'll send a 6-digit code to verify your account.`;
     }
@@ -456,12 +476,25 @@ const VerifyOTP: React.FC = () => {
   };
 
   const canSwitchType = (type: 'email' | 'mobile') => {
-    if (verificationSettings.eitherRequired) {
-      return contactInfo[type] && contactInfo[type].trim() !== '' && !completedVerifications[type];
+    // Allow switching if:
+    // 1. Either verification is enabled, OR
+    // 2. Both email and mobile verification are required (sequential verification)
+    if (verificationSettings.eitherRequired || 
+        (verificationSettings.emailRequired && verificationSettings.mobileRequired)) {
+      return contactInfo[type] && 
+             contactInfo[type].trim() !== '' && 
+             !completedVerifications[type];
     }
     return false;
   };
 
+  // Show type selector for either verification OR when both are required
+  const showAdvancedTypeSelector = () => {
+    return (verificationSettings.eitherRequired || 
+            (verificationSettings.emailRequired && verificationSettings.mobileRequired)) && 
+           contactInfo.email && contactInfo.email.trim() !== '' && 
+           contactInfo.mobile && contactInfo.mobile.trim() !== '';
+  };
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
@@ -523,9 +556,11 @@ const VerifyOTP: React.FC = () => {
             )}
 
             {/* OTP Type Selector */}
-            {showTypeSelector() && (
+            {showAdvancedTypeSelector() && (
                 <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Choose verification method:</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">
+                    {verificationSettings.eitherRequired ? 'Choose verification method:' : 'Switch verification method:'}
+                  </h4>
                   <div className="flex space-x-4 justify-center">
                     <button
                         type="button"
@@ -540,7 +575,7 @@ const VerifyOTP: React.FC = () => {
                         }`}
                     >
                       <Smartphone className="h-4 w-4" />
-                      <span>Mobile ({contactInfo.mobile})</span>
+                      <span>Mobile ({contactInfo.mobile?.replace(/(.{3}).*(.{4})/, '$1***$2')})</span>
                       {completedVerifications.mobile && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                     </button>
                     <button
@@ -657,16 +692,25 @@ const VerifyOTP: React.FC = () => {
                 </p>
               )}
               
-              {/* Switch verification method for either verification */}
-              {verificationSettings.eitherRequired && contactInfo.email && contactInfo.mobile && (
+              {/* Switch verification method */}
+              {showAdvancedTypeSelector() && !showTypeSelector() && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-xs text-gray-500 mb-2">Having trouble with {otpType}?</p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    {verificationSettings.eitherRequired 
+                      ? `Having trouble with ${otpType}?` 
+                      : `Need to verify ${otpType === 'mobile' ? 'email' : 'mobile'} too?`
+                    }
+                  </p>
                   <button
                     type="button"
                     onClick={() => handleOtpTypeChange(otpType === 'mobile' ? 'email' : 'mobile')}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    disabled={!canSwitchType(otpType === 'mobile' ? 'email' : 'mobile')}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
                   >
-                    Switch to {otpType === 'mobile' ? 'Email' : 'Mobile'} verification
+                    {verificationSettings.eitherRequired 
+                      ? `Switch to ${otpType === 'mobile' ? 'Email' : 'Mobile'} verification`
+                      : `Verify ${otpType === 'mobile' ? 'Email' : 'Mobile'} instead`
+                    }
                   </button>
                 </div>
               )}
@@ -674,7 +718,7 @@ const VerifyOTP: React.FC = () => {
               {/* Help text */}
               <div className="mt-4 text-center">
                 <p className="text-xs text-gray-500">
-                  Having trouble? Check your spam folder{showTypeSelector() ? ' or try switching verification method above' : ''}.
+                  Having trouble? Check your spam folder{showAdvancedTypeSelector() ? ' or try switching verification method above' : ''}.
                 </p>
               </div>
             </div>
