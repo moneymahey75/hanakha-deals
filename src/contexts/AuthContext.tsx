@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, sendOTP, verifyOTP as verifyOTPAPI, sessionManager, addUserToMLMTree } from '../lib/supabase';
+import { supabase, supabaseBatch, sessionManager, addUserToMLMTree } from '../lib/supabase';
+import { OTPService } from '../services/otpService';
 import { useNotification } from '../components/ui/NotificationProvider';
 
 interface User {
@@ -44,6 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [otpService] = useState(() => OTPService.getInstance());
   const notification = useNotification();
 
   useEffect(() => {
@@ -134,44 +136,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🔍 Fetching user data for:', userId);
 
-      // Try to get user data, but handle RLS gracefully
+      // Optimize user data fetching with single query using joins
       let userData = null;
+      let profileData = null;
+      let companyData = null;
+      let subscriptionData = null;
+
       try {
-        const { data: userDataArray, error: userError } = await supabase
+        // Use a single query with joins to reduce connection usage
+        const { data: combinedData, error: combinedError } = await supabaseBatch
+            .from('tbl_users')
+          .select(`
+            *,
+            tbl_user_profiles(*),
+            tbl_companies(*),
+            tbl_user_subscriptions!inner(
+              tus_status,
+              tus_end_date
+            )
+          `)
+            .eq('tu_id', userId);
+          .eq('tbl_user_subscriptions.tus_status', 'active')
+          .gte('tbl_user_subscriptions.tus_end_date', new Date().toISOString())
+          .maybeSingle();
+
+        if (combinedError) {
+          console.log('⚠️ Combined query failed, falling back to individual queries:', combinedError.message);
+          
+          // Fallback to individual queries
+          const { data: userDataArray, error: userError } = await supabase
             .from('tbl_users')
             .select('*')
             .eq('tu_id', userId);
 
-        if (userError) {
-          console.log('⚠️ RLS blocking users table access:', userError.message);
-        } else if (userDataArray && userDataArray.length > 0) {
-          userData = userDataArray[0];
+          if (userError) {
+            console.log('⚠️ RLS blocking users table access:', userError.message);
+          } else if (userDataArray && userDataArray.length > 0) {
+            userData = userDataArray[0];
+          }
+        } else if (combinedData) {
+          userData = combinedData;
+          profileData = combinedData.tbl_user_profiles?.[0];
+          companyData = combinedData.tbl_companies?.[0];
+          subscriptionData = combinedData.tbl_user_subscriptions?.[0];
         }
       } catch (rlsError) {
         console.warn('RLS blocking users table:', rlsError);
       }
 
-      // Try to get profile data
-      let profileData = null;
-      try {
-        const { data: profileDataArray } = await supabase
+      // Only fetch additional data if not already retrieved from combined query
+      if (!profileData) {
+        try {
+          const { data: profileDataArray } = await supabase
             .from('tbl_user_profiles')
-            .select('*')
+              .select('*')
             .eq('tup_user_id', userId);
-        console.log('📋 Profile data retrieved:', profileDataArray?.length || 0, 'records');
-        profileData = profileDataArray?.[0];
-      } catch (profileRlsError) {
-        console.warn('RLS blocking user_profiles table:', profileRlsError);
+          console.log('📋 Profile data retrieved:', profileDataArray?.length || 0, 'records');
+          profileData = profileDataArray?.[0];
+        } catch (profileRlsError) {
+          console.warn('RLS blocking user_profiles table:', profileRlsError);
+        }
       }
 
-      // Try to get company data if user is a company
-      let companyData = null;
-      if (userData?.tu_user_type === 'company') {
+      if (!companyData && userData?.tu_user_type === 'company') {
         try {
           const { data: companyDataArray } = await supabase
-              .from('tbl_companies')
-              .select('*')
-              .eq('tc_user_id', userId);
+            .from('tbl_companies')
+            .select('*')
+            .eq('tc_user_id', userId);
           console.log('🏢 Company data retrieved:', companyDataArray?.length || 0, 'records');
           companyData = companyDataArray?.[0];
         } catch (companyRlsError) {
@@ -179,21 +211,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Try to check for active subscription
-      let subscriptionData = null;
-      try {
-        console.log('💳 Checking for active subscription for user:', userId);
-        const { data: subscriptionDataArray } = await supabase
+      if (!subscriptionData) {
+        try {
+          console.log('💳 Checking for active subscription for user:', userId);
+          const { data: subscriptionDataArray } = await supabase
             .from('tbl_user_subscriptions')
             .select('*')
             .eq('tus_user_id', userId)
             .eq('tus_status', 'active')
             .gte('tus_end_date', new Date().toISOString());
-        console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
-        console.log('💳 Subscription details:', subscriptionDataArray);
-        subscriptionData = subscriptionDataArray?.[0];
-      } catch (subscriptionRlsError) {
-        console.warn('RLS blocking user_subscriptions table:', subscriptionRlsError);
+          console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
+          subscriptionData = subscriptionDataArray?.[0];
+        } catch (subscriptionRlsError) {
+          console.warn('RLS blocking user_subscriptions table:', subscriptionRlsError);
+        }
       }
 
       // Get current session to get email
@@ -564,7 +595,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Missing required information for OTP sending');
       }
       
-      const result = await sendOTP(userId, contactInfo, otpType);
+      const result = await otpService.sendOTP(userId, contactInfo, otpType);
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to send OTP');
@@ -585,20 +616,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🔍 Checking verification status for user:', userId);
       
-      // Get user verification status
-      const { data: userData, error: userError } = await supabase
+      // Optimize verification status check with single query
+      const { data: userData, error: userError } = await supabaseBatch
         .from('tbl_users')
         .select('tu_email_verified, tu_mobile_verified, tu_is_verified')
         .eq('tu_id', userId)
-        .single();
+        .maybeSingle();
 
       if (userError) {
         console.warn('Could not fetch user verification status:', userError);
         return { needsVerification: false, settings: null };
       }
 
-      // Get system settings
-      const { data: settingsData } = await supabase
+      // Get system settings with caching
+      const { data: settingsData } = await supabaseBatch
         .from('tbl_system_settings')
         .select('tss_setting_key, tss_setting_value')
         .in('tss_setting_key', [

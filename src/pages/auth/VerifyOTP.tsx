@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
-import { sendOTP, verifyOTP as verifyOTPAPI } from '../../lib/supabase';
+import { OTPService } from '../../services/otpService';
 import { Smartphone, RefreshCw, Mail, CheckCircle2 } from 'lucide-react';
 
 const VerifyOTP: React.FC = () => {
@@ -10,11 +10,12 @@ const VerifyOTP: React.FC = () => {
   const notification = useNotification();
   const navigate = useNavigate();
   const location = useLocation();
+  const [otpService] = useState(() => OTPService.getInstance());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
-  const [resendTimer, setResendTimer] = useState(0); // Start at 0, no timer initially
-  const [canResend, setCanResend] = useState(true); // Initially true to show Send OTP button
+  const [resendTimer, setResendTimer] = useState(0);
+  const [canResend, setCanResend] = useState(true);
   const [isResending, setIsResending] = useState(false);
   const [otpType, setOtpType] = useState<'email' | 'mobile'>('mobile');
   const [contactInfo, setContactInfo] = useState({ email: '', mobile: '' });
@@ -29,6 +30,7 @@ const VerifyOTP: React.FC = () => {
   });
   const [currentUserId, setCurrentUserId] = useState('');
   const [isInitializing, setIsInitializing] = useState(true);
+  const [hasInitialOTPSent, setHasInitialOTPSent] = useState(false);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [lastOTPSendTime, setLastOTPSendTime] = useState<number>(0);
@@ -93,6 +95,30 @@ const VerifyOTP: React.FC = () => {
     setIsInitializing(false);
   }, [location.state, user]);
 
+  // Auto-send initial OTP when component is ready
+  useEffect(() => {
+    const sendInitialOTP = async () => {
+      if (!isInitializing && 
+          !hasInitialOTPSent && 
+          currentUserId && 
+          contactInfo[otpType] && 
+          contactInfo[otpType].trim() !== '') {
+        
+        console.log('📤 Auto-sending initial OTP for:', otpType);
+        setHasInitialOTPSent(true);
+        
+        try {
+          await handleSendOTP();
+        } catch (error) {
+          console.error('❌ Failed to send initial OTP:', error);
+          // Don't set hasInitialOTPSent to false, let user manually retry
+        }
+      }
+    };
+
+    sendInitialOTP();
+  }, [isInitializing, hasInitialOTPSent, currentUserId, contactInfo, otpType]);
+
   useEffect(() => {
     if (resendTimer > 0) {
       const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
@@ -106,6 +132,9 @@ const VerifyOTP: React.FC = () => {
   useEffect(() => {
     setOtp(['', '', '', '', '', '']);
     setError('');
+    setHasInitialOTPSent(false); // Reset initial OTP flag when switching types
+    setCanResend(true); // Enable send button for new type
+    setResendTimer(0); // Reset timer
 
     // Focus on first input after a delay
     const timer = setTimeout(() => {
@@ -177,7 +206,7 @@ const VerifyOTP: React.FC = () => {
     try {
       console.log('🔍 Submitting OTP verification:', { otpString, otpType, userId: currentUserId });
 
-      const result = await verifyOTPAPI(currentUserId, otpString, otpType);
+      const result = await otpService.verifyOTP(currentUserId, otpString, otpType);
 
       if (!result.success) {
         throw new Error(result.error || 'OTP verification failed');
@@ -209,6 +238,7 @@ const VerifyOTP: React.FC = () => {
         // More verifications needed - reset OTP and focus
         setOtp(['', '', '', '', '', '']);
         setError('');
+        setHasInitialOTPSent(false); // Reset for next verification type
 
         // Switch to next required verification type
         const nextType = getNextVerificationType(newCompletedVerifications);
@@ -312,8 +342,9 @@ const VerifyOTP: React.FC = () => {
       setOtpSendAttempts(prev => prev + 1);
 
       setError(''); // Clear any previous errors
+      setIsResending(true);
 
-      const result = await sendOTP(currentUserId, contactInfo[otpType], otpType);
+      const result = await otpService.sendOTP(currentUserId, contactInfo[otpType], otpType);
 
       if (!result.success) {
         console.error('OTP send failed:', result.error);
@@ -338,6 +369,8 @@ const VerifyOTP: React.FC = () => {
         console.log('🔧 Development OTP Info:', result.debug_info);
         if (otpType === 'mobile') {
           notification.showInfo('Development Mode', `Use OTP: ${result.debug_info.otp_code} (Mobile OTP simulated)`);
+        } else {
+          notification.showInfo('Development Mode', `Use OTP: ${result.debugInfo.otp_code} (Email OTP simulated)`);
         }
       }
 
@@ -346,10 +379,9 @@ const VerifyOTP: React.FC = () => {
       const errorMessage = error?.message || 'Failed to send OTP. Please try again.';
       setError(errorMessage);
 
-      // Don't show notification error for mobile in development mode
-      if (!(otpType === 'mobile' && errorMessage.includes('simulated'))) {
-        notification.showError('Send Failed', errorMessage);
-      }
+      notification.showError('Send Failed', errorMessage);
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -395,6 +427,7 @@ const VerifyOTP: React.FC = () => {
       setOtpSendAttempts(0); // Reset attempts when switching type
       setResendTimer(0); // Reset timer
       setCanResend(true); // Enable Send OTP button for new type
+      setHasInitialOTPSent(false); // Reset initial OTP flag for new type
 
       notification.showInfo('Verification Type Changed', `Switched to ${newType} verification`);
     } else if (isAlreadyVerified) {
@@ -615,7 +648,7 @@ const VerifyOTP: React.FC = () => {
             )}
 
             {/* Send OTP button - only show if OTP hasn't been sent yet */}
-            {canResend && resendTimer === 0 && (
+            {canResend && resendTimer === 0 && !hasInitialOTPSent && (
                 <div className="mb-6 text-center">
                   <button
                       onClick={handleSendOTP}
@@ -641,6 +674,16 @@ const VerifyOTP: React.FC = () => {
                 </div>
             )}
 
+            {/* Show loading state when auto-sending initial OTP */}
+            {!hasInitialOTPSent && isInitializing && (
+                <div className="mb-6 text-center">
+                  <div className="flex items-center justify-center space-x-2 text-gray-600">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+                    <span>Preparing verification...</span>
+                  </div>
+                </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-4 text-center">
@@ -657,20 +700,27 @@ const VerifyOTP: React.FC = () => {
                           onChange={(e) => handleOtpChange(index, e.target.value)}
                           onPaste={index === 0 ? handlePaste : undefined} // Only handle paste on first input
                           onKeyDown={(e) => handleKeyDown(index, e)}
-                          className="w-12 h-12 text-center text-xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          className="w-12 h-12 text-center text-xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100"
                           maxLength={1}
-                          disabled={isSubmitting || resendTimer === 0}
+                          disabled={isSubmitting || (!hasInitialOTPSent && resendTimer === 0)}
                       />
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-2 text-center">
-                  Tip: You can paste the entire 6-digit code into any field
-                </p>
+                <div className="mt-2 text-center">
+                  <p className="text-xs text-gray-500">
+                    Tip: You can paste the entire 6-digit code into any field
+                  </p>
+                  {import.meta.env.DEV && (
+                    <p className="text-xs text-blue-600 mt-1 font-medium">
+                      Development: Use test OTP <code className="bg-blue-100 px-1 rounded">123456</code>
+                    </p>
+                  )}
+                </div>
               </div>
 
               <button
                   type="submit"
-                  disabled={isSubmitting || otp.join('').length !== 6 || resendTimer === 0}
+                  disabled={isSubmitting || otp.join('').length !== 6 || (!hasInitialOTPSent && resendTimer === 0)}
                   className={`w-full py-3 px-4 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 text-white ${
                       otpType === 'mobile'
                           ? 'bg-indigo-600 hover:bg-indigo-700'
@@ -690,13 +740,13 @@ const VerifyOTP: React.FC = () => {
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600 mb-4">
-                {resendTimer > 0 ? 'Resend OTP in' : "Didn't receive the code?"}
+                {resendTimer > 0 ? 'Resend OTP in' : hasInitialOTPSent ? "Didn't receive the code?" : ""}
               </p>
               {resendTimer > 0 ? (
                   <p className="text-sm text-gray-500">
                     {resendTimer} seconds
                   </p>
-              ) : canResend ? (
+              ) : (canResend && hasInitialOTPSent) ? (
                   <button
                       onClick={handleResend}
                       disabled={isSubmitting || isResending}

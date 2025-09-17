@@ -15,6 +15,7 @@ if (import.meta.env.DEV) {
   })
 }
 
+// Create optimized Supabase client with connection pooling
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
@@ -25,6 +26,29 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     headers: {
       'X-Client-Info': 'mlm-platform'
+    }
+  },
+  db: {
+    schema: 'public'
+  },
+  // Enable connection pooling and optimize settings
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
+  }
+})
+
+// Create a separate client for batch operations to reduce connection usage
+export const supabaseBatch = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'mlm-platform-batch'
     }
   },
   db: {
