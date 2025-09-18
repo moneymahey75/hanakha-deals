@@ -131,12 +131,21 @@ const GeneralSettings: React.FC = () => {
         });
       };
       reader.readAsDataURL(file);
+        } catch (error) {
+            setSaveResult({
+                success: false,
+                message: error.message || 'Failed to save settings. Please try again.'
+            });
         } finally {
+            setUploading(false);
+        }
+    };
+
+    if (loading) {
         return (
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        message: error.message || 'Failed to save settings. Please try again.'
                 </div>
             </div>
         );
