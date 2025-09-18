@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 import { UserCheck, Mail, Smartphone, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const RegistrationSettings: React.FC = () => {
@@ -20,37 +20,17 @@ const RegistrationSettings: React.FC = () => {
     const loadSettings = async () => {
         try {
             const { data, error } = await supabase
-                .from('tbl_system_settings')
-                .select('tss_setting_key, tss_setting_value')
-                .in('tss_setting_key', [
-                    'email_verification_required',
-                    'mobile_verification_required',
-                    'referral_mandatory',
-                    'either_verification_required'
-                ]);
+      const settingsToUpdate = {
+        email_verification_required: formData.emailVerificationRequired,
+        mobile_verification_required: formData.mobileVerificationRequired,
+        referral_mandatory: formData.referralMandatory,
+        either_verification_required: formData.eitherVerificationRequired
+      };
 
-            if (error) {
-                console.warn('Failed to load settings from database, using defaults:', error);
-                setFormData({
-                    emailVerificationRequired: true,
-                    mobileVerificationRequired: true,
-                    referralMandatory: false,
-                    eitherVerificationRequired: false
-                });
-            } else {
-                const settingsMap = data?.reduce((acc: any, setting: any) => {
-                    try {
-                        acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
-                    } catch (parseError) {
-                        console.warn('Failed to parse setting value:', setting.tss_setting_key, parseError);
-                        if (setting.tss_setting_key === 'email_verification_required') acc[setting.tss_setting_key] = true;
-                        if (setting.tss_setting_key === 'mobile_verification_required') acc[setting.tss_setting_key] = true;
-                        if (setting.tss_setting_key === 'referral_mandatory') acc[setting.tss_setting_key] = false;
-                        if (setting.tss_setting_key === 'either_verification_required') acc[setting.tss_setting_key] = false;
-                    }
-                    return acc;
-                }, {}) || {};
-
+      const response = await apiClient.updateSystemSettings(settingsToUpdate);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update settings');
                 setFormData({
                     emailVerificationRequired: settingsMap.email_verification_required ?? true,
                     mobileVerificationRequired: settingsMap.mobile_verification_required ?? true,
@@ -160,7 +140,7 @@ const RegistrationSettings: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-                    <span className="ml-3 text-gray-600">Loading settings...</span>
+        message: error.message || 'Failed to save settings. Please try again.'
                 </div>
             </div>
         );
@@ -383,30 +363,11 @@ const RegistrationSettings: React.FC = () => {
                             </div>
                         </div>
                     </div>
+      const response = await apiClient.getSystemSettings();
                 </div>
 
-                {/* Verification Flow Info */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-blue-800 mb-2">Registration Flow</h4>
-                    <div className="text-sm text-blue-700">
-                        <p className="mb-2">Based on your current settings, users will need to:</p>
-                        <ol className="list-decimal list-inside space-y-1">
-                            <li>Complete registration form</li>
-                            {formData.eitherVerificationRequired ? (
-                                <li>Verify either email address or mobile number via OTP</li>
-                            ) : (
-                                <>
+        const settingsMap = response.data || {};
                                     {formData.emailVerificationRequired && <li>Verify email address via OTP</li>}
-                                    {formData.mobileVerificationRequired && <li>Verify mobile number via SMS OTP</li>}
-                                </>
-                            )}
-                            <li>Choose and pay for subscription plan</li>
-                            <li>Access dashboard and start using the platform</li>
-                        </ol>
-                    </div>
-                </div>
-
-                <div className="flex justify-end">
                     <button
                         type="submit"
                         disabled={saving}

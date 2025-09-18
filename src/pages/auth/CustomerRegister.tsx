@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
-import { sendOTP, checkSponsorshipNumberExists } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 
@@ -109,8 +109,8 @@ const CustomerRegister: React.FC = () => {
     if (formData.parentAccount) {
       console.log('🔍 Validating referral code:', formData.parentAccount);
       try {
-        const isValidReferral = await checkSponsorshipNumberExists(formData.parentAccount);
-        if (!isValidReferral) {
+        const response = await apiClient.checkSponsorshipNumber(formData.parentAccount);
+        if (!response.success || !response.data.exists) {
           setError('Invalid referral code. Please check and try again.');
           setIsSubmitting(false);
           return;
@@ -221,8 +221,8 @@ const CustomerRegister: React.FC = () => {
 
     setValidatingReferral(true);
     try {
-      const isValid = await checkSponsorshipNumberExists(referralCode);
-      setReferralValid(isValid);
+      const response = await apiClient.checkSponsorshipNumber(referralCode);
+      setReferralValid(response.success && response.data.exists);
     } catch (error) {
       console.error('Failed to validate referral code:', error);
       setReferralValid(false);

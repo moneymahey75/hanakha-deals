@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
-import { supabase } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 import { Settings, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const PaymentSettings: React.FC = () => {
@@ -55,29 +55,19 @@ const PaymentSettings: React.FC = () => {
                     });
 
                 if (error) {
-                    throw error;
-                }
-            }
+      const settingsToUpdate = {
+        payment_mode: formData.paymentMode,
+        usdt_address: formData.usdtAddress,
+        subscription_contract_address: formData.subscriptionContractAddress,
+        investment_contract_address: formData.investmentContractAddress,
+        subscription_wallet_address: formData.subscriptionWalletAddress,
+        investment_wallet_address: formData.investmentWalletAddress
+      };
 
-            // Update context
-            updateSettings(formData);
-
-            // Refresh settings from database to ensure sync
-            await refreshSettings();
-
-            setSaveResult({
-                success: true,
-                message: 'Payment settings updated successfully!'
-            });
-        } catch (error) {
-            console.error('Failed to save settings:', error);
-            setSaveResult({
-                success: false,
-                message: 'Failed to save settings. Please try again.'
-            });
-        } finally {
-            setSaving(false);
-        }
+      const response = await apiClient.updateSystemSettings(settingsToUpdate);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update settings');
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -92,7 +82,7 @@ const PaymentSettings: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <span className="ml-3 text-gray-600">Loading settings...</span>
+        message: error.message || 'Failed to save settings. Please try again.'
                 </div>
             </div>
         );

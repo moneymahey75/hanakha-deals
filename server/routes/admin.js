@@ -212,4 +212,170 @@ router.get('/users', verifyAdminToken, requireAdminPermission('customers', 'read
   }
 });
 
+// Get Sub-Admins
+router.get('/sub-admins', verifyAdminToken, requireAdminPermission('admins', 'read'), async (req, res) => {
+  try {
+    const subAdmins = await executeQuery(
+      'SELECT tau_id, tau_email, tau_full_name, tau_permissions, tau_is_active, tau_created_by, tau_last_login, tau_created_at FROM tbl_admin_users WHERE tau_role = "sub_admin" ORDER BY tau_created_at DESC'
+    );
+
+    res.json({
+      success: true,
+      data: subAdmins.map(admin => ({
+        id: admin.tau_id,
+        email: admin.tau_email,
+        fullName: admin.tau_full_name,
+        permissions: JSON.parse(admin.tau_permissions),
+        isActive: admin.tau_is_active,
+        createdBy: admin.tau_created_by,
+        lastLogin: admin.tau_last_login,
+        createdAt: admin.tau_created_at
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Get sub-admins error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get sub-admins'
+    });
+  }
+});
+
+// Create Sub-Admin
+router.post('/sub-admins', verifyAdminToken, requireAdminPermission('admins', 'write'), [
+  body('email').isEmail().normalizeEmail(),
+  body('fullName').trim().isLength({ min: 1 }),
+  body('permissions').isObject()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
+    const { email, fullName, permissions } = req.body;
+    const subAdminId = require('uuid').v4();
+    const tempPassword = generateTempPassword();
+    const hashedPassword = await require('bcryptjs').hash(tempPassword, 12);
+
+    await executeQuery(
+      `INSERT INTO tbl_admin_users (tau_id, tau_email, tau_password_hash, tau_full_name, tau_role, tau_permissions, tau_is_active, tau_created_by, tau_created_at, tau_updated_at) 
+       VALUES (?, ?, ?, ?, 'sub_admin', ?, true, ?, NOW(), NOW())`,
+      [subAdminId, email, hashedPassword, fullName, JSON.stringify(permissions), req.admin.id]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Sub-admin created successfully',
+      data: {
+        subAdminId,
+        tempPassword
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Create sub-admin error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create sub-admin'
+    });
+  }
+});
+
+// Update Sub-Admin
+router.put('/sub-admins/:id', verifyAdminToken, requireAdminPermission('admins', 'write'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const setClause = Object.keys(updateData).map(key => `tau_${key} = ?`).join(', ');
+    const values = Object.values(updateData);
+
+    await executeQuery(
+      `UPDATE tbl_admin_users SET ${setClause}, tau_updated_at = NOW() WHERE tau_id = ?`,
+      [...values, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Sub-admin updated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Update sub-admin error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update sub-admin'
+    });
+  }
+});
+
+// Delete Sub-Admin
+router.delete('/sub-admins/:id', verifyAdminToken, requireAdminPermission('admins', 'delete'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await executeQuery(
+      'DELETE FROM tbl_admin_users WHERE tau_id = ? AND tau_role = "sub_admin"',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Sub-admin deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Delete sub-admin error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete sub-admin'
+    });
+  }
+});
+
+// Reset Sub-Admin Password
+router.post('/sub-admins/:id/reset-password', verifyAdminToken, requireAdminPermission('admins', 'write'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const newPassword = generateTempPassword();
+    const hashedPassword = await require('bcryptjs').hash(newPassword, 12);
+
+    await executeQuery(
+      'UPDATE tbl_admin_users SET tau_password_hash = ?, tau_updated_at = NOW() WHERE tau_id = ?',
+      [hashedPassword, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully',
+      data: {
+        newPassword
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset password'
+    });
+  }
+});
+
+// Helper function to generate temporary password
+function generateTempPassword() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
+
 module.exports = router;

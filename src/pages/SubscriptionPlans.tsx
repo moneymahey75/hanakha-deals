@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { apiClient } from '../lib/api';
 import { Check, Star, Zap, DollarSign, ArrowRight, CheckCircle, Package, Calendar, Users, Shield, CreditCard } from 'lucide-react';
 
 interface SubscriptionPlan {
@@ -34,22 +34,18 @@ const SubscriptionPlans: React.FC = () => {
 
       console.log('🔍 Loading subscription plans from database...');
       
-      const { data, error } = await supabase
-        .from('tbl_subscription_plans')
-        .select('*')
-        .eq('tsp_is_active', true)
-        .order('tsp_price', { ascending: true });
+      const response = await apiClient.getSubscriptionPlans();
 
-      if (error) {
-        console.error('❌ Failed to load plans:', error);
-        throw error;
+      if (!response.success) {
+        console.error('❌ Failed to load plans:', response.error);
+        throw new Error(response.error || 'Failed to load plans');
       }
       
-      console.log('✅ Plans loaded successfully:', data?.length || 0, 'plans');
-      setPlans(data || []);
+      console.log('✅ Plans loaded successfully:', response.data?.length || 0, 'plans');
+      setPlans(response.data || []);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
-      setError('Failed to load subscription plans. Please try again.');
+      setError(error.message || 'Failed to load subscription plans. Please try again.');
       // Fallback to default plans if database fails
       setPlans([
         {

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { sessionUtils } from '../../utils/sessionUtils';
-import { supabaseBatch } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -103,13 +103,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       // Get user mobile number for verification
       const getUserMobile = async () => {
         try {
-          const { data: profileData } = await supabaseBatch
-              .from('tbl_user_profiles')
-              .select('tup_mobile')
-              .eq('tup_user_id', user.id)
-            .maybeSingle();
-
-          return profileData?.tup_mobile || '';
+          const response = await apiClient.getUserProfile(user.id);
+          if (response.success) {
+            return response.data.tup_mobile || '';
+          }
+          return '';
         } catch (error) {
           console.warn('Could not fetch user mobile:', error);
           return '';

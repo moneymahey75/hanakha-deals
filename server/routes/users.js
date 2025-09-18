@@ -101,4 +101,30 @@ router.put('/:userId/profile', verifyToken, [
   }
 });
 
+// Check if sponsorship number exists
+router.get('/check-sponsorship/:sponsorshipNumber', async (req, res) => {
+  try {
+    const { sponsorshipNumber } = req.params;
+
+    const profiles = await executeQuery(
+      'SELECT tup_sponsorship_number FROM tbl_user_profiles WHERE tup_sponsorship_number = ?',
+      [sponsorshipNumber]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        exists: profiles.length > 0
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Check sponsorship number error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check sponsorship number'
+    });
+  }
+});
+
 module.exports = router;

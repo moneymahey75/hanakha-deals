@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
-import { supabase } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 import { Settings, Upload, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const GeneralSettings: React.FC = () => {
@@ -113,77 +113,30 @@ const GeneralSettings: React.FC = () => {
         try {
             // Create a unique filename
             const fileExt = file.name.split('.').pop();
-            const fileName = `logo-${Date.now()}.${fileExt}`;
+      // Convert file to base64 data URL for preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        setFormData(prev => ({
+          ...prev,
+          logoUrl: dataUrl
+        }));
 
-            // Upload to Supabase Storage
-            const { data, error } = await supabase.storage
-                .from('logos')
-                .upload(fileName, file, {
-                    cacheControl: '3600',
-                    upsert: false
-                });
+        // Also update the admin context immediately
+        updateSettings({ logoUrl: dataUrl });
 
-            if (error) {
-                // If storage bucket doesn't exist, create a public URL from the file
-                console.warn('Storage upload failed, using fallback method:', error);
-
-                // Convert file to base64 data URL for preview
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const dataUrl = e.target?.result as string;
-                    setFormData(prev => ({
-                        ...prev,
-                        logoUrl: dataUrl
-                    }));
-
-                    // Also update the admin context immediately
-                    updateSettings({ logoUrl: dataUrl });
-
-                    setSaveResult({
-                        success: true,
-                        message: 'Logo uploaded successfully! Click Save Settings to apply changes.'
-                    });
-                };
-                reader.readAsDataURL(file);
-                return;
-            }
-
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('logos')
-                .getPublicUrl(fileName);
-
-            // Update form data with new URL
-            setFormData(prev => ({
-                ...prev,
-                logoUrl: publicUrl
-            }));
-
-            // Also update the admin context immediately
-            updateSettings({ logoUrl: publicUrl });
-
-            setSaveResult({
-                success: true,
-                message: 'Logo uploaded successfully! Click Save Settings to apply changes.'
-            });
-
-        } catch (error) {
-            console.error('Upload error:', error);
-            setSaveResult({
-                success: false,
-                message: 'Failed to upload logo. Please try again.'
-            });
+        setSaveResult({
+          success: true,
+          message: 'Logo uploaded successfully! Click Save Settings to apply changes.'
+        });
+      };
+      reader.readAsDataURL(file);
         } finally {
-            setUploading(false);
-        }
-    };
-
-    if (loading) {
         return (
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <span className="ml-3 text-gray-600">Loading settings...</span>
+        message: error.message || 'Failed to save settings. Please try again.'
                 </div>
             </div>
         );

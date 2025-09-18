@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import { Shield, Loader } from 'lucide-react';
 
@@ -19,16 +19,13 @@ const AuthCallback: React.FC = () => {
         
         if (type === 'recovery' && token) {
           // This is a password reset callback
-          const { data, error } = await supabase.auth.verifyOtp({
-            token_hash: token,
-            type: 'recovery'
-          });
+          const response = await apiClient.verifyPasswordReset(token);
           
-          if (error) {
-            throw error;
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to verify reset token');
           }
           
-          if (data.session) {
+          if (response.data.verified) {
             // User is now authenticated, redirect to reset password page
             notification.showSuccess('Email Verified', 'You can now reset your password.');
             navigate('/reset-password');

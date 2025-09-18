@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 import { Eye, EyeOff, Lock, Shield } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 
@@ -44,11 +44,11 @@ const ResetPassword: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: formData.password
-      });
+      const response = await apiClient.resetPassword(formData.password);
       
-      if (error) throw error;
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to reset password');
+      }
       
       setSuccess(true);
       
@@ -57,7 +57,7 @@ const ResetPassword: React.FC = () => {
         navigate('/customer/login');
       }, 3000);
     } catch (err) {
-      setError('Failed to reset password. The link may be expired or invalid.');
+      setError(err.message || 'Failed to reset password. The link may be expired or invalid.');
     } finally {
       setIsSubmitting(false);
     }

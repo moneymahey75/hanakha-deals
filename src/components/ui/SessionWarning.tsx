@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Clock, RefreshCw } from 'lucide-react';
 import { sessionUtils } from '../../utils/sessionUtils';
-import { supabase } from '../../lib/supabase';
+import { apiClient } from '../../lib/api';
 
 const SessionWarning: React.FC = () => {
   const [showWarning, setShowWarning] = useState(false);
@@ -32,17 +32,13 @@ const SessionWarning: React.FC = () => {
   const handleRefreshSession = async () => {
     setIsRefreshing(true);
     try {
-      const { data, error } = await supabase.auth.refreshSession();
-      if (error) {
-        console.error('Failed to refresh session:', error);
+      const response = await apiClient.getCurrentUser();
+      if (!response.success) {
+        console.error('Failed to refresh session:', response.error);
         // If refresh fails, clear the session
-        const currentUserId = sessionStorage.getItem('current-user-id');
         sessionUtils.clearAllSessions();
-      } else if (data.session) {
-        // Save the refreshed session
-        import('../../lib/supabase').then(({ sessionManager }) => {
-          sessionManager.saveSession(data.session);
-        });
+      } else {
+        // Session is still valid
         setShowWarning(false);
       }
     } catch (error) {

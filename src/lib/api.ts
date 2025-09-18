@@ -199,6 +199,20 @@ class APIClient {
     });
   }
 
+  async verifyPasswordReset(token: string) {
+    return this.request('/auth/verify-reset', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async resetPassword(password: string) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
   // Admin methods
   async adminLogin(email: string, password: string) {
     const data = await this.request('/admin/login', {

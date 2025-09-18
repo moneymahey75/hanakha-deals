@@ -1,5 +1,5 @@
 // Session utility functions for enhanced session management
-import { sessionManager } from '../lib/supabase';
+import { sessionManager } from '../lib/sessionManager';
 
 export interface SessionInfo {
   isValid: boolean;
@@ -11,23 +11,30 @@ export interface SessionInfo {
 export const sessionUtils = {
   // Get detailed session information
   getSessionInfo: (): SessionInfo => {
-    const currentUserId = typeof window !== 'undefined' ? sessionStorage.getItem('current-user-id') : null;
-    const session = sessionManager.getSession(currentUserId);
+    const token = sessionManager.getToken();
 
-    if (!session) {
+    if (!token) {
       return { isValid: false };
     }
 
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = session.expires_at;
-    const timeRemaining = expiresAt - now;
+    // For JWT tokens, we assume they're valid if they exist
+    // In a real implementation, you'd decode and check expiration
+    try {
+      // Simple JWT validation - in production, use a proper JWT library
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const now = Math.floor(Date.now() / 1000);
+      const expiresAt = payload.exp;
+      const timeRemaining = expiresAt - now;
 
-    return {
-      isValid: timeRemaining > 0,
-      expiresAt,
-      timeRemaining,
-      user: session.user
-    };
+      return {
+        isValid: timeRemaining > 0,
+        expiresAt,
+        timeRemaining,
+        user: payload
+      };
+    } catch (error) {
+      return { isValid: false };
+    }
   },
 
   // Check if session will expire soon (within 5 minutes)
@@ -60,7 +67,7 @@ export const sessionUtils = {
 
   // Clear all session data (both Supabase and admin)
   clearAllSessions: () => {
-    sessionManager.clearAllSessions();
+    sessionManager.clearToken();
     sessionStorage.removeItem('admin_session_token');
   },
 
@@ -223,8 +230,9 @@ export const sessionUtils = {
   refreshSession: async (): Promise<boolean> => {
     try {
       console.log('🔄 Manually refreshing session...');
-      const restoredSession = await sessionManager.restoreSession();
-      return !!restoredSession;
+      // For JWT tokens, we'd need to implement refresh token logic
+      const token = sessionManager.getToken();
+      return !!token;
     } catch (error) {
       console.error('❌ Failed to refresh session:', error);
       return false;

@@ -370,7 +370,7 @@ const VerifyOTP: React.FC = () => {
         if (otpType === 'mobile') {
           notification.showInfo('Development Mode', `Use OTP: ${result.debug_info.otp_code} (Mobile OTP simulated)`);
         } else {
-          notification.showInfo('Development Mode', `Use OTP: ${result.debugInfo.otp_code} (Email OTP simulated)`);
+          notification.showInfo('Development Mode', `Use OTP: ${result.debug_info.otp_code} (Email OTP simulated)`);
         }
       }
 
