@@ -17,7 +17,7 @@ export class OTPService {
     error?: string;
     otpId?: string;
     expiresAt?: string;
-    debugInfo?: any;
+    debug_info?: any;
   }> {
     try {
       console.log('📤 Sending OTP via API:', { userId, contactInfo, otpType });
@@ -49,7 +49,7 @@ export class OTPService {
           message: response.message,
           otpId: response.data?.otpId,
           expiresAt: response.data?.expiresAt,
-          debugInfo: response.data?.debugInfo
+          debug_info: response.data?.debugInfo
         };
       } else {
         throw new Error(response.error || 'Failed to send OTP');
@@ -91,8 +91,8 @@ export class OTPService {
         return {
           success: true,
           message: response.message,
-          verificationComplete: response.data?.verificationComplete,
-          nextStep: response.data?.nextStep
+          verificationComplete: response.data?.verification_complete,
+          nextStep: response.data?.next_step
         };
       } else {
         throw new Error(response.error || 'Verification failed');

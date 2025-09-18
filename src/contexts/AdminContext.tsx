@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
+import { useNotification } from '../components/ui/NotificationProvider';
 
 interface GeneralSettings {
   siteName: string;
@@ -70,6 +71,7 @@ export const useAdmin = () => {
 
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
+  const notification = useNotification();
 
   // Default settings as fallback
   const defaultSettings: GeneralSettings = {
@@ -283,16 +285,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const loadSettingsFromAPI = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Loading settings from API...');
       const response = await apiClient.getSystemSettings();
       
       if (response.success) {
+        console.log('✅ Settings loaded from API:', response.data);
         setSettings(prev => ({ ...prev, ...response.data }));
       } else {
         console.warn('Failed to load settings from API, using defaults');
+        notification.showWarning('Settings Warning', 'Using default settings - API not available');
         setSettings(defaultSettings);
       }
     } catch (error) {
       console.warn('API connection failed, using default settings:', error);
+      notification.showWarning('API Connection', 'Using default settings - backend server not running');
       setSettings(defaultSettings);
     } finally {
       setLoading(false);
@@ -316,6 +322,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const refreshSettings = async () => {
+    console.log('🔄 Refreshing settings...');
     await loadSettingsFromAPI();
   };
 

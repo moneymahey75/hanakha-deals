@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
+import { sessionManager } from '../lib/sessionManager';
 import { useNotification } from '../components/ui/NotificationProvider';
 
 interface User {
@@ -50,16 +51,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Initialize authentication state
     const initializeAuth = async () => {
-      if (apiClient.isAuthenticated()) {
+      const token = sessionManager.getToken();
+      if (token) {
+        apiClient.setToken(token);
         try {
           const response = await apiClient.getCurrentUser();
           if (response.success) {
             setUser(response.data);
           } else {
+            sessionManager.clearToken();
             apiClient.clearToken();
           }
         } catch (error) {
           console.error('Failed to get current user:', error);
+          sessionManager.clearToken();
           apiClient.clearToken();
         }
       }
@@ -87,6 +92,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (response.success) {
         setUser(response.data.user);
+        
+        // Save token to session manager
+        const token = apiClient.getToken();
+        if (token) {
+          sessionManager.saveToken(token);
+        }
+        
         notification.showSuccess('Login Successful!', 'Welcome back!');
       } else {
         throw new Error(response.error || 'Login failed');
@@ -132,6 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setLoading(true);
     try {
+      sessionManager.clearToken();
       apiClient.logout();
       setUser(null);
       notification.showInfo('Logged Out', 'You have been successfully logged out.');
@@ -199,7 +212,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const checkVerificationStatus = async (userId: string) => {
     try {
-      // This would need to be implemented in the API
+      const response = await apiClient.getUserProfile(userId);
+      if (response.success) {
+        const user = response.data;
+        const needsVerification = !user.tu_is_verified || !user.tu_email_verified || !user.tu_mobile_verified;
+        return { needsVerification, settings: null };
+      }
       return { needsVerification: false, settings: null };
     } catch (error) {
       console.error('Error checking verification status:', error);

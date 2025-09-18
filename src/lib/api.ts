@@ -214,6 +214,7 @@ class APIClient {
   }
 
   async getSystemSettings() {
+    console.log('🔍 Making API call to get system settings...');
     return this.request('/admin/settings');
   }
 
@@ -221,6 +222,36 @@ class APIClient {
     return this.request('/admin/settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
+    });
+  }
+
+  async getSubAdmins() {
+    return this.request('/admin/sub-admins');
+  }
+
+  async createSubAdmin(data: any) {
+    return this.request('/admin/sub-admins', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSubAdmin(id: string, data: any) {
+    return this.request(`/admin/sub-admins/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSubAdmin(id: string) {
+    return this.request(`/admin/sub-admins/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async resetSubAdminPassword(id: string) {
+    return this.request(`/admin/sub-admins/${id}/reset-password`, {
+      method: 'POST',
     });
   }
 

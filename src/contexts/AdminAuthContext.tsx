@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
+import { sessionManager } from '../lib/sessionManager';
 import { useNotification } from '../components/ui/NotificationProvider';
 
 interface AdminUser {
@@ -68,15 +69,21 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => {
     // Check for existing admin session in sessionStorage
-    const sessionToken = sessionStorage.getItem('admin_session_token');
+    const sessionToken = sessionManager.getToken();
     if (sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined') {
-      validateSession(sessionToken);
+      // For admin, we use a different validation approach
+      const adminToken = sessionStorage.getItem('admin_session_token');
+      if (adminToken) {
+        validateAdminSession(adminToken);
+      } else {
+        setLoading(false);
+      }
     } else {
       setLoading(false);
     }
   }, []);
 
-  const validateSession = async (sessionToken: string) => {
+  const validateAdminSession = async (sessionToken: string) => {
     try {
       // Check if session token is valid format and not expired
       if (!sessionToken || sessionToken === 'null' || sessionToken === 'undefined') {
@@ -172,6 +179,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setAdmin(adminUser);
         
         // Store session token for compatibility
+        sessionManager.saveToken(response.data.token);
         const sessionToken = `admin-session-${adminUser.id}-${Date.now()}`;
         sessionStorage.setItem('admin_session_token', sessionToken);
 
@@ -188,6 +196,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const logout = () => {
     sessionStorage.removeItem('admin_session_token');
+    sessionManager.clearToken();
     apiClient.clearToken();
     setAdmin(null);
     notification.showInfo('Logged Out', 'Successfully logged out of admin panel.');
@@ -199,7 +208,10 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     permissions: AdminUser['permissions'];
   }) => {
     try {
-      // This would need to be implemented in the API
+      const response = await apiClient.createSubAdmin(data);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to create sub-admin');
+      }
       notification.showSuccess('Sub-Admin Created', 'Sub-admin created successfully');
     } catch (error: any) {
       console.error('Create sub-admin error:', error);
@@ -213,7 +225,10 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const updateSubAdmin = async (id: string, data: Partial<SubAdmin>) => {
     try {
-      // This would need to be implemented in the API
+      const response = await apiClient.updateSubAdmin(id, data);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update sub-admin');
+      }
       notification.showSuccess('Sub-Admin Updated', 'Sub-admin details updated successfully.');
     } catch (error: any) {
       console.error('Update sub-admin error:', error);
@@ -224,7 +239,10 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteSubAdmin = async (id: string) => {
     try {
-      // This would need to be implemented in the API
+      const response = await apiClient.deleteSubAdmin(id);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to delete sub-admin');
+      }
       notification.showSuccess('Sub-Admin Deleted', 'Sub-admin deleted successfully.');
     } catch (error: any) {
       console.error('Delete sub-admin error:', error);
@@ -235,8 +253,11 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const resetSubAdminPassword = async (id: string): Promise<string> => {
     try {
-      // This would need to be implemented in the API
-      const newPassword = 'TempPass123!';
+      const response = await apiClient.resetSubAdminPassword(id);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to reset password');
+      }
+      const newPassword = response.data.newPassword;
       notification.showSuccess(
           'Password Reset',
           'New password has been sent to the sub-admin\'s email address.'
@@ -252,8 +273,11 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const getSubAdmins = async (): Promise<SubAdmin[]> => {
     try {
-      // This would need to be implemented in the API
-      return [];
+      const response = await apiClient.getSubAdmins();
+      if (response.success) {
+        return response.data;
+      }
+      throw new Error(response.error || 'Failed to fetch sub-admins');
     } catch (error) {
       console.error('Get sub-admins error:', error);
       notification.showError('Fetch Failed', 'Failed to fetch sub-admins');
