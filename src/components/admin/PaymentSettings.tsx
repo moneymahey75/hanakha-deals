@@ -55,19 +55,39 @@ const PaymentSettings: React.FC = () => {
                     });
 
                 if (error) {
-      const settingsToUpdate = {
-        payment_mode: formData.paymentMode,
-        usdt_address: formData.usdtAddress,
-        subscription_contract_address: formData.subscriptionContractAddress,
-        investment_contract_address: formData.investmentContractAddress,
-        subscription_wallet_address: formData.subscriptionWalletAddress,
-        investment_wallet_address: formData.investmentWalletAddress
-      };
+                    throw new Error(error.message || 'Failed to save settings. Please try again.');
+                }
+            }
 
-      const response = await apiClient.updateSystemSettings(settingsToUpdate);
+            const settingsToUpdate = {
+                payment_mode: formData.paymentMode,
+                usdt_address: formData.usdtAddress,
+                subscription_contract_address: formData.subscriptionContractAddress,
+                investment_contract_address: formData.investmentContractAddress,
+                subscription_wallet_address: formData.subscriptionWalletAddress,
+                investment_wallet_address: formData.investmentWalletAddress
+            };
+
+            const response = await apiClient.updateSystemSettings(settingsToUpdate);
       
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to update settings');
+            if (!response.success) {
+                throw new Error(response.error || 'Failed to update settings');
+            }
+
+            setSaveResult({
+                success: true,
+                message: 'Settings saved successfully!'
+            });
+
+            await refreshSettings();
+        } catch (error: any) {
+            setSaveResult({
+                success: false,
+                message: error.message || 'Failed to save settings. Please try again.'
+            });
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -82,7 +102,6 @@ const PaymentSettings: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        message: error.message || 'Failed to save settings. Please try again.'
                 </div>
             </div>
         );
