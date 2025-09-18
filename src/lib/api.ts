@@ -1,6 +1,12 @@
 // API client for communicating with Node.js backend
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Debug logging in development
+if (import.meta.env.DEV) {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+  console.log('🔗 Environment VITE_API_URL:', import.meta.env.VITE_API_URL);
+}
+
 class APIClient {
   private baseURL: string;
   private token: string | null = null;
