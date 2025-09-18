@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiClient } from '../lib/api';
 
 interface GeneralSettings {
   siteName: string;
@@ -277,8 +277,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Load settings on component mount
   useEffect(() => {
-    loadSettings();
+    loadSettingsFromAPI();
   }, []);
+
+  const loadSettingsFromAPI = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.getSystemSettings();
+      
+      if (response.success) {
+        setSettings(prev => ({ ...prev, ...response.data }));
+      } else {
+        console.warn('Failed to load settings from API, using defaults');
+        setSettings(defaultSettings);
+      }
+    } catch (error) {
+      console.warn('API connection failed, using default settings:', error);
+      setSettings(defaultSettings);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const updateSettings = (newSettings: Partial<GeneralSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
@@ -297,7 +316,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const refreshSettings = async () => {
-    await loadSettings();
+    await loadSettingsFromAPI();
   };
 
   const value = {
