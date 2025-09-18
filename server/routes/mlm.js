@@ -1,6 +1,7 @@
 const express = require('express');
 const { executeQuery } = require('../config/database');
 const { verifyToken } = require('../middleware/auth');
+const { body, validationResult } = require('express-validator');
 const router = express.Router();
 
 // Get MLM tree structure
