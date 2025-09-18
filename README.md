@@ -1,6 +1,6 @@
-# MLM Platform with Binary Tree Architecture
+# MLM Platform with Binary Tree Architecture (MySQL + Node.js)
 
-A comprehensive Multi-Level Marketing (MLM) platform built with React, TypeScript, and Supabase, featuring a binary tree compensation system.
+A comprehensive Multi-Level Marketing (MLM) platform built with React, TypeScript, MySQL, and Node.js, featuring a binary tree compensation system.
 
 ## Features
 
@@ -11,9 +11,19 @@ A comprehensive Multi-Level Marketing (MLM) platform built with React, TypeScrip
 - **Real-time Dashboard**: Analytics and network visualization
 - **Responsive Design**: Mobile-first design with Tailwind CSS
 
+## Architecture
+
+The platform uses a modern tech stack:
+- **Frontend**: React + TypeScript + Tailwind CSS
+- **Backend**: Node.js + Express
+- **Database**: MySQL
+- **Authentication**: JWT tokens
+- **Email**: Nodemailer
+- **SMS**: Twilio
+
 ## Database Structure
 
-The platform uses Supabase (PostgreSQL) with the following main tables:
+The platform uses MySQL with the following main tables:
 
 ### Core Tables
 
@@ -51,58 +61,69 @@ The platform uses Supabase (PostgreSQL) with the following main tables:
    - `contact_info`, `expires_at`
    - `is_verified`, `attempts`
 
-### Database Access
-
-To view the database structure:
-
-1. **Supabase Dashboard**: 
-   - Go to your Supabase project dashboard
-   - Navigate to "Table Editor" to see all tables
-   - Use "SQL Editor" to run custom queries
-
-2. **Database Schema**: 
-   - Check the migration file: `supabase/migrations/create_initial_schema.sql`
-   - Contains complete table definitions, relationships, and functions
-
 ## Setup Instructions
 
 ### 1. Database Setup
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Click "Connect to Supabase" button in the top right of this application
-3. The database schema will be automatically applied
+1. Install MySQL and create a database named `mlm_platform`
+2. Import your converted MySQL schema
+3. Update database credentials in server/.env
 
-### 2. Environment Variables
+### 2. Backend Setup
 
-Create a `.env` file in the root directory:
+```bash
+# Navigate to server directory
+cd server
 
-```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+# Install dependencies
+npm install
 
-# Optional: Redis Configuration (for MLM tree optimization)
-VITE_REDIS_HOST=your_redis_host
-VITE_REDIS_PORT=6379
-VITE_REDIS_PASSWORD=your_redis_password
+# Copy environment file
+cp .env.example .env
+
+# Update .env with your database credentials
+# Start development server
+npm run dev
 ```
 
-### 3. SMS & Email Gateway Configuration
+### 3. Frontend Setup
 
-The platform uses Supabase integrations for reliable email and SMS delivery:
+```bash
+# Install frontend dependencies
+npm install
 
-**Email Service (Resend.com)**:
-- Create account at [Resend.com](https://resend.com)
-- Get your API key from Resend dashboard
-- Configure in Supabase Dashboard → Settings → Integrations → Resend
-- Add your domain and verify DNS records
-- Test email delivery through Supabase
+# Copy environment file
+cp .env.example .env
 
-**SMS Service (Twilio)**:
-- Create account at [Twilio.com](https://www.twilio.com)
-- Get Account SID and Auth Token from Console
-- Purchase a phone number or use trial number
-- Configure in Supabase Dashboard → Settings → Integrations → Twilio
-- Test SMS delivery through Supabase
+# Update .env with your API URL
+# Start development server
+npm run dev
+```
+
+### 4. Environment Variables
+
+**Frontend (.env):**
+```env
+VITE_API_URL=http://localhost:5000/api
+```
+
+**Backend (server/.env):**
+```env
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_NAME=mlm_platform
+DB_PORT=3306
+
+JWT_SECRET=your_super_secret_jwt_key
+SMTP_HOST=smtp.gmail.com
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_password
+
+TWILIO_ACCOUNT_SID=your_twilio_sid
+TWILIO_AUTH_TOKEN=your_twilio_token
+TWILIO_PHONE_NUMBER=+1234567890
+```
 
 ### 4. Production Gateway Setup
 
@@ -123,14 +144,19 @@ Configure your production settings through both Admin Panel and Supabase Dashboa
    - Add your Twilio credentials and phone number
    - Test SMS delivery
 
-### 5. Resend.com Setup
+### 5. Development
 
-For Email delivery:
-1. Create account at [Resend.com](https://resend.com)
-2. Verify your domain (add DNS records)
-3. Get your API key from dashboard
-4. Configure in Supabase Dashboard → Settings → Integrations → Resend
-5. Test email delivery
+```bash
+# Run both frontend and backend
+npm run dev:full
+
+# Or run separately:
+# Frontend only
+npm run dev
+
+# Backend only
+npm run dev:server
+```
 
 ### 6. Twilio Setup
 
@@ -169,16 +195,25 @@ For SMS functionality:
 
 ## API Endpoints
 
-### Edge Functions (Supabase)
+### Authentication
+- `POST /api/auth/login` - User login
+- `POST /api/auth/register/customer` - Customer registration
+- `POST /api/auth/register/company` - Company registration
+- `POST /api/auth/logout` - User logout
+- `GET /api/auth/me` - Get current user
 
-1. **send-otp**: Send OTP via email or SMS
-2. **verify-otp**: Verify submitted OTP codes
+### OTP Management
+- `POST /api/otp/send` - Send OTP
+- `POST /api/otp/verify` - Verify OTP
 
-### Database Functions
+### User Management
+- `GET /api/users/:id/profile` - Get user profile
+- `PUT /api/users/:id/profile` - Update user profile
 
-1. **generate_sponsorship_number()**: Auto-generate unique sponsorship IDs
-2. **add_to_mlm_tree()**: Add users to binary tree with proper placement
-3. **generate_otp()**: Generate 6-digit OTP codes
+### MLM Tree
+- `GET /api/mlm/tree/:userId` - Get MLM tree structure
+- `GET /api/mlm/stats/:userId` - Get tree statistics
+- `POST /api/mlm/add-user` - Add user to MLM tree
 
 ## Security Features
 
@@ -201,13 +236,16 @@ npm run dev
 npm run build
 ```
 
-## Testing Credentials
+## Testing
 
-For testing the OTP functionality:
+### OTP Testing
+- **Test OTP Code**: `123456` (works for both email and mobile in development)
+- **Email**: Any valid email address
+- **Mobile**: Any mobile number with country code
 
-**Test Email**: Any valid email address (check console logs for OTP)
-**Test Mobile**: Any mobile number (check console logs for OTP)
-**Test OTP**: `123456` (hardcoded for testing)
+### Login Credentials
+- **Admin**: admin@mlmplatform.com / Admin@123456
+- **Test Customer**: test@example.com / password123
 
 ## Support
 
