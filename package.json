@@ -5,12 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "cd server && npm run dev",
-    "preview": "vite preview",
-    "dev:server": "nodemon server.js"
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "dev:server": "nodemon server.js",
     "deploy": "npm run build && echo 'Build complete! Upload dist/ folder to your hosting provider'"
   },
   "dependencies": {
