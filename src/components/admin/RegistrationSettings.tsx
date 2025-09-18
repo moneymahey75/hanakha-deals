@@ -19,18 +19,10 @@ const RegistrationSettings: React.FC = () => {
 
     const loadSettings = async () => {
         try {
-            const { data, error } = await supabase
-      const settingsToUpdate = {
-        email_verification_required: formData.emailVerificationRequired,
-        mobile_verification_required: formData.mobileVerificationRequired,
-        referral_mandatory: formData.referralMandatory,
-        either_verification_required: formData.eitherVerificationRequired
-      };
-
-      const response = await apiClient.updateSystemSettings(settingsToUpdate);
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to update settings');
+            const response = await apiClient.getSystemSettings();
+            
+            if (response.success) {
+                const settingsMap = response.data || {};
                 setFormData({
                     emailVerificationRequired: settingsMap.email_verification_required ?? true,
                     mobileVerificationRequired: settingsMap.mobile_verification_required ?? true,
@@ -57,37 +49,17 @@ const RegistrationSettings: React.FC = () => {
         setSaveResult(null);
 
         try {
-            const updates = [
-                {
-                    tss_setting_key: 'email_verification_required',
-                    tss_setting_value: JSON.stringify(formData.emailVerificationRequired),
-                    tss_description: 'Require email verification during registration'
-                },
-                {
-                    tss_setting_key: 'mobile_verification_required',
-                    tss_setting_value: JSON.stringify(formData.mobileVerificationRequired),
-                    tss_description: 'Require mobile verification during registration'
-                },
-                {
-                    tss_setting_key: 'referral_mandatory',
-                    tss_setting_value: JSON.stringify(formData.referralMandatory),
-                    tss_description: 'Make referral code mandatory for registration'
-                },
-                {
-                    tss_setting_key: 'either_verification_required',
-                    tss_setting_value: JSON.stringify(formData.eitherVerificationRequired),
-                    tss_description: 'Allow users to verify either email or mobile (but not both)'
-                }
-            ];
+            const settingsToUpdate = {
+                email_verification_required: formData.emailVerificationRequired,
+                mobile_verification_required: formData.mobileVerificationRequired,
+                referral_mandatory: formData.referralMandatory,
+                either_verification_required: formData.eitherVerificationRequired
+            };
 
-            for (const update of updates) {
-                const { error } = await supabase
-                    .from('tbl_system_settings')
-                    .upsert(update, {
-                        onConflict: 'tss_setting_key'
-                    });
-
-                if (error) throw error;
+            const response = await apiClient.updateSystemSettings(settingsToUpdate);
+            
+            if (!response.success) {
+                throw new Error(response.error || 'Failed to update settings');
             }
 
             setSaveResult({
@@ -98,7 +70,7 @@ const RegistrationSettings: React.FC = () => {
             console.error('Failed to save settings:', error);
             setSaveResult({
                 success: false,
-                message: 'Failed to save settings. Please try again.'
+                message: error instanceof Error ? error.message : 'Failed to save settings. Please try again.'
             });
         } finally {
             setSaving(false);
@@ -140,7 +112,6 @@ const RegistrationSettings: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-        message: error.message || 'Failed to save settings. Please try again.'
                 </div>
             </div>
         );
@@ -363,11 +334,22 @@ const RegistrationSettings: React.FC = () => {
                             </div>
                         </div>
                     </div>
-      const response = await apiClient.getSystemSettings();
                 </div>
 
-        const settingsMap = response.data || {};
-                                    {formData.emailVerificationRequired && <li>Verify email address via OTP</li>}
+                <div className="pt-6 border-t border-gray-200">
+                    <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Current Registration Requirements:</h4>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                            {formData.emailVerificationRequired && <li>• Verify email address via OTP</li>}
+                            {formData.mobileVerificationRequired && <li>• Verify mobile number via SMS OTP</li>}
+                            {formData.eitherVerificationRequired && <li>• Verify either email or mobile (user choice)</li>}
+                            {formData.referralMandatory && <li>• Provide valid referral code</li>}
+                            {!formData.emailVerificationRequired && !formData.mobileVerificationRequired && !formData.eitherVerificationRequired && !formData.referralMandatory && (
+                                <li>• No verification requirements (registration only)</li>
+                            )}
+                        </ul>
+                    </div>
+
                     <button
                         type="submit"
                         disabled={saving}
