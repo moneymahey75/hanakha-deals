@@ -12,7 +12,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['ioredis', 'redis']
+      external: ['ioredis', 'redis', '@supabase/supabase-js']
     }
   }
 });
