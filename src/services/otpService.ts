@@ -496,8 +496,6 @@ export class OTPService {
         signal: controller.signal
       });
 
-      console.log('sendMobileOTP', response);
-
       clearTimeout(timeoutId);
 
       if (!response.ok) {

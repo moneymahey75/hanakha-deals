@@ -78,8 +78,6 @@ const VerifyOTP: React.FC = () => {
     if (componentInitialized.current) return;
     componentInitialized.current = true;
 
-    console.log('Initializing VerifyOTP component...');
-
     const initializeComponent = () => {
       const state = location.state as any;
 
@@ -111,7 +109,6 @@ const VerifyOTP: React.FC = () => {
         }
 
         setOtpType(initialType);
-        console.log(`Set initial OTP type to: ${initialType}`);
 
         // Update progress
         updateVerificationProgress(settings, completedVerifications);
