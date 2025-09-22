@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { UserCheck, Mail, Smartphone, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { UserCheck, Mail, Smartphone, Save, AlertCircle, CheckCircle, Key, Settings } from 'lucide-react';
 
 const RegistrationSettings: React.FC = () => {
     const [formData, setFormData] = useState({
         emailVerificationRequired: true,
         mobileVerificationRequired: true,
         referralMandatory: false,
-        eitherVerificationRequired: false
+        eitherVerificationRequired: false,
+        testOtpEnabled: false,
+        testOtpCode: '123456'
     });
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -26,7 +28,9 @@ const RegistrationSettings: React.FC = () => {
                     'email_verification_required',
                     'mobile_verification_required',
                     'referral_mandatory',
-                    'either_verification_required'
+                    'either_verification_required',
+                    'test_otp_enabled',
+                    'test_otp_code'
                 ]);
 
             if (error) {
@@ -35,7 +39,9 @@ const RegistrationSettings: React.FC = () => {
                     emailVerificationRequired: true,
                     mobileVerificationRequired: true,
                     referralMandatory: false,
-                    eitherVerificationRequired: false
+                    eitherVerificationRequired: false,
+                    testOtpEnabled: false,
+                    testOtpCode: '123456'
                 });
             } else {
                 const settingsMap = data?.reduce((acc: any, setting: any) => {
@@ -43,10 +49,13 @@ const RegistrationSettings: React.FC = () => {
                         acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
                     } catch (parseError) {
                         console.warn('Failed to parse setting value:', setting.tss_setting_key, parseError);
+                        // Set defaults for failed parsing
                         if (setting.tss_setting_key === 'email_verification_required') acc[setting.tss_setting_key] = true;
                         if (setting.tss_setting_key === 'mobile_verification_required') acc[setting.tss_setting_key] = true;
                         if (setting.tss_setting_key === 'referral_mandatory') acc[setting.tss_setting_key] = false;
                         if (setting.tss_setting_key === 'either_verification_required') acc[setting.tss_setting_key] = false;
+                        if (setting.tss_setting_key === 'test_otp_enabled') acc[setting.tss_setting_key] = false;
+                        if (setting.tss_setting_key === 'test_otp_code') acc[setting.tss_setting_key] = '123456';
                     }
                     return acc;
                 }, {}) || {};
@@ -55,7 +64,9 @@ const RegistrationSettings: React.FC = () => {
                     emailVerificationRequired: settingsMap.email_verification_required ?? true,
                     mobileVerificationRequired: settingsMap.mobile_verification_required ?? true,
                     referralMandatory: settingsMap.referral_mandatory ?? false,
-                    eitherVerificationRequired: settingsMap.either_verification_required ?? false
+                    eitherVerificationRequired: settingsMap.either_verification_required ?? false,
+                    testOtpEnabled: settingsMap.test_otp_enabled ?? false,
+                    testOtpCode: settingsMap.test_otp_code ?? '123456'
                 });
             }
         } catch (error) {
@@ -64,7 +75,9 @@ const RegistrationSettings: React.FC = () => {
                 emailVerificationRequired: true,
                 mobileVerificationRequired: true,
                 referralMandatory: false,
-                eitherVerificationRequired: false
+                eitherVerificationRequired: false,
+                testOtpEnabled: false,
+                testOtpCode: '123456'
             });
         } finally {
             setLoading(false);
@@ -97,8 +110,32 @@ const RegistrationSettings: React.FC = () => {
                     tss_setting_key: 'either_verification_required',
                     tss_setting_value: JSON.stringify(formData.eitherVerificationRequired),
                     tss_description: 'Allow users to verify either email or mobile (but not both)'
+                },
+                {
+                    tss_setting_key: 'test_otp_enabled',
+                    tss_setting_value: JSON.stringify(formData.testOtpEnabled),
+                    tss_description: 'Enable test OTP for development/testing purposes'
                 }
             ];
+
+            // Only add test OTP code if test OTP is enabled
+            if (formData.testOtpEnabled) {
+                updates.push({
+                    tss_setting_key: 'test_otp_code',
+                    tss_setting_value: JSON.stringify(formData.testOtpCode),
+                    tss_description: 'Test OTP code for development/testing'
+                });
+            } else {
+                // Remove test OTP code from database when disabled
+                const { error: deleteError } = await supabase
+                    .from('tbl_system_settings')
+                    .delete()
+                    .eq('tss_setting_key', 'test_otp_code');
+
+                if (deleteError) {
+                    console.warn('Failed to delete test OTP code:', deleteError);
+                }
+            }
 
             for (const update of updates) {
                 const { error } = await supabase
@@ -126,7 +163,15 @@ const RegistrationSettings: React.FC = () => {
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, checked } = e.target;
+        const { name, checked, value } = e.target;
+
+        if (name === 'testOtpCode') {
+            // Only allow 6 digits for OTP code
+            if (/^\d{0,6}$/.test(value)) {
+                setFormData(prev => ({ ...prev, [name]: value }));
+            }
+            return;
+        }
 
         if (name === 'eitherVerificationRequired' && checked) {
             setFormData(prev => ({
@@ -150,7 +195,7 @@ const RegistrationSettings: React.FC = () => {
         } else {
             setFormData(prev => ({
                 ...prev,
-                [name]: checked
+                [name]: e.target.type === 'checkbox' ? checked : value
             }));
         }
     };
@@ -226,8 +271,8 @@ const RegistrationSettings: React.FC = () => {
                                         />
                                         <div className={`w-11 h-6 rounded-full peer 
                                             ${formData.eitherVerificationRequired
-                                                ? 'bg-gray-300'
-                                                : 'bg-gray-200 peer-checked:bg-blue-600'} 
+                                            ? 'bg-gray-300'
+                                            : 'bg-gray-200 peer-checked:bg-blue-600'} 
                                             peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 
                                             after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
                                             after:bg-white after:border-gray-300 after:border after:rounded-full 
@@ -275,8 +320,8 @@ const RegistrationSettings: React.FC = () => {
                                         />
                                         <div className={`w-11 h-6 rounded-full peer 
                                             ${formData.eitherVerificationRequired
-                                                ? 'bg-gray-300'
-                                                : 'bg-gray-200 peer-checked:bg-green-600'} 
+                                            ? 'bg-gray-300'
+                                            : 'bg-gray-200 peer-checked:bg-green-600'} 
                                             peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 
                                             after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
                                             after:bg-white after:border-gray-300 after:border after:rounded-full 
@@ -324,8 +369,8 @@ const RegistrationSettings: React.FC = () => {
                                         />
                                         <div className={`w-11 h-6 rounded-full peer 
                                             ${(formData.emailVerificationRequired || formData.mobileVerificationRequired)
-                                                ? 'bg-gray-300'
-                                                : 'bg-gray-200 peer-checked:bg-orange-600'} 
+                                            ? 'bg-gray-300'
+                                            : 'bg-gray-200 peer-checked:bg-orange-600'} 
                                             peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 
                                             after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
                                             after:bg-white after:border-gray-300 after:border after:rounded-full 
@@ -383,6 +428,74 @@ const RegistrationSettings: React.FC = () => {
                             </div>
                         </div>
                     </div>
+
+                    {/* Test OTP Settings */}
+                    <div className="border border-yellow-200 rounded-lg p-6 bg-yellow-50">
+                        <div className="flex items-start space-x-4">
+                            <div className="bg-yellow-100 p-2 rounded-lg mt-1">
+                                <Key className="h-5 w-5 text-yellow-600" />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-lg font-medium text-gray-900">Test OTP Configuration</h4>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            Enable test OTP for development and testing purposes
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            name="testOtpEnabled"
+                                            checked={formData.testOtpEnabled}
+                                            onChange={handleChange}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
+                                    </label>
+                                </div>
+
+                                <div className="mt-3 text-sm text-gray-500">
+                                    {formData.testOtpEnabled ? (
+                                        <span className="text-yellow-600">✓ Test OTP is enabled</span>
+                                    ) : (
+                                        <span className="text-gray-500">Test OTP is disabled</span>
+                                    )}
+                                </div>
+
+                                {/* Test OTP Code Input */}
+                                {formData.testOtpEnabled && (
+                                    <div className="mt-4">
+                                        <label htmlFor="testOtpCode" className="block text-sm font-medium text-gray-700 mb-2">
+                                            Test OTP Code
+                                        </label>
+                                        <div className="flex items-center space-x-3">
+                                            <div className="relative">
+                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                    <Settings className="h-4 w-4 text-gray-400" />
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    id="testOtpCode"
+                                                    name="testOtpCode"
+                                                    value={formData.testOtpCode}
+                                                    onChange={handleChange}
+                                                    maxLength={6}
+                                                    placeholder="123456"
+                                                    className="block w-32 pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 text-center font-mono text-lg"
+                                                />
+                                            </div>
+                                            <span className="text-sm text-gray-500">6-digit code</span>
+                                        </div>
+                                        <p className="text-xs text-yellow-700 mt-2">
+                                            ⚠️ This code will work for all OTP verifications when test mode is enabled.
+                                            Use only in development/testing environments.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Verification Flow Info */}
@@ -403,6 +516,14 @@ const RegistrationSettings: React.FC = () => {
                             <li>Choose and pay for subscription plan</li>
                             <li>Access dashboard and start using the platform</li>
                         </ol>
+                        {formData.testOtpEnabled && (
+                            <div className="mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded-md">
+                                <p className="text-yellow-800 font-medium">Test Mode Active:</p>
+                                <p className="text-yellow-700 text-xs">
+                                    Test OTP "{formData.testOtpCode}" will work for all verifications when enabled.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
