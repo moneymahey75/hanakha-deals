@@ -37,13 +37,20 @@ interface VerifyResponse {
   nextStep?: string;
 }
 
+interface TestOTPSettings {
+  enabled: boolean;
+  code: string;
+}
+
 // Enhanced cache with better state management
 const otpCache = new Map<string, OTPCacheEntry>();
 const activeRequests = new Map<string, Promise<OTPResponse>>();
+const testOTPCache = { enabled: false, code: '123456', lastFetched: 0 };
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const MIN_REQUEST_INTERVAL = 30000; // 30 seconds between requests
 const MAX_ATTEMPTS = 5;
 const REQUEST_TIMEOUT = 15000; // 15 seconds timeout for requests
+const TEST_OTP_CACHE_DURATION = 60000; // 1 minute cache for test OTP settings
 
 export class OTPService {
   private static instance: OTPService;
@@ -79,6 +86,52 @@ export class OTPService {
     });
 
     return Promise.race([promise, timeoutPromise]);
+  }
+
+  // Get test OTP settings from database with caching
+  private async getTestOTPSettings(): Promise<TestOTPSettings> {
+    const now = Date.now();
+    
+    // Use cached settings if not expired
+    if (now - testOTPCache.lastFetched < TEST_OTP_CACHE_DURATION) {
+      return { enabled: testOTPCache.enabled, code: testOTPCache.code };
+    }
+
+    try {
+      const { data, error } = await this.withTimeout(
+        supabaseBatch
+          .from('tbl_system_settings')
+          .select('tss_setting_key, tss_setting_value')
+          .in('tss_setting_key', ['test_otp_enabled', 'test_otp_code']),
+        3000,
+        'Test OTP settings fetch'
+      );
+
+      if (error) {
+        console.warn('Failed to fetch test OTP settings, using cached values:', error);
+        return { enabled: testOTPCache.enabled, code: testOTPCache.code };
+      }
+
+      const settingsMap = data?.reduce((acc: any, setting: any) => {
+        try {
+          acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
+        } catch (parseError) {
+          console.warn('Failed to parse test OTP setting:', setting.tss_setting_key, parseError);
+          acc[setting.tss_setting_key] = setting.tss_setting_key === 'test_otp_enabled' ? false : '123456';
+        }
+        return acc;
+      }, {}) || {};
+
+      // Update cache
+      testOTPCache.enabled = settingsMap.test_otp_enabled || false;
+      testOTPCache.code = settingsMap.test_otp_code || '123456';
+      testOTPCache.lastFetched = now;
+
+      return { enabled: testOTPCache.enabled, code: testOTPCache.code };
+    } catch (error) {
+      console.warn('Error fetching test OTP settings:', error);
+      return { enabled: testOTPCache.enabled, code: testOTPCache.code };
+    }
   }
 
   async sendOTP(userId: string, contactInfo: string, otpType: 'email' | 'mobile'): Promise<OTPResponse> {
@@ -216,8 +269,9 @@ export class OTPService {
         // Continue with OTP creation even if cleanup fails
       }
 
-      // Insert new OTP record
-      // const { data: otpRecord, error: otpError } = await supabase
+      // Insert new OTP record (commented out for now due to DB issues)
+      // const { data: otpRecord, error: otpError } = await this.withTimeout(
+      //     supabaseBatch
       //         .from('tbl_otp_verifications')
       //         .insert({
       //           tov_user_id: userId,
@@ -226,8 +280,13 @@ export class OTPService {
       //           tov_contact_info: contactInfo,
       //           tov_expires_at: expiresAt.toISOString(),
       //           tov_is_verified: false,
-      //           //tov_attempts: 0
-      //         });
+      //           tov_attempts: 0
+      //         })
+      //         .select()
+      //         .single(),
+      //     8000,
+      //     'Database insert'
+      // );
 
       // if (otpError) {
       //   throw new Error(`Failed to store OTP: ${otpError.message}`);
@@ -245,7 +304,7 @@ export class OTPService {
               'Email OTP send'
           );
         } else {
-          console.log('Here Sending mobile OTP...');
+          console.log('Sending mobile OTP...');
           sendResult = await this.withTimeout(
               this.sendMobileOTP(userId, contactInfo, otpCode),
               10000,
@@ -255,11 +314,11 @@ export class OTPService {
       } catch (sendErr: any) {
         sendError = sendErr.message;
         console.warn(`${otpType} OTP send failed:`, sendError);
-        // Don't throw error - OTP is stored in database, just log the send failure
+        // Don't throw error - OTP is cached, just log the send failure
         sendResult = false;
       }
 
-      // Cache the OTP with sent status (even if send failed - OTP is in database)
+      // Cache the OTP with sent status (even if send failed - OTP is cached for verification)
       otpCache.set(cacheKey, {
         otp: otpCode,
         expires: expiresAt.getTime(),
@@ -268,12 +327,12 @@ export class OTPService {
         lastSentAt: now
       });
 
-      console.log(`OTP processed for ${otpType}: ${contactInfo}, stored in database`);
+      console.log(`OTP processed for ${otpType}: ${contactInfo}`);
 
       return {
         success: true,
         message: `OTP sent to ${contactInfo}`,
-        //otpId: otpRecord.tov_id,
+        //otpId: otpRecord?.tov_id,
         expiresAt: expiresAt.toISOString(),
         debug_info: {
           otp_code: otpCode,
@@ -283,7 +342,7 @@ export class OTPService {
           send_error: sendError,
           note: sendResult
               ? `${otpType === 'mobile' ? 'SMS' : 'Email'} OTP sent successfully`
-              : `OTP stored in database but ${otpType === 'mobile' ? 'SMS' : 'email'} sending ${sendError ? 'failed: ' + sendError : 'simulated'}`
+              : `OTP cached for verification but ${otpType === 'mobile' ? 'SMS' : 'email'} sending ${sendError ? 'failed: ' + sendError : 'simulated'}`
         }
       };
 
@@ -318,8 +377,10 @@ export class OTPService {
       const cacheKey = this.getCacheKey(userId, otpType);
       const cachedOTP = otpCache.get(cacheKey);
 
-      // Test OTP for development
-      if (otpCode === '123456') {
+      // Check for configurable test OTP
+      const testOTPSettings = await this.getTestOTPSettings();
+      if (testOTPSettings.enabled && otpCode === testOTPSettings.code) {
+        console.log('Test OTP verification successful');
         await this.updateUserVerificationStatus(userId, otpType);
         if (cachedOTP) {
           otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
@@ -334,6 +395,7 @@ export class OTPService {
 
       // Check cache first for performance
       if (cachedOTP && cachedOTP.otp === otpCode && cachedOTP.status === 'sent' && Date.now() < cachedOTP.expires) {
+        console.log('Cache OTP verification successful');
         await this.updateUserVerificationStatus(userId, otpType);
         otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
         return {
@@ -344,78 +406,76 @@ export class OTPService {
         };
       }
 
-      // Database verification with timeout
-      const { data: otpRecord, error: findError } = await this.withTimeout(
-          supabaseBatch
-              .from('tbl_otp_verifications')
-              .select('tov_id, tov_attempts')
-              .eq('tov_user_id', userId)
-              .eq('tov_otp_code', otpCode)
-              .eq('tov_otp_type', otpType)
-              .eq('tov_is_verified', false)
-              .gte('tov_expires_at', new Date().toISOString())
-              .order('tov_created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle(),
-          8000,
-          'OTP verification lookup'
-      );
+      // Database verification with timeout (if database is working)
+      try {
+        const { data: otpRecord, error: findError } = await this.withTimeout(
+            supabaseBatch
+                .from('tbl_otp_verifications')
+                .select('tov_id, tov_attempts')
+                .eq('tov_user_id', userId)
+                .eq('tov_otp_code', otpCode)
+                .eq('tov_otp_type', otpType)
+                .eq('tov_is_verified', false)
+                .gte('tov_expires_at', new Date().toISOString())
+                .order('tov_created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            5000,
+            'OTP verification lookup'
+        );
 
-      if (findError || !otpRecord) {
-        // Update cache attempts if exists
-        if (cachedOTP) {
-          const updatedEntry = {
-            ...cachedOTP,
-            attempts: cachedOTP.attempts + 1
-          };
-          if (updatedEntry.attempts >= MAX_ATTEMPTS) {
-            updatedEntry.status = 'expired';
+        if (!findError && otpRecord) {
+          if (otpRecord.tov_attempts >= MAX_ATTEMPTS) {
+            return {
+              success: false,
+              error: 'Too many failed attempts. Please request a new OTP.'
+            };
           }
-          otpCache.set(cacheKey, updatedEntry);
+
+          // Verify OTP and update user using stored procedure
+          const { error: verifyError } = await this.withTimeout(
+              supabaseBatch.rpc('verify_otp_and_update_user', {
+                p_otp_id: otpRecord.tov_id,
+                p_user_id: userId,
+                p_otp_type: otpType
+              }),
+              8000,
+              'OTP verification procedure'
+          );
+
+          if (!verifyError) {
+            // Update cache status
+            if (cachedOTP) {
+              otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
+            }
+
+            return {
+              success: true,
+              message: `${otpType} verified successfully`,
+              verificationComplete: true,
+              nextStep: 'subscription_plans'
+            };
+          }
         }
-
-        return {
-          success: false,
-          error: 'Invalid or expired OTP. Please request a new code.'
-        };
+      } catch (dbError) {
+        console.warn('Database verification failed, but cache/test OTP already checked:', dbError);
       }
 
-      if (otpRecord.tov_attempts >= MAX_ATTEMPTS) {
-        return {
-          success: false,
-          error: 'Too many failed attempts. Please request a new OTP.'
-        };
-      }
-
-      // Verify OTP and update user using stored procedure with timeout
-      const { error: verifyError } = await this.withTimeout(
-          supabaseBatch.rpc('verify_otp_and_update_user', {
-            p_otp_id: otpRecord.tov_id,
-            p_user_id: userId,
-            p_otp_type: otpType
-          }),
-          8000,
-          'OTP verification procedure'
-      );
-
-      if (verifyError) {
-        console.error('Verification stored procedure failed:', verifyError);
-        return {
-          success: false,
-          error: 'Verification failed. Please try again.'
-        };
-      }
-
-      // Update cache status
+      // Update cache attempts if exists
       if (cachedOTP) {
-        otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
+        const updatedEntry = {
+          ...cachedOTP,
+          attempts: cachedOTP.attempts + 1
+        };
+        if (updatedEntry.attempts >= MAX_ATTEMPTS) {
+          updatedEntry.status = 'expired';
+        }
+        otpCache.set(cacheKey, updatedEntry);
       }
 
       return {
-        success: true,
-        message: `${otpType} verified successfully`,
-        verificationComplete: true,
-        nextStep: 'subscription_plans'
+        success: false,
+        error: 'Invalid or expired OTP. Please request a new code.'
       };
 
     } catch (error: any) {
@@ -436,17 +496,22 @@ export class OTPService {
       updateData.tu_is_verified = true;
     }
 
-    const { error } = await this.withTimeout(
-        supabaseBatch
-            .from('tbl_users')
-            .update(updateData)
-            .eq('tu_id', userId),
-        8000,
-        'User status update'
-    );
+    try {
+      const { error } = await this.withTimeout(
+          supabaseBatch
+              .from('tbl_users')
+              .update(updateData)
+              .eq('tu_id', userId),
+          8000,
+          'User status update'
+      );
 
-    if (error) {
-      throw new Error(`Failed to update user verification: ${error.message}`);
+      if (error) {
+        throw new Error(`Failed to update user verification: ${error.message}`);
+      }
+    } catch (error) {
+      console.warn('Failed to update user verification status in database:', error);
+      // Don't throw error - verification can still proceed
     }
   }
 
@@ -537,6 +602,12 @@ export class OTPService {
     otpCache.clear();
     activeRequests.clear();
     console.log('Cleared all OTP cache');
+  }
+
+  // Clear test OTP cache to force refresh
+  clearTestOTPCache(): void {
+    testOTPCache.lastFetched = 0;
+    console.log('Cleared test OTP settings cache');
   }
 
   // Check if OTP can be resent (rate limiting)
