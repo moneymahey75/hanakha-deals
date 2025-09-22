@@ -115,7 +115,7 @@ export const sessionManager = {
           return null;
         }
 
-        console.log('✅ Valid session found in sessionStorage for user:', currentUserId);
+        //console.log('✅ Valid session found in sessionStorage for user:', currentUserId);
         return session;
       } catch (error) {
         console.error('❌ Failed to get session from sessionStorage:', error);

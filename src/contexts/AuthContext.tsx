@@ -144,12 +144,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         // Use a single query with joins to reduce connection usage
+        // tbl_companies(*),
         const { data: combinedData, error: combinedError } = await supabaseBatch
           .from('tbl_users')
           .select(`
             *,
             tbl_user_profiles(*),
-            tbl_companies(*),
             tbl_user_subscriptions!inner(
               tus_status,
               tus_end_date
@@ -177,7 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (combinedData) {
           userData = combinedData;
           profileData = combinedData.tbl_user_profiles?.[0];
-          companyData = combinedData.tbl_companies?.[0];
+          //companyData = combinedData.tbl_companies?.[0];
           subscriptionData = combinedData.tbl_user_subscriptions?.[0];
         }
       } catch (rlsError) {
@@ -198,18 +198,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      if (!companyData && userData?.tu_user_type === 'company') {
-        try {
-          const { data: companyDataArray } = await supabase
-            .from('tbl_companies')
-            .select('*')
-            .eq('tc_user_id', userId);
-          console.log('🏢 Company data retrieved:', companyDataArray?.length || 0, 'records');
-          companyData = companyDataArray?.[0];
-        } catch (companyRlsError) {
-          console.warn('RLS blocking companies table:', companyRlsError);
-        }
-      }
+      // if (!companyData && userData?.tu_user_type === 'company') {
+      //   try {
+      //     const { data: companyDataArray } = await supabase
+      //       .from('tbl_companies')
+      //       .select('*')
+      //       .eq('tc_user_id', userId);
+      //     console.log('🏢 Company data retrieved:', companyDataArray?.length || 0, 'records');
+      //     companyData = companyDataArray?.[0];
+      //   } catch (companyRlsError) {
+      //     console.warn('RLS blocking companies table:', companyRlsError);
+      //   }
+      // }
 
       if (!subscriptionData) {
         try {
@@ -235,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: session?.user?.email || userData?.tu_email || 'unknown@example.com',
         firstName: profileData?.tup_first_name,
         lastName: profileData?.tup_last_name,
-        companyName: companyData?.tc_company_name,
+        //companyName: companyData?.tc_company_name,
         userType: userData?.tu_user_type || 'customer',
         sponsorshipNumber: profileData?.tup_sponsorship_number,
         parentId: profileData?.tup_parent_account,

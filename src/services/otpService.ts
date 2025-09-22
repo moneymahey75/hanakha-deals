@@ -477,10 +477,10 @@ export class OTPService {
         return true;
       }
 
-      console.log(`Sending SMS OTP to ${mobile} via Edge Function...`);
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+      console.log(`Sending SMS OTP to ${mobile} via Edge Function...`);
 
       const response = await fetch(`${supabaseUrl}/functions/v1/send-otp`, {
         method: 'POST',
@@ -495,6 +495,8 @@ export class OTPService {
         }),
         signal: controller.signal
       });
+
+      console.log('sendMobileOTP', response);
 
       clearTimeout(timeoutId);
 
