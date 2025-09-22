@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
-import { sendOTP, checkSponsorshipNumberExists } from '../../lib/supabase';
+import { checkSponsorshipNumberExists } from '../../lib/supabase';
 import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 
-// Country codes data
 const countryCodes = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
   { code: '+972', country: 'Israel', flag: '🇮🇱' },
@@ -25,195 +24,93 @@ const countryCodes = [
   { code: '+27', country: 'South Africa', flag: '🇿🇦' },
 ];
 
+interface FormData {
+  firstName: string;
+  lastName: string;
+  userName: string;
+  email: string;
+  mobile: string;
+  mobileCountryCode: string;
+  parentAccount: string;
+  gender: string;
+  password: string;
+  confirmPassword: string;
+  acceptTerms: boolean;
+}
+
 const CustomerRegister: React.FC = () => {
   const { register } = useAuth();
   const { settings } = useAdmin();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  // Form state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
     userName: '',
     email: '',
     mobile: '',
-    mobileCountryCode: '+91', // Default to India
+    mobileCountryCode: '+91',
     parentAccount: '',
     gender: '',
     password: '',
     confirmPassword: '',
     acceptTerms: false
   });
+
+  // UI state
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [validatingReferral, setValidatingReferral] = useState(false);
-  const [referralValid, setReferralValid] = useState<boolean | null>(null);
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
-  // Extract referral code from URL query parameter
+  // Referral validation state
+  const [validatingReferral, setValidatingReferral] = useState(false);
+  const [referralValid, setReferralValid] = useState<boolean | null>(null);
+
+  // Refs for preventing duplicate operations
+  const referralInitialized = useRef(false);
+  const validationTimeout = useRef<NodeJS.Timeout>();
+
+  // Initialize referral code from URL once
   useEffect(() => {
+    if (referralInitialized.current) return;
+
     const referralCode = searchParams.get('ref');
     if (referralCode) {
-      console.log('🔗 Referral code detected in URL:', referralCode);
+      referralInitialized.current = true;
       setFormData(prev => ({
         ...prev,
         parentAccount: referralCode
       }));
-
-      // Automatically validate the referral code
+      // Validate referral code
       validateReferralCode(referralCode);
     }
   }, [searchParams]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsSubmitting(true);
-
-    console.log('🚀 Starting customer registration process...');
-
-    if (!recaptchaToken) {
-      setError('Please complete the reCAPTCHA verification');
-      setIsSubmitting(false);
-      return;
+  // Debounced referral validation
+  useEffect(() => {
+    if (validationTimeout.current) {
+      clearTimeout(validationTimeout.current);
     }
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      setIsSubmitting(false);
-      return;
+    if (formData.parentAccount && !referralInitialized.current) {
+      validationTimeout.current = setTimeout(() => {
+        validateReferralCode(formData.parentAccount);
+      }, 500);
     }
 
-    if (!formData.acceptTerms) {
-      setError('Please accept the terms and conditions');
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (settings.referralMandatory && !formData.parentAccount) {
-      setError('Referral account is mandatory');
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Validate mobile number format (10 digits)
-    if (formData.mobile && !/^\d{10}$/.test(formData.mobile)) {
-      setError('Mobile number must be exactly 10 digits');
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Validate referral code if provided
-    if (formData.parentAccount) {
-      console.log('🔍 Validating referral code:', formData.parentAccount);
-      try {
-        const isValidReferral = await checkSponsorshipNumberExists(formData.parentAccount);
-        if (!isValidReferral) {
-          setError('Invalid referral code. Please check and try again.');
-          setIsSubmitting(false);
-          return;
-        }
-        console.log('✅ Referral code is valid');
-      } catch (referralError) {
-        console.error('❌ Failed to validate referral code:', referralError);
-        setError('Unable to validate referral code at this time. Please try again.');
-        setIsSubmitting(false);
-        return;
+    return () => {
+      if (validationTimeout.current) {
+        clearTimeout(validationTimeout.current);
       }
-    }
+    };
+  }, [formData.parentAccount]);
 
-    try {
-      console.log('📝 Calling register function with data:', {
-        email: formData.email,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        userName: formData.userName,
-        mobile: formData.mobileCountryCode + formData.mobile // Combine country code and mobile number
-      });
-
-      const userId = await register({
-        ...formData,
-        mobile: formData.mobileCountryCode + formData.mobile // Combine for registration
-      }, 'customer');
-
-      console.log('✅ Registration successful, checking verification requirements...');
-      console.log('📋 Current verification settings:', {
-        emailVerificationRequired: settings.emailVerificationRequired,
-        mobileVerificationRequired: settings.mobileVerificationRequired,
-        eitherVerificationRequired: settings.eitherVerificationRequired
-      });
-
-      // Determine if any verification is required
-      const needsVerification = settings.emailVerificationRequired ||
-          settings.mobileVerificationRequired ||
-          settings.eitherVerificationRequired;
-
-      if (needsVerification) {
-        console.log('🔐 Verification required, redirecting to OTP page...');
-
-        // Redirect to verification page with settings context
-        navigate('/verify-otp', {
-          state: {
-            userId,
-            email: formData.email,
-            mobile: formData.mobileCountryCode + formData.mobile, // Pass combined mobile number
-            verificationSettings: {
-              emailRequired: settings.emailVerificationRequired,
-              mobileRequired: settings.mobileVerificationRequired,
-              eitherRequired: settings.eitherVerificationRequired
-            },
-            fromRegistration: true
-          }
-        });
-      } else {
-        console.log('💳 No verification required, redirecting to subscription plans...');
-        navigate('/subscription-plans');
-      }
-    } catch (err) {
-      console.error('❌ Registration error in component:', err);
-      // Error is now handled by notification system
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-
-    // For mobile number, validate it's only digits and limit to 10 characters
-    if (name === 'mobile') {
-      if (value === '' || (/^\d*$/.test(value) && value.length <= 10)) {
-        setFormData(prev => ({
-          ...prev,
-          [name]: value
-        }));
-      }
-      return;
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
-    }));
-
-    // Reset referral validation when parent account changes
-    if (name === 'parentAccount') {
-      setReferralValid(null);
-    }
-  };
-
-  const handleCountryCodeSelect = (code: string) => {
-    setFormData(prev => ({
-      ...prev,
-      mobileCountryCode: code
-    }));
-    setShowCountryDropdown(false);
-  };
-
-  // Function to validate referral code
-  const validateReferralCode = async (referralCode: string) => {
+  const validateReferralCode = useCallback(async (referralCode: string) => {
     if (!referralCode.trim()) {
       setReferralValid(null);
       return;
@@ -224,25 +121,128 @@ const CustomerRegister: React.FC = () => {
       const isValid = await checkSponsorshipNumberExists(referralCode);
       setReferralValid(isValid);
     } catch (error) {
-      console.error('Failed to validate referral code:', error);
       setReferralValid(false);
     } finally {
       setValidatingReferral(false);
     }
-  };
+  }, []);
 
-  // Debounced referral validation
-  React.useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (formData.parentAccount) {
-        validateReferralCode(formData.parentAccount);
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+
+    // Mobile number validation
+    if (name === 'mobile') {
+      if (value === '' || (/^\d*$/.test(value) && value.length <= 10)) {
+        setFormData(prev => ({ ...prev, [name]: value }));
       }
-    }, 500);
+      return;
+    }
 
-    return () => clearTimeout(timeoutId);
-  }, [formData.parentAccount]);
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
 
-  // Get selected country details
+    // Reset referral validation when parent account changes manually
+    if (name === 'parentAccount' && !referralInitialized.current) {
+      setReferralValid(null);
+    }
+  }, []);
+
+  const handleCountryCodeSelect = useCallback((code: string) => {
+    setFormData(prev => ({ ...prev, mobileCountryCode: code }));
+    setShowCountryDropdown(false);
+  }, []);
+
+  const validateForm = useCallback((): string | null => {
+    if (!recaptchaToken) {
+      return 'Please complete the reCAPTCHA verification';
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      return 'Passwords do not match';
+    }
+
+    if (!formData.acceptTerms) {
+      return 'Please accept the terms and conditions';
+    }
+
+    if (settings.referralMandatory && !formData.parentAccount) {
+      return 'Referral account is mandatory';
+    }
+
+    if (formData.mobile && !/^\d{10}$/.test(formData.mobile)) {
+      return 'Mobile number must be exactly 10 digits';
+    }
+
+    return null;
+  }, [formData, settings.referralMandatory, recaptchaToken]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (isSubmitting) return;
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    // Validate referral code if provided
+    if (formData.parentAccount) {
+      try {
+        const isValidReferral = await checkSponsorshipNumberExists(formData.parentAccount);
+        if (!isValidReferral) {
+          setError('Invalid referral code. Please check and try again.');
+          return;
+        }
+      } catch (referralError) {
+        setError('Unable to validate referral code at this time. Please try again.');
+        return;
+      }
+    }
+
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      const fullMobile = formData.mobileCountryCode + formData.mobile;
+
+      const userId = await register({
+        ...formData,
+        mobile: fullMobile
+      }, 'customer');
+
+      // Determine verification requirements
+      const needsVerification = settings.emailVerificationRequired ||
+          settings.mobileVerificationRequired ||
+          settings.eitherVerificationRequired;
+
+      if (needsVerification) {
+        navigate('/verify-otp', {
+          state: {
+            userId,
+            email: formData.email,
+            mobile: fullMobile,
+            verificationSettings: {
+              emailRequired: settings.emailVerificationRequired,
+              mobileRequired: settings.mobileVerificationRequired,
+              eitherRequired: settings.eitherVerificationRequired
+            },
+            fromRegistration: true
+          }
+        });
+      } else {
+        navigate('/subscription-plans');
+      }
+    } catch (err) {
+      // Error handling is done by notification system in AuthContext
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [formData, settings, recaptchaToken, isSubmitting, validateForm, register, navigate]);
+
   const selectedCountry = countryCodes.find(country => country.code === formData.mobileCountryCode);
 
   return (
@@ -353,7 +353,6 @@ const CustomerRegister: React.FC = () => {
                     Mobile Number {settings.mobileVerificationRequired || settings.eitherVerificationRequired ? '*' : ''}
                   </label>
                   <div className="flex space-x-2">
-                    {/* Country Code Dropdown */}
                     <div className="relative">
                       <button
                           type="button"
@@ -382,7 +381,6 @@ const CustomerRegister: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Mobile Number Input */}
                     <div className="flex-1 relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Phone className="h-5 w-5 text-gray-400" />
@@ -424,7 +422,7 @@ const CustomerRegister: React.FC = () => {
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         placeholder="Referral ID"
                     />
-                    {/* Validation indicator */}
+
                     {formData.parentAccount && (
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                           {validatingReferral ? (
