@@ -398,6 +398,12 @@ export class OTPService {
         console.log('Cache OTP verification successful');
         await this.updateUserVerificationStatus(userId, otpType);
         otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
+        
+        // Clean up any database records for this user/type after successful cache verification
+        this.cleanupOTPRecords(userId, otpType).catch(error => 
+          console.warn('Failed to cleanup OTP records after cache verification:', error)
+        );
+        
         return {
           success: true,
           message: `${otpType} verified successfully`,
@@ -407,6 +413,7 @@ export class OTPService {
       }
 
       // Database verification with timeout (if database is working)
+      let otpRecordId: string | null = null;
       try {
         const { data: otpRecord, error: findError } = await this.withTimeout(
             supabaseBatch
@@ -432,6 +439,8 @@ export class OTPService {
             };
           }
 
+          otpRecordId = otpRecord.tov_id;
+
           // Verify OTP and update user using stored procedure
           const { error: verifyError } = await this.withTimeout(
               supabaseBatch.rpc('verify_otp_and_update_user', {
@@ -444,10 +453,20 @@ export class OTPService {
           );
 
           if (!verifyError) {
+            console.log('Database OTP verification successful');
+            
             // Update cache status
             if (cachedOTP) {
               otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
             }
+
+            // Delete the OTP record after successful verification
+            await this.deleteOTPRecord(otpRecordId);
+            
+            // Also cleanup any other OTP records for this user/type
+            this.cleanupOTPRecords(userId, otpType).catch(error => 
+              console.warn('Failed to cleanup additional OTP records:', error)
+            );
 
             return {
               success: true,
@@ -487,6 +506,51 @@ export class OTPService {
     }
   }
 
+  // Delete specific OTP record after successful verification
+  private async deleteOTPRecord(otpRecordId: string): Promise<void> {
+    try {
+      const { error } = await this.withTimeout(
+        supabaseBatch
+          .from('tbl_otp_verifications')
+          .delete()
+          .eq('tov_id', otpRecordId),
+        5000,
+        'OTP record deletion'
+      );
+
+      if (error) {
+        console.error('Failed to delete OTP record:', error);
+      } else {
+        console.log('OTP record deleted successfully:', otpRecordId);
+      }
+    } catch (error) {
+      console.error('Error deleting OTP record:', error);
+    }
+  }
+
+  // Cleanup all OTP records for a user/type (for additional safety)
+  private async cleanupOTPRecords(userId: string, otpType: 'email' | 'mobile'): Promise<void> {
+    try {
+      const { error } = await this.withTimeout(
+        supabaseBatch
+          .from('tbl_otp_verifications')
+          .delete()
+          .eq('tov_user_id', userId)
+          .eq('tov_otp_type', otpType),
+        5000,
+        'OTP records cleanup'
+      );
+
+      if (error) {
+        console.error('Failed to cleanup OTP records:', error);
+      } else {
+        console.log(`Cleaned up all ${otpType} OTP records for user:`, userId);
+      }
+    } catch (error) {
+      console.error('Error cleaning up OTP records:', error);
+    }
+  }
+
   private async updateUserVerificationStatus(userId: string, otpType: 'email' | 'mobile'): Promise<void> {
     const updateData: any = {};
     if (otpType === 'email') {
@@ -517,18 +581,301 @@ export class OTPService {
 
   private async sendEmailOTP(userId: string, email: string, otp: string): Promise<boolean> {
     try {
-      // For email OTP, always simulate success since email service might not be configured
-      console.log(`Email OTP simulation: would send ${otp} to ${email}`);
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-      // Add a small delay to simulate email service processing
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (!supabaseUrl) {
+        console.log('Supabase URL not configured, simulating email send');
+        // Add delay to simulate email service
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return true;
+      }
 
-      // In production, replace this with actual email service integration
-      return true;
+      // Try to send via Edge Function first
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for email
+
+        console.log(`Sending Email OTP to ${email} via Edge Function...`);
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-otp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            contact_info: email,
+            otp_type: 'email'
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.error || `HTTP ${response.status}`;
+          console.error('Email Edge function error:', errorMessage);
+          throw new Error(`Failed to send email OTP: ${errorMessage}`);
+        }
+
+        const result = await response.json();
+        console.log('Email OTP sent successfully via Edge Function', result);
+        return true;
+
+      } catch (edgeError: any) {
+        if (edgeError.name === 'AbortError') {
+          console.error('Email OTP send timeout');
+          throw new Error('Email sending timed out');
+        }
+        
+        console.warn('Edge function failed for email, trying alternative method:', edgeError.message);
+        
+        // Fallback to direct email service integration
+        return await this.sendEmailDirect(email, otp);
+      }
+
     } catch (error) {
       console.error('Failed to send email OTP:', error);
       return false;
     }
+  }
+
+  // Direct email sending as fallback (you can integrate your preferred email service here)
+  private async sendEmailDirect(email: string, otp: string): Promise<boolean> {
+    try {
+      // Option 1: Resend API integration
+      const resendApiKey = import.meta.env.VITE_RESEND_API_KEY;
+      if (resendApiKey) {
+        return await this.sendViaResend(email, otp, resendApiKey);
+      }
+
+      // Option 2: SendGrid API integration  
+      const sendGridApiKey = import.meta.env.VITE_SENDGRID_API_KEY;
+      if (sendGridApiKey) {
+        return await this.sendViaSendGrid(email, otp, sendGridApiKey);
+      }
+
+      // Option 3: EmailJS integration (client-side)
+      const emailJsConfig = {
+        serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID,
+        templateId: import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+        publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+      };
+      
+      if (emailJsConfig.serviceId && emailJsConfig.templateId && emailJsConfig.publicKey) {
+        return await this.sendViaEmailJS(email, otp, emailJsConfig);
+      }
+
+      // If no email service is configured, simulate for development
+      console.log(`Email OTP simulation: would send ${otp} to ${email}`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return true;
+
+    } catch (error) {
+      console.error('Failed to send email via direct method:', error);
+      return false;
+    }
+  }
+
+  // Resend API integration
+  private async sendViaResend(email: string, otp: string, apiKey: string): Promise<boolean> {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'noreply@yourdomain.com', // Replace with your verified domain
+          to: [email],
+          subject: 'Your OTP Verification Code',
+          html: this.createEmailTemplate(otp, 'YourAppName') // Replace with your app name
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Resend API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      console.log('Email sent successfully via Resend:', result.id);
+      return true;
+    } catch (error) {
+      console.error('Resend email sending failed:', error);
+      return false;
+    }
+  }
+
+  // SendGrid API integration
+  private async sendViaSendGrid(email: string, otp: string, apiKey: string): Promise<boolean> {
+    try {
+      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{
+            to: [{ email: email }],
+            subject: 'Your OTP Verification Code'
+          }],
+          from: { email: 'noreply@yourdomain.com' }, // Replace with your verified email
+          content: [{
+            type: 'text/html',
+            value: this.createEmailTemplate(otp, 'YourAppName') // Replace with your app name
+          }]
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`SendGrid API error: ${response.status} - ${errorData}`);
+      }
+
+      console.log('Email sent successfully via SendGrid');
+      return true;
+    } catch (error) {
+      console.error('SendGrid email sending failed:', error);
+      return false;
+    }
+  }
+
+  // EmailJS integration (client-side email service)
+  private async sendViaEmailJS(email: string, otp: string, config: any): Promise<boolean> {
+    try {
+      // Note: EmailJS requires the EmailJS SDK to be loaded
+      // Add this to your index.html: <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+      
+      if (typeof window !== 'undefined' && (window as any).emailjs) {
+        const emailjs = (window as any).emailjs;
+        
+        const templateParams = {
+          to_email: email,
+          otp_code: otp,
+          app_name: 'YourAppName' // Replace with your app name
+        };
+
+        const response = await emailjs.send(
+          config.serviceId,
+          config.templateId,
+          templateParams,
+          config.publicKey
+        );
+
+        console.log('Email sent successfully via EmailJS:', response);
+        return true;
+      } else {
+        throw new Error('EmailJS SDK not loaded');
+      }
+    } catch (error) {
+      console.error('EmailJS sending failed:', error);
+      return false;
+    }
+  }
+
+  // Create HTML email template
+  private createEmailTemplate(otp: string, appName: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification - ${appName}</title>
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f8f9fa;
+          }
+          .container {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            padding: 40px 30px; 
+            text-align: center; 
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+          }
+          .content { 
+            padding: 40px 30px; 
+            text-align: center;
+          }
+          .otp-box { 
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
+            border: 2px solid #667eea; 
+            padding: 30px; 
+            margin: 30px 0; 
+            border-radius: 12px; 
+          }
+          .otp-code { 
+            font-size: 36px; 
+            font-weight: bold; 
+            color: #667eea; 
+            letter-spacing: 8px; 
+            margin: 15px 0;
+            font-family: monospace;
+          }
+          .footer { 
+            text-align: center; 
+            margin-top: 30px; 
+            color: #6c757d; 
+            font-size: 14px; 
+          }
+          @media (max-width: 600px) {
+            .content { padding: 20px; }
+            .otp-code { font-size: 28px; letter-spacing: 4px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Email Verification</h1>
+            <p>Secure your ${appName} account</p>
+          </div>
+          <div class="content">
+            <p style="font-size: 18px; margin-bottom: 20px;">
+              Use the verification code below to complete your email verification:
+            </p>
+            
+            <div class="otp-box">
+              <p style="margin: 0; font-weight: 600;">Your Verification Code:</p>
+              <div class="otp-code">${otp}</div>
+              <p style="margin: 0; color: #6c757d; font-size: 14px;">
+                <strong>Valid for 10 minutes only</strong>
+              </p>
+            </div>
+            
+            <p style="color: #6c757d; margin-top: 30px;">
+              If you didn't request this code, please ignore this email.
+            </p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply.</p>
+            <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
   }
 
   private async sendMobileOTP(userId: string, mobile: string, otp: string): Promise<boolean> {
@@ -608,6 +955,66 @@ export class OTPService {
   clearTestOTPCache(): void {
     testOTPCache.lastFetched = 0;
     console.log('Cleared test OTP settings cache');
+  }
+
+  // Clean up expired OTP records from database (periodic maintenance)
+  async cleanupExpiredOTPs(): Promise<{ deleted: number; error?: string }> {
+    try {
+      console.log('Starting cleanup of expired OTP records...');
+      
+      const { data, error } = await this.withTimeout(
+        supabaseBatch
+          .from('tbl_otp_verifications')
+          .delete()
+          .lt('tov_expires_at', new Date().toISOString())
+          .select('count'),
+        10000,
+        'Expired OTP cleanup'
+      );
+
+      if (error) {
+        console.error('Failed to cleanup expired OTPs:', error);
+        return { deleted: 0, error: error.message };
+      }
+
+      const deletedCount = Array.isArray(data) ? data.length : 0;
+      console.log(`Cleanup completed: ${deletedCount} expired OTP records deleted`);
+      
+      return { deleted: deletedCount };
+    } catch (error: any) {
+      console.error('Error during expired OTP cleanup:', error);
+      return { deleted: 0, error: error.message };
+    }
+  }
+
+  // Clean up all OTP records for a specific user (useful for user deletion)
+  async cleanupUserOTPs(userId: string): Promise<{ deleted: number; error?: string }> {
+    try {
+      console.log('Cleaning up all OTP records for user:', userId);
+      
+      const { data, error } = await this.withTimeout(
+        supabaseBatch
+          .from('tbl_otp_verifications')
+          .delete()
+          .eq('tov_user_id', userId)
+          .select('count'),
+        10000,
+        'User OTP cleanup'
+      );
+
+      if (error) {
+        console.error('Failed to cleanup user OTPs:', error);
+        return { deleted: 0, error: error.message };
+      }
+
+      const deletedCount = Array.isArray(data) ? data.length : 0;
+      console.log(`User OTP cleanup completed: ${deletedCount} records deleted for user ${userId}`);
+      
+      return { deleted: deletedCount };
+    } catch (error: any) {
+      console.error('Error during user OTP cleanup:', error);
+      return { deleted: 0, error: error.message };
+    }
   }
 
   // Check if OTP can be resent (rate limiting)
