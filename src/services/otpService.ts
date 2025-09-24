@@ -98,14 +98,10 @@ export class OTPService {
     }
 
     try {
-      const { data, error } = await this.withTimeout(
-        supabaseBatch
+      const { data, error } = await supabase
           .from('tbl_system_settings')
           .select('tss_setting_key, tss_setting_value')
-          .in('tss_setting_key', ['test_otp_enabled', 'test_otp_code']),
-        3000,
-        'Test OTP settings fetch'
-      );
+          .in('tss_setting_key', ['test_otp_enabled', 'test_otp_code']);
 
       if (error) {
         console.warn('Failed to fetch test OTP settings, using cached values:', error);
