@@ -430,7 +430,7 @@ export class OTPService {
             5000,
             'OTP verification lookup'
         );
-
+        console.log('Email verification 1: ', otpRecord, findError);
         if (!findError && otpRecord) {
           if (otpRecord.tov_attempts >= MAX_ATTEMPTS) {
             return {
@@ -451,6 +451,7 @@ export class OTPService {
               8000,
               'OTP verification procedure'
           );
+          console.log('Email verification 2: ', verifyError);
 
           if (!verifyError) {
             console.log('Database OTP verification successful');
@@ -459,14 +460,15 @@ export class OTPService {
             if (cachedOTP) {
               otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
             }
-
+            console.log('Email verification 3: ', cachedOTP);
             // Delete the OTP record after successful verification
             await this.deleteOTPRecord(otpRecordId);
-            
+            console.log('Email verification 4: ', otpRecordId);
             // Also cleanup any other OTP records for this user/type
             this.cleanupOTPRecords(userId, otpType).catch(error => 
               console.warn('Failed to cleanup additional OTP records:', error)
             );
+            console.log('Email verification 5: ', userId, otpType);
 
             return {
               success: true,
