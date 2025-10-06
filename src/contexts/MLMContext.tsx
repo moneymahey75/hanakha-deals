@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import { getMLMTreeStructure, getTreeStatistics, getMLMTreeNode } from '../lib/supabase';
+import { getMLMTreeStructure, getTreeStatistics } from '../lib/supabase';
 
 interface TreeNode {
   id: string;

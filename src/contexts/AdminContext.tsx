@@ -19,6 +19,16 @@ interface GeneralSettings {
   investmentContractAddress?: string;
   subscriptionWalletAddress?: string;
   investmentWalletAddress?: string;
+  // Username validation settings
+  usernameMinLength: number;
+  usernameMaxLength: number;
+  usernameAllowSpaces: boolean;
+  usernameAllowSpecialChars: boolean;
+  usernameAllowedSpecialChars: string;
+  usernameForceLowerCase: boolean;
+  usernameUniqueRequired: boolean;
+  usernameAllowNumbers: boolean;
+  usernameMustStartWithLetter: boolean;
 }
 
 interface SMSGateway {
@@ -47,13 +57,13 @@ interface SubscriptionPlan {
 
 interface AdminContextType {
   settings: GeneralSettings;
-  smsSettings: SMSGateway; // Renamed from smsGateway
-  emailSettings: EmailSMTP; // Renamed from emailSMTP
+  smsSettings: SMSGateway;
+  emailSettings: EmailSMTP;
   subscriptionPlans: SubscriptionPlan[];
   loading: boolean;
   updateSettings: (settings: Partial<GeneralSettings>) => void;
-  updateSMSSettings: (gateway: SMSGateway) => void; // Renamed
-  updateEmailSettings: (smtp: EmailSMTP) => void; // Renamed
+  updateSMSSettings: (gateway: SMSGateway) => void;
+  updateEmailSettings: (smtp: EmailSMTP) => void;
   updateSubscriptionPlans: (plans: SubscriptionPlan[]) => void;
   refreshSettings: () => Promise<void>;
 }
@@ -89,7 +99,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     subscriptionContractAddress: '',
     investmentContractAddress: '',
     subscriptionWalletAddress: '',
-    investmentWalletAddress: ''
+    investmentWalletAddress: '',
+    // Username validation default settings
+    usernameMinLength: 8,
+    usernameMaxLength: 30,
+    usernameAllowSpaces: false,
+    usernameAllowSpecialChars: true,
+    usernameAllowedSpecialChars: '._-',
+    usernameForceLowerCase: true,
+    usernameUniqueRequired: true,
+    usernameAllowNumbers: true,
+    usernameMustStartWithLetter: true
   };
 
   const [settings, setSettings] = useState<GeneralSettings>(defaultSettings);
@@ -142,13 +162,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setLoading(true);
 
       // Add timeout and better error handling
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
       const fetchPromise = supabase
-        .from('tbl_system_settings')
-        .select('tss_setting_key, tss_setting_value');
+          .from('tbl_system_settings')
+          .select('tss_setting_key, tss_setting_value');
 
       const { data: settingsData, error } = await Promise.race([
         fetchPromise,
@@ -157,7 +177,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (error) {
         console.warn('Failed to load settings from database, using defaults:', error);
-        // Don't return early, continue with defaults
         setSettings(defaultSettings);
         return;
       }
@@ -229,30 +248,60 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'investment_wallet_address':
                 loadedSettings.investmentWalletAddress = value;
                 break;
-                // Add cases for SMS and SMTP settings
+
+                // Username validation settings
+              case 'username_min_length':
+                loadedSettings.usernameMinLength = parseInt(value) || defaultSettings.usernameMinLength;
+                break;
+              case 'username_max_length':
+                loadedSettings.usernameMaxLength = parseInt(value) || defaultSettings.usernameMaxLength;
+                break;
+              case 'username_allow_spaces':
+                loadedSettings.usernameAllowSpaces = Boolean(value);
+                break;
+              case 'username_allow_special_chars':
+                loadedSettings.usernameAllowSpecialChars = Boolean(value);
+                break;
+              case 'username_allowed_special_chars':
+                loadedSettings.usernameAllowedSpecialChars = value || defaultSettings.usernameAllowedSpecialChars;
+                break;
+              case 'username_force_lower_case':
+                loadedSettings.usernameForceLowerCase = Boolean(value);
+                break;
+              case 'username_unique_required':
+                loadedSettings.usernameUniqueRequired = Boolean(value);
+                break;
+              case 'username_allow_numbers':
+                loadedSettings.usernameAllowNumbers = Boolean(value);
+                break;
+              case 'username_must_start_with_letter':
+                loadedSettings.usernameMustStartWithLetter = Boolean(value);
+                break;
+
+                // SMS and SMTP settings
               case 'sms_gateway_provider':
-                // You might want to handle these differently
+                // Handle SMS settings if needed
                 break;
               case 'sms_gateway_account_sid':
-                // You might want to handle these differently
+                // Handle SMS settings if needed
                 break;
               case 'sms_gateway_auth_token':
-                // You might want to handle these differently
+                // Handle SMS settings if needed
                 break;
               case 'sms_gateway_from_number':
-                // You might want to handle these differently
+                // Handle SMS settings if needed
                 break;
               case 'smtp_host':
-                // You might want to handle these differently
+                // Handle SMTP settings if needed
                 break;
               case 'smtp_username':
-                // You might want to handle these differently
+                // Handle SMTP settings if needed
                 break;
               case 'smtp_password':
-                // You might want to handle these differently
+                // Handle SMTP settings if needed
                 break;
               case 'smtp_encryption':
-                // You might want to handle these differently
+                // Handle SMTP settings if needed
                 break;
             }
           } catch (error) {
@@ -260,15 +309,26 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         });
 
-        // Merge loaded settings with defaults
-        setSettings(prev => ({ ...prev, ...loadedSettings }));
+        // Merge loaded settings with defaults, ensuring all username settings are set
+        const mergedSettings = {
+          ...defaultSettings,
+          ...loadedSettings,
+          // Ensure numeric values have proper fallbacks
+          usernameMinLength: loadedSettings.usernameMinLength !== undefined ?
+              loadedSettings.usernameMinLength : defaultSettings.usernameMinLength,
+          usernameMaxLength: loadedSettings.usernameMaxLength !== undefined ?
+              loadedSettings.usernameMaxLength : defaultSettings.usernameMaxLength,
+          usernameAllowedSpecialChars: loadedSettings.usernameAllowedSpecialChars ||
+              defaultSettings.usernameAllowedSpecialChars
+        };
+
+        setSettings(mergedSettings);
       } else {
         console.log('No settings found in database, using defaults');
         setSettings(defaultSettings);
       }
     } catch (error) {
       console.warn('Database connection failed, using default settings:', error);
-      // Use default settings when database is not accessible
       setSettings(defaultSettings);
     } finally {
       setLoading(false);
@@ -302,13 +362,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const value = {
     settings,
-    smsGateway,
-    emailSMTP,
+    smsSettings: smsGateway,
+    emailSettings: emailSMTP,
     subscriptionPlans,
     loading,
     updateSettings,
-    updateSMSGateway,
-    updateEmailSMTP,
+    updateSMSSettings: updateSMSGateway,
+    updateEmailSettings: updateEmailSMTP,
     updateSubscriptionPlans,
     refreshSettings
   };
