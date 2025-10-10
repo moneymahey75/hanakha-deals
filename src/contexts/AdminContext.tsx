@@ -10,7 +10,6 @@ interface GeneralSettings {
   mobileVerificationRequired: boolean;
   eitherVerificationRequired: boolean;
   referralMandatory: boolean;
-  defaultParentAccount: string;
   jobSeekerVideoUrl?: string;
   jobProviderVideoUrl?: string;
   paymentMode?: boolean;
@@ -91,7 +90,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     mobileVerificationRequired: true,
     eitherVerificationRequired: true,
     referralMandatory: false,
-    defaultParentAccount: '',
     jobSeekerVideoUrl: '',
     jobProviderVideoUrl: '',
     paymentMode: false,
@@ -220,9 +218,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'referral_mandatory':
                 loadedSettings.referralMandatory = value;
-                break;
-              case 'default_parent_account':
-                loadedSettings.defaultParentAccount = value;
                 break;
               case 'job_seeker_video_url':
                 loadedSettings.jobSeekerVideoUrl = value;

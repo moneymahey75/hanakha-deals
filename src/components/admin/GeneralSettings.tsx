@@ -9,8 +9,7 @@ const GeneralSettings: React.FC = () => {
         siteName: settings.siteName,
         logoUrl: settings.logoUrl,
         dateFormat: settings.dateFormat,
-        timezone: settings.timezone,
-        defaultParentAccount: settings.defaultParentAccount
+        timezone: settings.timezone
     });
     const [saving, setSaving] = useState(false);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -21,8 +20,7 @@ const GeneralSettings: React.FC = () => {
             siteName: settings.siteName,
             logoUrl: settings.logoUrl,
             dateFormat: settings.dateFormat,
-            timezone: settings.timezone,
-            defaultParentAccount: settings.defaultParentAccount
+            timezone: settings.timezone
         });
     }, [settings]);
 
@@ -37,8 +35,7 @@ const GeneralSettings: React.FC = () => {
                 { key: 'site_name', value: JSON.stringify(formData.siteName) },
                 { key: 'logo_url', value: JSON.stringify(formData.logoUrl) },
                 { key: 'date_format', value: JSON.stringify(formData.dateFormat) },
-                { key: 'timezone', value: JSON.stringify(formData.timezone) },
-                { key: 'default_parent_account', value: JSON.stringify(formData.defaultParentAccount) }
+                { key: 'timezone', value: JSON.stringify(formData.timezone) }
             ];
 
             for (const update of updates) {
@@ -335,23 +332,6 @@ const GeneralSettings: React.FC = () => {
                     </div>
                 </div>
 
-                <div>
-                    <label htmlFor="defaultParentAccount" className="block text-sm font-medium text-gray-700 mb-2">
-                        Default Parent Account
-                    </label>
-                    <input
-                        type="text"
-                        id="defaultParentAccount"
-                        name="defaultParentAccount"
-                        value={formData.defaultParentAccount}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Default parent account for orphaned users"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Used when a user registers without a valid referral
-                    </p>
-                </div>
 
                 <div className="flex justify-end">
                     <button

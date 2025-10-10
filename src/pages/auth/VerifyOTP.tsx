@@ -678,11 +678,6 @@ const VerifyOTP: React.FC = () => {
                   <p className="text-xs text-gray-500">
                     Tip: You can paste the entire 6-digit code into any field
                   </p>
-                  {import.meta.env.DEV && (
-                      <p className="text-xs text-blue-600 mt-1 font-medium">
-                        Development: Use test OTP <code className="bg-blue-100 px-1 rounded">123456</code>
-                      </p>
-                  )}
                 </div>
               </div>
 

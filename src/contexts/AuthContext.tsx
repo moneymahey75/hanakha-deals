@@ -345,7 +345,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (userData: any, userType: string) => {
     setLoading(true);
     try {
-      console.log('🔍 Attempting registration for:', userData.email);
+      console.log('🔍 Attempting registration for:', JSON.stringify(userData));
 
       // Clear any existing session data first
       sessionManager.removeSession();
@@ -381,7 +381,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Use the appropriate registration function based on user type
       if (userType === 'customer') {
         console.log('📝 Registering customer profile...');
-        const { error: regError } = await supabase.rpc('register_customer', {
+        const { data, error: regError } = await supabase.rpc('register_customer', {
           p_user_id: authData.user.id,
           p_email: userData.email,
           p_first_name: userData.firstName,
@@ -389,8 +389,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           p_username: userData.userName,
           p_mobile: userData.mobile,
           p_gender: userData.gender,
-          p_parent_account: userData.parentAccount
+          p_parent_account: userData.parentAccount,
         });
+
+        console.log('user profile data: ', data);
 
         if (regError) {
           console.error('Customer registration error:', regError);
@@ -398,40 +400,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Add user to MLM tree if parent account is provided
-        if (userData.parentAccount) {
-          try {
-            console.log('🌳 Adding user to MLM tree with sponsor:', userData.parentAccount);
 
-            const { data: profileData, error: profileError } = await supabase
-                .from('tbl_user_profiles')
-                .select('tup_sponsorship_number')
-                .eq('tup_user_id', authData.user.id)
-                .single();
+        try {
+          console.log('🌳 Adding user to MLM tree with sponsor:', userData.parentAccount);
 
-            if (profileError) {
-              console.error('❌ Could not get sponsorship number for MLM tree placement:', profileError);
-              throw profileError;
-            }
+          const { data: profileData, error: profileError } = await supabase
+              .from('tbl_user_profiles')
+              .select('tup_sponsorship_number')
+              .eq('tup_user_id', authData.user.id)
+              .single();
 
-            if (profileData?.tup_sponsorship_number) {
-              const treeResult = await addUserToMLMTree(
-                  authData.user.id,
-                  profileData.tup_sponsorship_number,
-                  userData.parentAccount
-              );
-
-              if (treeResult?.success) {
-                console.log('✅ MLM tree placement successful');
-              } else {
-                console.error('❌ MLM tree placement failed:', treeResult);
-                throw new Error(treeResult?.error || 'MLM tree placement failed');
-              }
-            }
-          } catch (treeError) {
-            console.error('❌ MLM tree placement failed:', treeError);
-            console.warn('⚠️ Registration completed but MLM tree placement failed');
+          if (profileError) {
+            console.error('❌ Could not get sponsorship number for MLM tree placement:', profileError);
+            throw profileError;
           }
-        }
+
+          if (profileData?.tup_sponsorship_number) {
+            const treeResult = await addUserToMLMTree(
+                authData.user.id,
+                profileData.tup_sponsorship_number,
+                userData.parentAccount
+            );
+
+            if (treeResult?.success) {
+              console.log('✅ MLM tree placement successful');
+            } else {
+              console.error('❌ MLM tree placement failed:', treeResult);
+              throw new Error(treeResult?.error || 'MLM tree placement failed');
+            }
+          }
+        } catch (treeError) {
+          console.error('❌ MLM tree placement failed:', treeError);
+          console.warn('⚠️ Registration completed but MLM tree placement failed');
+      }
+
       } else if (userType === 'company') {
         console.log('📝 Registering company profile...');
         const { error: regError } = await supabase.rpc('register_company', {

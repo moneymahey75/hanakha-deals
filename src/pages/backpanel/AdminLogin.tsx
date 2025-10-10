@@ -9,7 +9,7 @@ const AdminLogin: React.FC = () => {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    email: 'admin@mlmplatform.com',
+    email: 's_admin@dealsphere.com',
     password: 'Admin@123456'
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -70,19 +70,7 @@ const AdminLogin: React.FC = () => {
               </p>
             </div>
 
-            {/* Demo Credentials */}
-            <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-              <div className="text-sm text-blue-300 mb-2">
-                <strong>Demo Credentials:</strong>
-              </div>
-              <div className="text-xs text-blue-200 space-y-1">
-                <div>Email: admin@mlmplatform.com</div>
-                <div>Password: Admin@123456</div>
-                <div className="mt-2 text-yellow-300">
-                  <strong>Note:</strong> Works with RLS policies enabled
-                </div>
-              </div>
-            </div>
+
 
             {error && (
                 <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">

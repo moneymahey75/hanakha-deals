@@ -484,9 +484,12 @@ const CustomerRegister: React.FC = () => {
           return;
         }
       } catch (referralError) {
-        setError('Unable to validate referral code at this time. Please try again.');
+        setError('Unable to validate referral code at this time. Please try again.' + referralError);
         return;
       }
+    } else if(settings.referralMandatory) {
+      setError('Referral code is required');
+      return;
     }
 
     setError('');
