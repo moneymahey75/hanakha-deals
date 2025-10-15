@@ -102,7 +102,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('✅ User signed in, saving session');
           sessionManager.saveSession(session);
           await fetchUserData(session.user.id);
-        } else if (event === 'SIGNED_OUT' || !session) {
+        }
+        // FIX: Only clear session and user state on explicit SIGNED_OUT event.
+        else if (event === 'SIGNED_OUT') {
           console.log('👋 User signed out, clearing session');
           const currentUserId = user?.id;
           sessionManager.removeSession(currentUserId);
@@ -146,8 +148,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Use a single query with joins to reduce connection usage
         // tbl_companies(*),
         const { data: combinedData, error: combinedError } = await supabaseBatch
-          .from('tbl_users')
-          .select(`
+            .from('tbl_users')
+            .select(`
             *,
             tbl_user_profiles(*),
             tbl_user_subscriptions!inner(
@@ -155,19 +157,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               tus_end_date
             )
           `)
-          .eq('tu_id', userId)
-          .eq('tbl_user_subscriptions.tus_status', 'active')
-          .gte('tbl_user_subscriptions.tus_end_date', new Date().toISOString())
-          .maybeSingle();
+            .eq('tu_id', userId)
+            .eq('tbl_user_subscriptions.tus_status', 'active')
+            .gte('tbl_user_subscriptions.tus_end_date', new Date().toISOString())
+            .maybeSingle();
 
         if (combinedError) {
           console.log('⚠️ Combined query failed, falling back to individual queries:', combinedError.message);
-          
+
           // Fallback to individual queries
           const { data: userDataArray, error: userError } = await supabase
-            .from('tbl_users')
-            .select('*')
-            .eq('tu_id', userId);
+              .from('tbl_users')
+              .select('*')
+              .eq('tu_id', userId);
 
           if (userError) {
             console.log('⚠️ RLS blocking users table access:', userError.message);
@@ -188,9 +190,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!profileData) {
         try {
           const { data: profileDataArray } = await supabase
-            .from('tbl_user_profiles')
+              .from('tbl_user_profiles')
               .select('*')
-            .eq('tup_user_id', userId);
+              .eq('tup_user_id', userId);
           console.log('📋 Profile data retrieved:', profileDataArray?.length || 0, 'records');
           profileData = profileDataArray?.[0];
         } catch (profileRlsError) {
@@ -215,11 +217,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           console.log('💳 Checking for active subscription for user:', userId);
           const { data: subscriptionDataArray } = await supabase
-            .from('tbl_user_subscriptions')
-            .select('*')
-            .eq('tus_user_id', userId)
-            .eq('tus_status', 'active')
-            .gte('tus_end_date', new Date().toISOString());
+              .from('tbl_user_subscriptions')
+              .select('*')
+              .eq('tus_user_id', userId)
+              .eq('tus_status', 'active')
+              .gte('tus_end_date', new Date().toISOString());
           console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
           subscriptionData = subscriptionDataArray?.[0];
         } catch (subscriptionRlsError) {
@@ -432,7 +434,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (treeError) {
           console.error('❌ MLM tree placement failed:', treeError);
           console.warn('⚠️ Registration completed but MLM tree placement failed');
-      }
+        }
 
       } else if (userType === 'company') {
         console.log('📝 Registering company profile...');
@@ -591,12 +593,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendOTPToUser = async (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => {
     try {
       console.log('📤 Sending OTP to user:', { userId, contactInfo, otpType });
-      
+
       // Validate inputs
       if (!userId || !contactInfo || !otpType) {
         throw new Error('Missing required information for OTP sending');
       }
-      
+
       const result = await otpService.sendOTP(userId, contactInfo, otpType);
 
       if (!result.success) {
@@ -617,7 +619,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkVerificationStatus = async (userId: string) => {
     try {
       console.log('🔍 Checking verification status for user:', userId);
-      
+
       // Optimize verification status check with single query
       const { data: userData, error: userError } = await supabaseBatch
         .from('tbl_users')
@@ -636,7 +638,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .select('tss_setting_key, tss_setting_value')
         .in('tss_setting_key', [
           'email_verification_required',
-          'mobile_verification_required', 
+          'mobile_verification_required',
           'either_verification_required'
         ]);
 

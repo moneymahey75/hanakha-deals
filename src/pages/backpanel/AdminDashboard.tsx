@@ -17,28 +17,22 @@ import {
   Building,
   CreditCard,
   Settings,
-  UserPlus,
   Shield,
   Activity,
   BarChart3,
   FileText,
   DollarSign,
-  Eye,
-  Edit,
-  Trash2,
   RefreshCw,
-  Plus,
-  Check,
-  X,
   Globe,
   UserCheck,
   LogOut,
-  Menu,
   ChevronLeft,
   ChevronRight,
   Gift,
   Calendar,
-  Wallet
+  Wallet,
+  Check,
+  X
 } from 'lucide-react';
 
 interface SubAdmin {
@@ -53,7 +47,17 @@ interface SubAdmin {
 }
 
 const AdminDashboard: React.FC = () => {
-  const { admin, hasPermission, getSubAdmins, createSubAdmin, updateSubAdmin, deleteSubAdmin, resetSubAdminPassword, logout } = useAdminAuth();
+  const {
+    admin,
+    hasPermission,
+    getSubAdmins,
+    createSubAdmin,
+    updateSubAdmin,
+    deleteSubAdmin,
+    resetSubAdminPassword,
+    logout,
+    loading: authLoading // <-- Renamed loading state for clarity
+  } = useAdminAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -84,6 +88,7 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     // Check admin session every 30 seconds
     const interval = setInterval(() => {
+      // FIX: Rely on sessionUtils.validateAdminSession to renew the timestamp AND check validity
       if (!sessionUtils.validateAdminSession()) {
         console.log('🔒 Admin session invalid, redirecting to login');
         handleLogout();
@@ -107,11 +112,12 @@ const AdminDashboard: React.FC = () => {
       }
     };
   }, [sessionCheckInterval]);
+
   useEffect(() => {
-    if (activeTab === 'admins' && hasPermission('admins', 'read')) {
+    if (activeTab === 'admins' && hasPermission('admins', 'read') && admin) {
       loadSubAdmins();
     }
-  }, [activeTab]);
+  }, [activeTab, admin]);
 
   const loadSubAdmins = async () => {
     setLoading(true);
@@ -178,7 +184,7 @@ const AdminDashboard: React.FC = () => {
       permissions: {
         ...prev.permissions,
         [module]: {
-          ...prev.permissions[module],
+          ...prev.permissions[module as keyof typeof prev.permissions],
           [action]: value
         }
       }
@@ -196,7 +202,7 @@ const AdminDashboard: React.FC = () => {
     sessionStorage.removeItem('admin_session_token');
 
     logout();
-    navigate('/backpanel/login');
+    navigate('/backpanel/login', { replace: true });
   };
 
   const stats = [
@@ -255,6 +261,28 @@ const AdminDashboard: React.FC = () => {
     { id: 'payment', label: 'Payment Settings', icon: FileText }
   ];
 
+  // =========================================================
+  // CRITICAL LOADING/AUTH CHECK
+  // =========================================================
+  if (authLoading) {
+    return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading Admin Validation...</p>
+          </div>
+        </div>
+    );
+  }
+
+  if (!admin) {
+    // This handles the case where validation finished but failed (admin is null)
+    // Should typically be handled by a router/wrapper, but this ensures a clean redirect.
+    navigate('/backpanel/login', { replace: true });
+    return null;
+  }
+  // =========================================================
+
   return (
       <div className="min-h-screen bg-gray-50 flex">
         {/* Vertical Sidebar */}
@@ -286,10 +314,10 @@ const AdminDashboard: React.FC = () => {
               {!sidebarCollapsed && (
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {admin?.fullName}
+                      {admin.fullName}
                     </p>
                     <p className="text-xs text-gray-500 capitalize">
-                      {admin?.role === 'super_admin' ? 'Super Admin' : 'Sub Admin'}
+                      {admin.role === 'super_admin' ? 'Super Admin' : 'Sub Admin'}
                     </p>
                   </div>
               )}
@@ -426,7 +454,7 @@ const AdminDashboard: React.FC = () => {
                 <CompanyManagement />
             )}
 
-            {activeTab === 'coupons' && hasPermission('companies', 'read') && (
+            {activeTab === 'coupons' && hasPermission('coupons', 'read') && (
                 <CouponManagement />
             )}
 
@@ -434,7 +462,7 @@ const AdminDashboard: React.FC = () => {
                 <DailyTaskManagement />
             )}
 
-            {activeTab === 'wallets' && hasPermission('payments', 'read') && (
+            {activeTab === 'wallets' && hasPermission('wallets', 'read') && (
                 <WalletManagement />
             )}
 
@@ -491,7 +519,7 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {/* Access Denied */}
-            {activeTab !== 'overview' && !hasPermission(activeTab as any, 'read') && (
+            {activeTab !== 'overview' && admin && !hasPermission(activeTab as any, 'read') && (
                 <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                   <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Shield className="h-8 w-8 text-red-600" />
@@ -541,7 +569,7 @@ const AdminDashboard: React.FC = () => {
                                   <label key={action} className="flex items-center">
                                     <input
                                         type="checkbox"
-                                        checked={newSubAdmin.permissions[module][action]}
+                                        checked={newSubAdmin.permissions[module as keyof typeof newSubAdmin.permissions][action as 'read' | 'write' | 'delete']}
                                         onChange={(e) => updatePermission(module, action, e.target.checked)}
                                         className="rounded border-gray-300 text-red-600 focus:ring-red-500"
                                     />

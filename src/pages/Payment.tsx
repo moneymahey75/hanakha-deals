@@ -21,6 +21,9 @@ interface SubscriptionPlan {
   tsp_features: string[];
 }
 
+// Key for storing transaction data
+const PAYMENT_SUCCESS_KEY = 'payment_success_state';
+
 // Helper function to determine wallet type from provider
 const getWalletType = (provider: any): string => {
   if (provider.isMetaMask) return 'metamask';
@@ -30,7 +33,9 @@ const getWalletType = (provider: any): string => {
   return 'web3';
 };
 
+
 const Payment: React.FC = () => {
+  // FIX: Access user object which contains hasActiveSubscription
   const { user, fetchUserData } = useAuth();
   const { settings } = useAdmin();
   const navigate = useNavigate();
@@ -48,15 +53,40 @@ const Payment: React.FC = () => {
     usdtBalance: '0',
     walletName: null,
   });
-  const [transaction, setTransaction] = useState<TransactionState>({
-    isProcessing: false,
-    hash: null,
-    status: 'idle',
-    error: null,
-    distributionSteps: [],
-  });
+
+  // FIX: Initialize transaction state from session storage
+  const initialTransactionState: TransactionState = (() => {
+    try {
+      const storedState = sessionStorage.getItem(PAYMENT_SUCCESS_KEY);
+      if (storedState) {
+        const { success, tx } = JSON.parse(storedState);
+        if (success) {
+          return tx as TransactionState;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse payment success state from session storage:", e);
+      sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+    }
+    // Default initial state
+    return {
+      isProcessing: false,
+      hash: null,
+      status: 'idle',
+      error: null,
+      distributionSteps: [],
+    } as TransactionState;
+  })();
+
+  const [transaction, setTransaction] = useState<TransactionState>(initialTransactionState);
+
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastConnectedWallet, setLastConnectedWallet] = useState<any>(null);
+
+  // FIX: If the user has an active plan (from DB check), force success status.
+  // Otherwise, rely on the session storage flag.
+  const hasActivePlan = user?.hasActiveSubscription;
+  const hasPaidSuccessfully = hasActivePlan || (transaction.status === 'success' && !!transaction.hash);
 
   // Load saved wallet connections on component mount
   useEffect(() => {
@@ -88,6 +118,8 @@ const Payment: React.FC = () => {
   useEffect(() => {
     if (settings) {
       // Validate admin settings before using them
+      const validateAddress = (addr: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(addr);
+
       if (!validateAddress(settings.usdtAddress) && settings.usdtAddress !== '') {
         console.error('Invalid USDT address in settings');
         notification.showError('Configuration Error', 'Invalid USDT contract address');
@@ -120,6 +152,9 @@ const Payment: React.FC = () => {
     const planFromState = location.state?.selectedPlan;
 
     if (planFromState) {
+      // Input validation functions
+      const validatePrice = (price: number): boolean => price > 0 && price < 1000000;
+
       // Validate plan data
       if (!planFromState.tsp_id || !planFromState.tsp_name ||
           !validatePrice(planFromState.tsp_price)) {
@@ -139,6 +174,16 @@ const Payment: React.FC = () => {
     const wallets = walletService.detectWallets();
     setAvailableWallets(wallets);
   }, [location.state, navigate, notification, walletService]);
+
+  // FIX: Restore wallet state from service on re-render if connection is active
+  useEffect(() => {
+    // Check the WalletService instance directly for connection status
+    const currentWalletState = walletService.getCurrentWalletState();
+    if (currentWalletState.isConnected && !walletState.isConnected) {
+      setWalletState(currentWalletState);
+      console.log('Restored wallet state from WalletService:', currentWalletState.address);
+    }
+  }, [walletService, walletState.isConnected]);
 
   // Input validation functions
   const validateAddress = (address: string): boolean => {
@@ -212,6 +257,8 @@ const Payment: React.FC = () => {
   };
 
   const handleWalletConnect = async (provider: any) => {
+    if (isConnecting) return; // Prevent double click
+
     setIsConnecting(true);
     try {
       // Validate admin settings before connecting
@@ -241,6 +288,17 @@ const Payment: React.FC = () => {
       // Sanitize error message before showing to user
       const sanitizedError = errorMessage.replace(/[<>]/g, '');
       notification.showError('Connection Failed', sanitizedError);
+
+      // Clear wallet state on failure
+      setWalletState({
+        isConnected: false,
+        address: null,
+        chainId: null,
+        balance: '0',
+        usdtBalance: '0',
+        walletName: null,
+      });
+
     } finally {
       setIsConnecting(false);
     }
@@ -273,6 +331,9 @@ const Payment: React.FC = () => {
       walletName: null,
     });
     setLastConnectedWallet(null);
+    // FIX: Reset transaction state and clear persistent storage on disconnect
+    setTransaction(initialTransactionState);
+    sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
     notification.showInfo('Wallet Disconnected', 'Wallet has been disconnected');
   };
 
@@ -280,6 +341,14 @@ const Payment: React.FC = () => {
     // Input validation
     if (!selectedPlan || !user) {
       notification.showError('Error', 'Missing plan or user information');
+      return;
+    }
+
+    // FIX: Re-check active subscription before payment
+    if (user.hasActiveSubscription) {
+      notification.showInfo('Already Subscribed', 'You already have an active subscription.');
+      // Set local state to success to enforce the success UI path immediately
+      setTransaction(prev => ({ ...prev, status: 'success' }));
       return;
     }
 
@@ -340,6 +409,7 @@ const Payment: React.FC = () => {
       error: null,
       distributionSteps: []
     });
+    sessionStorage.removeItem(PAYMENT_SUCCESS_KEY); // Clear session storage flag
 
     let subscriptionData = null;
     let paymentData = null;
@@ -350,12 +420,15 @@ const Payment: React.FC = () => {
       // Execute USDT distribution
       const { hash, steps } = await walletService.executeUSDTDistribution(selectedPlan.tsp_price);
 
-      setTransaction(prev => ({
-        ...prev,
+      const finalTransactionState = {
+        isProcessing: false,
         hash,
         distributionSteps: steps,
-        status: 'success'
-      }));
+        status: 'success' as 'success',
+        error: null
+      };
+
+      setTransaction(finalTransactionState);
 
       // Calculate end date
       const startDate = new Date();
@@ -416,30 +489,35 @@ const Payment: React.FC = () => {
 
       console.log('✅ Payment record created:', paymentData);
 
-      // Refresh user data to update subscription status
+      // FIX: Store success flag and transaction state in session storage BEFORE fetching user data
+      sessionStorage.setItem(PAYMENT_SUCCESS_KEY, JSON.stringify({
+        success: true,
+        tx: finalTransactionState
+      }));
+
+      // Refresh user data (This causes the re-render/re-mount)
       await fetchUserData(user.id);
 
       notification.showSuccess('Payment Successful!', 'Your subscription has been activated via blockchain.');
 
-      // Set processing to false after everything is completed
-      setTransaction(prev => ({
-        ...prev,
-        isProcessing: false
-      }));
+      // Local state update is handled, the component will re-render and re-initialize from storage
 
     } catch (error: any) {
       console.error('Payment processing failed:', error);
 
       const errorMessage = error?.message || 'Payment processing failed';
 
-      // Set error state and stop processing
-      setTransaction({
+      const finalErrorState = {
         isProcessing: false,
         hash: transaction.hash,
-        status: 'error',
+        status: 'error' as 'error',
         error: errorMessage,
         distributionSteps: transaction.distributionSteps
-      });
+      };
+
+      // Set error state and stop processing
+      setTransaction(finalErrorState);
+      sessionStorage.removeItem(PAYMENT_SUCCESS_KEY); // Clear success flag on failure
 
       try {
         const { data: failedPayment, error: dbError } = await supabase
@@ -484,6 +562,9 @@ const Payment: React.FC = () => {
   };
 
   const handleGoToDashboard = () => {
+    // FIX: Clear the persistent state upon navigating away
+    sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+
     navigate('/customer/dashboard', {
       state: {
         paymentSuccess: true,
@@ -503,17 +584,17 @@ const Payment: React.FC = () => {
       let provider = null;
       const walletType = lastConnectedWallet.tuwc_wallet_type;
 
-      if (walletType === 'metamask' && window.ethereum?.isMetaMask) {
-        provider = window.ethereum;
-      } else if (walletType === 'trust' && window.ethereum?.isTrust) {
-        provider = window.ethereum;
-      } else if (walletType === 'safepal' && window.ethereum?.isSafePal) {
-        provider = window.ethereum;
-      } else if (walletType === 'binance' && window.BinanceChain) {
-        provider = window.BinanceChain;
-      } else if (window.ethereum) {
+      if (walletType === 'metamask' && (window as any).ethereum?.isMetaMask) {
+        provider = (window as any).ethereum;
+      } else if (walletType === 'trust' && (window as any).ethereum?.isTrust) {
+        provider = (window as any).ethereum;
+      } else if (walletType === 'safepal' && (window as any).ethereum?.isSafePal) {
+        provider = (window as any).ethereum;
+      } else if (walletType === 'binance' && (window as any).BinanceChain) {
+        provider = (window as any).BinanceChain;
+      } else if ((window as any).ethereum) {
         // Fallback to generic Ethereum provider
-        provider = window.ethereum;
+        provider = (window as any).ethereum;
       }
 
       if (!provider) {
@@ -542,16 +623,24 @@ const Payment: React.FC = () => {
     }
   };
 
-  if (!selectedPlan) {
+  // FIX: Early return if user is not loaded or plan is not selected
+  if (!user || !selectedPlan) {
     return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading payment information...</p>
+            <p className="text-gray-600">Loading user and payment information...</p>
           </div>
         </div>
     );
   }
+
+  // FIX: If user has active subscription but we don't have transaction details,
+  // ensure transaction status is set to success for PaymentSection to render correctly.
+  if (hasActivePlan && transaction.status === 'idle') {
+    setTransaction(prev => ({ ...prev, status: 'success' }));
+  }
+
 
   return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 py-8">
@@ -622,7 +711,7 @@ const Payment: React.FC = () => {
 
             {/* Payment Section */}
             <div className="space-y-6">
-              {!walletState.isConnected ? (
+              {!walletState.isConnected && !hasActivePlan ? (
                   <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 shadow-xl">
                     <h2 className="text-2xl font-semibold text-white mb-6 flex items-center">
                       <Wallet className="w-6 h-6 mr-3 text-purple-300" />
@@ -632,7 +721,7 @@ const Payment: React.FC = () => {
                     {availableWallets.length === 0 && (
                         <div className="bg-yellow-500/20 border border-yellow-400/30 rounded-xl p-4 mb-6">
                           <div className="flex items-center space-x-2 mb-2">
-                            <AlertTriangle className="w-5 h-5 text-yellow-300" />
+                            <AlertTriangle className="h-5 w-5 text-yellow-300" />
                             <span className="font-medium text-yellow-200">No Wallet Detected</span>
                           </div>
                           <p className="text-yellow-100 text-sm">
@@ -644,7 +733,7 @@ const Payment: React.FC = () => {
                     {lastConnectedWallet && (
                         <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-6">
                           <div className="flex items-center space-x-2 mb-2">
-                            <Shield className="w-5 h-5 text-blue-300" />
+                            <Shield className="h-5 w-5 text-blue-300" />
                             <span className="font-medium text-blue-200">Previously Connected Wallet</span>
                           </div>
                           <div className="text-blue-100 text-sm">
@@ -672,13 +761,19 @@ const Payment: React.FC = () => {
                   </div>
               ) : (
                   <>
-                    <WalletInfoComponent
-                        wallet={walletState}
-                        onDisconnect={handleWalletDisconnect}
-                        settings={settings}
-                    />
+                    {walletState.isConnected && (
+                        <WalletInfoComponent
+                            wallet={walletState}
+                            onDisconnect={handleWalletDisconnect}
+                            settings={settings}
+                        />
+                    )}
+
+                    {/* Render PaymentSection. It will display the success UI if transaction.status is 'success' (which is enforced by hasActivePlan) */}
                     <PaymentSection
                         onPayment={handlePayment}
+                        // If plan is active, ensure we pass a valid transaction object
+                        // so PaymentSection can display the success UI.
                         transaction={transaction}
                         distributionSteps={transaction.distributionSteps}
                         planPrice={selectedPlan.tsp_price}

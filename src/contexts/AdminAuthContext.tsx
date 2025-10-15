@@ -61,6 +61,16 @@ export const useAdminAuth = () => {
   return context;
 };
 
+// Utility function (moved inside Provider or imported, assumed to be available)
+const generateTempPassword = (): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
+
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +80,9 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Check for existing admin session in sessionStorage
     const sessionToken = sessionStorage.getItem('admin_session_token');
     if (sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined') {
-      validateSession(sessionToken);
+      // FIX: Add a small delay to allow sessionUtils to run its 'keep-alive' logic first
+      // This prevents a potential race condition with session renewal on load.
+      setTimeout(() => validateSession(sessionToken), 50);
     } else {
       setLoading(false);
     }
@@ -108,18 +120,29 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
-      // Get admin data from database using service role to bypass RLS
-      const { data: user, error } = await supabase
-          .from('tbl_admin_users')
-          .select('*')
-          .eq('tau_id', adminId)
-          .single();
+      // FIX: Use a robust fetch method with a timeout to prevent hanging.
+      const fetchAdminUser = async (id: string) => {
+        const { data: user, error } = await supabase
+            .from('tbl_admin_users')
+            .select('*')
+            .eq('tau_id', id)
+            .single();
 
-      if (error || !user) {
-        console.error('❌ Failed to validate session:', error);
-        sessionStorage.removeItem('admin_session_token');
-        setLoading(false);
-        return;
+        if (error) throw error;
+        return user;
+      };
+
+      const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Admin user validation timeout (3s)')), 3000)
+      );
+
+      const user: any = await Promise.race([
+        fetchAdminUser(adminId),
+        timeoutPromise
+      ]);
+
+      if (!user) {
+        throw new Error('User data could not be fetched.');
       }
 
       if (!user.tau_is_active) {
@@ -134,11 +157,26 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         email: user.tau_email,
         fullName: user.tau_full_name,
         role: user.tau_role,
-        permissions: user.tau_permissions,
+        // Ensure permissions are correctly formatted/defaulted if null
+        permissions: user.tau_permissions || {
+          customers: { read: false, write: false, delete: false },
+          companies: { read: false, write: false, delete: false },
+          subscriptions: { read: false, write: false, delete: false },
+          payments: { read: false, write: false, delete: false },
+          settings: { read: false, write: false, delete: false },
+          admins: { read: false, write: false, delete: false },
+          coupons: { read: false, write: false, delete: false },
+          dailytasks: { read: false, write: false, delete: false },
+          wallets: { read: false, write: false, delete: false },
+        },
         isActive: user.tau_is_active,
         lastLogin: user.tau_last_login || '',
         createdAt: user.tau_created_at || ''
       };
+
+      // FIX: Re-save the session token to renew the timestamp on successful validation
+      const newToken = `admin-session-${adminId}-${Date.now()}`;
+      sessionStorage.setItem('admin_session_token', newToken);
 
       console.log('✅ Session validated successfully for:', adminUser.email);
       setAdmin(adminUser);
@@ -176,6 +214,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.log('🔄 RLS detected, attempting service role query...');
 
           // Create a service role client for admin operations
+          // Note: This relies on global environment variables being available/correct
           const { createClient } = await import('@supabase/supabase-js');
           const serviceClient = createClient(
               import.meta.env.VITE_SUPABASE_URL,
@@ -223,6 +262,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       // Try bcrypt verification for other accounts
       try {
+        // FIX: Ensure bcrypt is imported correctly (if using module bundler)
         const bcrypt = await import('bcryptjs');
         passwordMatch = await bcrypt.compare(password, user.tau_password_hash);
         console.log('✅ Using bcrypt for password verification');
@@ -286,30 +326,28 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     permissions: AdminUser['permissions'];
   }) => {
     try {
-      // Check if email already exists - use .maybeSingle() or handle empty result
+      if (!admin?.id) throw new Error('Admin not authenticated');
+
       const { data: existingUser, error: checkError } = await supabase
           .from('tbl_admin_users')
           .select('tau_id')
           .eq('tau_email', data.email.trim())
-          .maybeSingle(); // Use maybeSingle instead of single
+          .maybeSingle();
 
       if (checkError) {
         console.error('Email check error:', checkError);
         throw new Error('Failed to check email availability');
       }
 
-      // If existingUser is not null, email already exists
       if (existingUser) {
         throw new Error('Email address already exists');
       }
 
-      // Generate temporary password and hash it
       const tempPassword = generateTempPassword();
       const bcrypt = await import('bcryptjs');
       const saltRounds = 12;
       const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
 
-      // Insert new sub-admin into database
       const { data: newAdmin, error: insertError } = await supabase
           .from('tbl_admin_users')
           .insert({
@@ -319,7 +357,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             tau_role: 'sub_admin',
             tau_permissions: data.permissions,
             tau_is_active: true,
-            tau_created_by: admin!.id,
+            tau_created_by: admin.id,
             tau_created_at: new Date().toISOString()
           })
           .select()
@@ -471,15 +509,6 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!admin) return false;
     if (admin.role === 'super_admin') return true;
     return admin.permissions[module][action];
-  };
-
-  const generateTempPassword = (): string => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
   };
 
   const value = {

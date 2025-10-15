@@ -109,6 +109,11 @@ export const sessionUtils = {
       return false;
     }
 
+    // FIX: Update timestamp on successful validation to extend the session timer (Keep-Alive)
+    const adminId = match[1];
+    const newToken = `admin-session-${adminId}-${Date.now()}`;
+    sessionStorage.setItem('admin_session_token', newToken);
+
     return true;
   },
 
@@ -147,6 +152,12 @@ export const sessionUtils = {
                 console.log('🔒 No valid user session, redirecting to customer login');
                 sessionUtils.clearAllSessions();
                 window.location.href = '/customer/login';
+              }
+            } else {
+              // FIX: Manually refresh Supabase token if session is expiring soon
+              if (sessionUtils.isSessionExpiringSoon()) {
+                console.log('⏳ User session expiring soon, attempting refresh...');
+                await sessionUtils.refreshSession();
               }
             }
           }
@@ -239,8 +250,7 @@ export const sessionUtils = {
 
   // Check if admin is authenticated
   isAdminAuthenticated: (): boolean => {
-    const adminToken = sessionStorage.getItem('admin_session_token');
-    return !!(adminToken && adminToken !== 'null' && adminToken !== 'undefined');
+    return sessionUtils.validateAdminSession();
   }
 };
 

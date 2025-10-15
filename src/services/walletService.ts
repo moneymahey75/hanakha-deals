@@ -57,6 +57,15 @@ export class WalletService {
   private signer: ethers.JsonRpcSigner | null = null;
   private isConnecting: boolean = false;
   private adminSettings: AdminSettings | null = null;
+  // FIX: Store the current wallet state internally to restore on re-render
+  private currentWalletState: WalletState = {
+    isConnected: false,
+    address: null,
+    chainId: null,
+    balance: '0',
+    usdtBalance: '0',
+    walletName: null,
+  };
 
   // Singleton pattern
   static getInstance(): WalletService {
@@ -86,6 +95,11 @@ export class WalletService {
   // Get admin settings (for debugging)
   getAdminSettings(): AdminSettings | null {
     return this.adminSettings;
+  }
+
+  // FIX: New method to retrieve the current wallet state
+  getCurrentWalletState(): WalletState {
+    return this.currentWalletState;
   }
 
   // Get network config based on payment mode
@@ -200,48 +214,6 @@ export class WalletService {
         throw new Error('Admin settings not configured. Please contact support.');
       }
 
-      // Handle MetaMask specific connection logic
-      if (walletProvider.isMetaMask) {
-        try {
-          // Check current accounts first
-          const currentAccounts = await walletProvider.request({
-            method: 'eth_accounts'
-          });
-
-          // If already connected, use existing connection
-          if (currentAccounts && currentAccounts.length > 0) {
-            console.log('MetaMask already connected, using existing connection');
-            this.provider = new ethers.BrowserProvider(walletProvider);
-            await this.switchToCorrectNetwork(walletProvider);
-            this.signer = await this.provider.getSigner();
-            const address = await this.signer.getAddress();
-            const network = await this.provider.getNetwork();
-
-            // Get balances
-            const balance = await this.getBNBBalance(address);
-            const usdtBalance = await this.getUSDTBalance(address);
-
-            console.log('Wallet connected successfully:', {
-              address: address.substring(0, 10) + '...',
-              network: Number(network.chainId),
-              balance: balance.substring(0, 8),
-              usdtBalance: usdtBalance.substring(0, 8)
-            });
-
-            return {
-              isConnected: true,
-              address,
-              chainId: Number(network.chainId),
-              balance,
-              usdtBalance,
-              walletName: this.getWalletName(walletProvider),
-            };
-          }
-        } catch (checkError) {
-          console.log('Could not check existing accounts, proceeding with fresh connection');
-        }
-      }
-
       // Add delay to prevent rapid successive requests
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -250,7 +222,17 @@ export class WalletService {
 
       // Request account access
       console.log('Requesting account access...');
-      await walletProvider.request({ method: 'eth_requestAccounts' });
+      // FIX: Ensure eth_requestAccounts is called first to trigger connection
+      let accounts = await walletProvider.request({ method: 'eth_accounts' });
+
+      if (accounts.length === 0) {
+        // If not connected, request connection
+        accounts = await walletProvider.request({ method: 'eth_requestAccounts' });
+      }
+
+      if (accounts.length === 0) {
+        throw new Error('No accounts returned by wallet. Connection failed.');
+      }
 
       // Switch to correct network
       console.log('Switching to correct network...');
@@ -266,14 +248,7 @@ export class WalletService {
       const balance = await this.getBNBBalance(address);
       const usdtBalance = await this.getUSDTBalance(address);
 
-      console.log('Wallet connected successfully:', {
-        address: address.substring(0, 10) + '...',
-        network: Number(network.chainId),
-        balance: balance.substring(0, 8),
-        usdtBalance: usdtBalance.substring(0, 8)
-      });
-
-      return {
+      const newWalletState: WalletState = {
         isConnected: true,
         address,
         chainId: Number(network.chainId),
@@ -282,19 +257,36 @@ export class WalletService {
         walletName: this.getWalletName(walletProvider),
       };
 
+      this.currentWalletState = newWalletState; // Update internal state
+
+      console.log('Wallet connected successfully:', {
+        address: address.substring(0, 10) + '...',
+        network: Number(network.chainId),
+        balance: balance.substring(0, 8),
+        usdtBalance: usdtBalance.substring(0, 8)
+      });
+
+      return newWalletState;
+
     } catch (error: any) {
       console.error('Wallet connection failed:', error);
 
       // Handle specific errors with better messaging
       if (error.code === -32002) {
-        throw new Error('MetaMask is busy. Please open MetaMask, reject any pending requests, and try again.');
+        throw new Error('Wallet is busy. Please open your wallet, reject any pending requests, and try again.');
       } else if (error.code === 4001) {
         throw new Error('Connection cancelled by user');
       } else if (error.message?.includes('already pending')) {
-        throw new Error('Please check MetaMask for pending requests. Close and reopen MetaMask if needed.');
+        throw new Error('Please check your wallet for pending requests. Close and reopen it if needed.');
       } else if (error.message?.includes('Admin settings not configured')) {
         throw error; // Re-throw admin settings error as-is
       }
+
+      // Ensure internal state is cleared on failure
+      this.provider = null;
+      this.signer = null;
+      this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null };
+
 
       throw new Error(`Connection failed: ${error.message}`);
     } finally {
@@ -369,7 +361,9 @@ export class WalletService {
       const usdtContractAddress = this.getUSDTContractAddress();
       console.log('Fetching USDT balance from:', usdtContractAddress);
 
+      // FIX: Ensure we're using a proper Provider instance for the view call and catch contract errors
       const contract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.provider);
+
       const balance = await contract.balanceOf(address);
       const decimals = await contract.decimals();
 
@@ -377,8 +371,14 @@ export class WalletService {
       console.log('USDT balance:', formattedBalance);
 
       return formattedBalance;
-    } catch (error) {
-      console.error('Error fetching USDT balance:', error);
+    } catch (error: any) {
+      // FIX: Log the full error details to identify the cause of the CALL_EXCEPTION
+      console.error('❌ Critical Error fetching USDT balance:', error);
+
+      if (error.code === 'CALL_EXCEPTION') {
+        console.error('The USDT contract call failed. Check if wallet is on the correct network and if the USDT address is correct.');
+      }
+
       return '0.00';
     }
   }
@@ -534,6 +534,8 @@ export class WalletService {
     this.signer = null;
     this.adminSettings = null;
     this.isConnecting = false;
+    // Clear internal state on disconnect
+    this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null };
   }
 
   // Get wallet name from provider
