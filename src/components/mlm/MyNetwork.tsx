@@ -1,629 +1,682 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
+import { supabase } from '../../lib/supabase';
 import {
     Users,
-    TrendingUp,
     ChevronLeft,
+    ChevronDown,
+    ChevronRight,
     Home,
     Plus,
     Minus,
     RotateCcw,
     Eye,
     Grid3X3,
+    Loader2,
 } from 'lucide-react';
-import { BinaryTreeManager, TreeNode } from '../../utils/binaryTreeUtils';
+
+interface UserNode {
+    id: string;
+    userId: string;
+    parentId: string | null;
+    level: number;
+    sponsorshipNumber: string;
+    isActive: boolean;
+    userData: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        mobile?: string;
+    };
+    children: UserNode[];
+    childrenCount: number;
+}
 
 interface DashboardStats {
     totalReferrals: number;
-    monthlyEarnings: number;
-    currentLevel: number;
-    achievementPoints: number;
-    leftSideCount: number;
-    rightSideCount: number;
-    directReferrals: number;
     totalDownline: number;
-}
-
-interface NodeWithParent extends TreeNode {
-    parentUserId?: string;
-    parentName?: string;
+    directReferrals: number;
+    maxDepth: number;
 }
 
 interface MyNetworkProps {
-    treeData: any;
-    dashboardStats: any;
+    treeData?: any;
+    dashboardStats?: any;
     userId: string;
 }
 
-type ViewMode = 'tree' | 'levels';
+type ViewMode = 'tree' | 'list';
 
-const MyNetwork: React.FC<MyNetworkProps> = ({ treeData, dashboardStats, userId }) => {
+const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
     const { user } = useAuth();
     const notification = useNotification();
-    const [treeManager] = useState(() => new BinaryTreeManager(treeData || []));
-    const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
+
+    const [loading, setLoading] = useState(true);
+    const [treeData, setTreeData] = useState<UserNode | null>(null);
+    const [stats, setStats] = useState<DashboardStats>({
+        totalReferrals: 0,
+        totalDownline: 0,
+        directReferrals: 0,
+        maxDepth: 0
+    });
+    const [selectedNode, setSelectedNode] = useState<UserNode | null>(null);
+    const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
     const [zoomLevel, setZoomLevel] = useState(1);
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
-    const [visibleLevels, setVisibleLevels] = useState<number[]>([]);
-    const [focusedNode, setFocusedNode] = useState<TreeNode | null>(null);
-    const [allLevelsData, setAllLevelsData] = useState<Map<number, NodeWithParent[]>>(new Map());
-    const [actualMaxDepth, setActualMaxDepth] = useState(0);
-    const [navigationHistory, setNavigationHistory] = useState<{node: TreeNode, levels: number[]}[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+    const [maxVisibleDepth, setMaxVisibleDepth] = useState(3);
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-    // Calculate all levels data
-    const calculateTreeData = useCallback(() => {
-        if (!treeData || treeData.length === 0) return { levelData: new Map(), maxDepth: 0 };
+    // Fetch MLM tree data from database
+    const fetchTreeData = useCallback(async () => {
+        setLoading(true);
+        try {
+            console.log('🔍 Fetching MLM tree data for user:', userId);
 
-        const levelData = new Map<number, NodeWithParent[]>();
-        let maxDepth = 0;
+            // Fetch all MLM tree nodes
+            const { data: mlmNodes, error: mlmError } = await supabase
+                .from('tbl_mlm_tree')
+                .select(`
+                    tmt_id,
+                    tmt_user_id,
+                    tmt_parent_id,
+                    tmt_level,
+                    tmt_sponsorship_number,
+                    tmt_is_active
+                `)
+                .eq('tmt_is_active', true)
+                .order('tmt_level');
 
-        const userNode = treeManager.getUserPosition(userId);
-        if (!userNode) return { levelData: new Map(), maxDepth: 0 };
+            if (mlmError) throw mlmError;
 
-        const queue: { node: TreeNode, level: number, parent?: TreeNode }[] = [
-            { node: userNode, level: 0 }
-        ];
+            // Fetch user profiles for all nodes
+            const userIds = mlmNodes?.map(node => node.tmt_user_id).filter(Boolean) || [];
 
-        while (queue.length > 0) {
-            const { node, level, parent } = queue.shift()!;
+            const { data: profiles, error: profileError } = await supabase
+                .from('tbl_user_profiles')
+                .select('tup_user_id, tup_first_name, tup_last_name, tup_sponsorship_number')
+                .in('tup_user_id', userIds);
 
-            if (!node) continue;
+            if (profileError) throw profileError;
 
-            maxDepth = Math.max(maxDepth, level);
+            // Fetch user emails
+            const { data: users, error: userError } = await supabase
+                .from('tbl_users')
+                .select('tu_id, tu_email')
+                .in('tu_id', userIds);
 
-            // Add node to level data
-            if (!levelData.has(level)) {
-                levelData.set(level, []);
-            }
+            if (userError) throw userError;
 
-            const nodeWithParent: NodeWithParent = {
-                ...node,
-                parentUserId: parent?.userId,
-                parentName: parent?.userData?.firstName || 'Root'
+            // Create lookup maps
+            const profileMap = new Map(profiles?.map(p => [p.tup_user_id, p]) || []);
+            const userMap = new Map(users?.map(u => [u.tu_id, u]) || []);
+
+            // Build node map
+            const nodeMap = new Map<string, UserNode>();
+
+            mlmNodes?.forEach(node => {
+                if (!node.tmt_user_id) return;
+
+                const profile = profileMap.get(node.tmt_user_id);
+                const userInfo = userMap.get(node.tmt_user_id);
+
+                const userNode: UserNode = {
+                    id: node.tmt_id,
+                    userId: node.tmt_user_id,
+                    parentId: node.tmt_parent_id,
+                    level: node.tmt_level,
+                    sponsorshipNumber: node.tmt_sponsorship_number,
+                    isActive: node.tmt_is_active,
+                    userData: {
+                        firstName: profile?.tup_first_name || 'User',
+                        lastName: profile?.tup_last_name || '',
+                        email: userInfo?.tu_email || '',
+                    },
+                    children: [],
+                    childrenCount: 0
+                };
+
+                nodeMap.set(node.tmt_id, userNode);
+            });
+
+            // Build tree structure
+            let rootNode: UserNode | null = null;
+            let currentUserNode: UserNode | null = null;
+
+            nodeMap.forEach(node => {
+                if (!node.parentId) {
+                    // This is root
+                    rootNode = node;
+                } else {
+                    // Add to parent's children
+                    const parent = nodeMap.get(node.parentId);
+                    if (parent) {
+                        parent.children.push(node);
+                        parent.childrenCount = parent.children.length;
+                    }
+                }
+
+                // Track current user's node
+                if (node.userId === userId) {
+                    currentUserNode = node;
+                }
+            });
+
+            // Calculate stats
+            const calculateStats = (node: UserNode): DashboardStats => {
+                let totalDownline = 0;
+                let maxDepth = node.level;
+                let directReferrals = node.children.length;
+
+                const traverse = (n: UserNode) => {
+                    totalDownline++;
+                    maxDepth = Math.max(maxDepth, n.level);
+                    n.children.forEach(child => traverse(child));
+                };
+
+                node.children.forEach(child => traverse(child));
+
+                return {
+                    totalReferrals: directReferrals,
+                    totalDownline,
+                    directReferrals,
+                    maxDepth: maxDepth - node.level
+                };
             };
 
-            levelData.get(level)!.push(nodeWithParent);
+            // Use current user's node if found, otherwise use root
+            const displayNode = currentUserNode || rootNode;
 
-            // Add children to queue
-            const children = treeManager.getDirectChildren(node.userId);
-            if (children.left) {
-                queue.push({ node: children.left, level: level + 1, parent: node });
+            if (displayNode) {
+                setTreeData(displayNode);
+                setFocusedNodeId(displayNode.id);
+                setStats(calculateStats(displayNode));
+
+                // Auto-expand first level
+                setExpandedNodes(new Set([displayNode.id]));
             }
-            if (children.right) {
-                queue.push({ node: children.right, level: level + 1, parent: node });
-            }
+
+            console.log('✅ Tree data loaded successfully');
+        } catch (error: any) {
+            console.error('❌ Failed to fetch tree data:', error);
+            notification.showError('Error', 'Failed to load network data: ' + error.message);
+        } finally {
+            setLoading(false);
         }
-
-        setAllLevelsData(levelData);
-        setActualMaxDepth(maxDepth);
-        return { levelData, maxDepth };
-    }, [treeManager, userId, treeData]);
+    }, [userId, notification]);
 
     useEffect(() => {
-        if (treeData && treeData.length > 0) {
-            setLoading(true);
-            try {
-                treeManager.loadTree(treeData);
-                const userNode = treeManager.getUserPosition(userId);
+        fetchTreeData();
+    }, [fetchTreeData]);
 
-                if (userNode) {
-                    calculateTreeData();
-                    setFocusedNode(userNode);
-                    // Show first 3 levels initially
-                    const initialLevels = [0, 1, 2];
-                    setVisibleLevels(initialLevels);
-                    // Add to navigation history
-                    setNavigationHistory([{node: userNode, levels: initialLevels}]);
-                }
-            } catch (error) {
-                console.error('Failed to process tree data:', error);
-                notification.showError('Error', 'Failed to process network data.');
-            } finally {
-                setLoading(false);
+    // Toggle node expansion
+    const toggleNodeExpansion = useCallback((nodeId: string) => {
+        setExpandedNodes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(nodeId)) {
+                newSet.delete(nodeId);
+            } else {
+                newSet.add(nodeId);
             }
+            return newSet;
+        });
+    }, []);
+
+    // Expand all nodes up to a certain depth
+    const expandToDepth = useCallback((depth: number) => {
+        if (!treeData) return;
+
+        const newExpanded = new Set<string>();
+        const traverse = (node: UserNode, currentDepth: number) => {
+            if (currentDepth < depth) {
+                newExpanded.add(node.id);
+                node.children.forEach(child => traverse(child, currentDepth + 1));
+            }
+        };
+
+        traverse(treeData, 0);
+        setExpandedNodes(newExpanded);
+    }, [treeData]);
+
+    // Collapse all nodes
+    const collapseAll = useCallback(() => {
+        if (treeData) {
+            setExpandedNodes(new Set([treeData.id]));
         }
-    }, [treeData, treeManager, userId, calculateTreeData, notification]);
+    }, [treeData]);
 
-    // Handle node click to show next 3 levels
-    const handleNodeClick = useCallback((node: TreeNode, level: number) => {
-        setSelectedNode(node);
-        setFocusedNode(node);
-
-        // Show the next 3 levels from the clicked node's level
-        const startLevel = level;
-        const newVisibleLevels = [];
-
-        for (let i = startLevel; i < startLevel + 3 && i <= actualMaxDepth; i++) {
-            newVisibleLevels.push(i);
+    // Reset view
+    const resetView = useCallback(() => {
+        setZoomLevel(1);
+        setSelectedNode(null);
+        if (treeData) {
+            setExpandedNodes(new Set([treeData.id]));
+            setFocusedNodeId(treeData.id);
         }
+    }, [treeData]);
 
-        setVisibleLevels(newVisibleLevels);
-
-        // Add to navigation history
-        setNavigationHistory(prev => [...prev, {node, levels: newVisibleLevels}]);
-    }, [actualMaxDepth]);
-
-    // Navigate to previous levels in history
-    const navigateToPreviousLevels = useCallback(() => {
-        if (navigationHistory.length <= 1) return;
-
-        // Remove current state from history
-        const newHistory = [...navigationHistory];
-        newHistory.pop();
-
-        // Get the previous state
-        const previousState = newHistory[newHistory.length - 1];
-
-        // Update view with previous state
-        setFocusedNode(previousState.node);
-        setVisibleLevels(previousState.levels);
-        setSelectedNode(null); // Remove highlight
-
-        // Update history
-        setNavigationHistory(newHistory);
-    }, [navigationHistory]);
-
-    // Navigate back to root
-    const navigateToRoot = useCallback(() => {
-        const userNode = treeManager.getUserPosition(userId);
-        if (userNode) {
-            setFocusedNode(userNode);
-            setVisibleLevels([0, 1, 2]);
-            setSelectedNode(null);
-            // Reset navigation history to just the root
-            setNavigationHistory([{node: userNode, levels: [0, 1, 2]}]);
-        }
-    }, [treeManager, userId]);
-
-    // Check if a level should be visible
-    const isLevelVisible = useCallback((level: number) => {
-        return visibleLevels.includes(level);
-    }, [visibleLevels]);
-
-    // Get nodes at specific level from pre-computed data
-    const getNodesAtLevel = useCallback((level: number): NodeWithParent[] => {
-        return allLevelsData.get(level) || [];
-    }, [allLevelsData]);
-
-    // Detailed node component with 3-level constraint
-    const DetailedNode: React.FC<{
-        node: TreeNode | null;
-        position: 'left' | 'right' | 'root';
-        level: number;
-    }> = ({ node, position, level }) => {
-        if (!node || !isLevelVisible(level)) {
-            return (
-                <div className="flex flex-col items-center flex-shrink-0" style={{ minWidth: '120px' }}>
-                    <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
-                        <Plus className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Available</p>
-                </div>
-            );
-        }
-
+    // Render tree node
+    const TreeNode: React.FC<{
+        node: UserNode;
+        depth: number;
+        isLast: boolean;
+    }> = ({ node, depth, isLast }) => {
+        const isExpanded = expandedNodes.has(node.id);
         const isSelected = selectedNode?.id === node.id;
+        const isFocused = focusedNodeId === node.id;
         const isCurrentUser = node.userId === userId;
-        const isFocused = focusedNode?.id === node.id;
-        const nodeChildren = treeManager.getDirectChildren(node.userId);
-        const hasChildren = nodeChildren.left || nodeChildren.right;
+        const hasChildren = node.children.length > 0;
+
+        // Don't render if beyond max visible depth
+        if (depth > maxVisibleDepth) return null;
 
         return (
-            <div className="flex flex-col items-center flex-shrink-0" style={{ minWidth: '120px' }}>
-                <div
-                    onClick={() => handleNodeClick(node, level)}
-                    className={`relative w-20 h-20 rounded-lg cursor-pointer transition-all duration-300 transform hover:scale-105 ${
-                        isCurrentUser ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg' :
-                            isFocused ? 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white shadow-lg' :
-                                isSelected ? 'bg-gradient-to-r from-green-500 to-teal-600 text-white shadow-lg' :
-                                    'bg-white border-2 border-gray-200 hover:border-indigo-300 hover:shadow-md'
-                    }`}
-                >
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-1">
-                        <Users className={`h-4 w-4 mb-1 ${
-                            isCurrentUser || isSelected || isFocused ? 'text-white' : 'text-gray-600'
-                        }`} />
-                        <p className={`text-xs font-medium text-center leading-tight ${
-                            isCurrentUser || isSelected || isFocused ? 'text-white' : 'text-gray-900'
-                        }`}>
-                            {(node.userData?.firstName || 'User').substring(0, 8)}
-                        </p>
-                    </div>
-
-                    <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
-                        position === 'left' ? 'bg-blue-500 text-white' :
-                            position === 'right' ? 'bg-green-500 text-white' :
-                                'bg-purple-500 text-white'
-                    }`}>
-                        {position === 'left' ? 'L' : position === 'right' ? 'R' : 'R'}
-                    </div>
-                </div>
-
-                {/* Show children only if they're within the next 2 levels */}
-                {hasChildren && level < Math.max(...visibleLevels) && (
-                    <div className="mt-4 flex justify-center" style={{ minWidth: '200px' }}>
-                        <div className="flex items-start" style={{ gap: '40px' }}>
-                            {nodeChildren.left && (
-                                <div className="flex flex-col items-center">
-                                    <div className="w-px h-4 bg-gray-300 mb-2"></div>
-                                    <DetailedNode node={nodeChildren.left} position="left" level={level + 1} />
-                                </div>
+            <div className="relative">
+                {/* Node Card */}
+                <div className="flex items-start mb-2">
+                    {/* Expand/Collapse Button */}
+                    {hasChildren && (
+                        <button
+                            onClick={() => toggleNodeExpansion(node.id)}
+                            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 text-gray-600 mr-2 mt-2"
+                        >
+                            {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
                             )}
-                            {nodeChildren.right && (
-                                <div className="flex flex-col items-center">
-                                    <div className="w-px h-4 bg-gray-300 mb-2"></div>
-                                    <DetailedNode node={nodeChildren.right} position="right" level={level + 1} />
+                        </button>
+                    )}
+                    {!hasChildren && <div className="w-6 mr-2"></div>}
+
+                    {/* Node Content */}
+                    <div
+                        onClick={() => setSelectedNode(node)}
+                        className={`flex-1 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                            isCurrentUser
+                                ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-indigo-700 shadow-lg'
+                                : isFocused
+                                    ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-yellow-700 shadow-lg'
+                                    : isSelected
+                                        ? 'bg-green-50 border-green-500'
+                                        : 'bg-white border-gray-200 hover:border-indigo-300 hover:shadow-md'
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                    isCurrentUser || isFocused
+                                        ? 'bg-white/20 text-white'
+                                        : 'bg-indigo-100 text-indigo-600'
+                                }`}>
+                                    <Users className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div className={`font-semibold ${
+                                        isCurrentUser || isFocused ? 'text-white' : 'text-gray-900'
+                                    }`}>
+                                        {node.userData.firstName} {node.userData.lastName}
+                                        {isCurrentUser && <span className="ml-2 text-xs">(You)</span>}
+                                    </div>
+                                    <div className={`text-sm ${
+                                        isCurrentUser || isFocused ? 'text-white/80' : 'text-gray-500'
+                                    }`}>
+                                        ID: {node.sponsorshipNumber}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {hasChildren && (
+                                <div className={`flex items-center space-x-2 ${
+                                    isCurrentUser || isFocused ? 'text-white' : 'text-gray-600'
+                                }`}>
+                                    <Users className="h-4 w-4" />
+                                    <span className="text-sm font-medium">{node.children.length}</span>
                                 </div>
                             )}
                         </div>
+
+                        <div className="mt-2 flex items-center space-x-2">
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                isCurrentUser || isFocused
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-gray-100 text-gray-600'
+                            }`}>
+                                Level {node.level}
+                            </span>
+                            {node.children.length > 0 && (
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                    isCurrentUser || isFocused
+                                        ? 'bg-white/20 text-white'
+                                        : 'bg-indigo-100 text-indigo-600'
+                                }`}>
+                                    {node.children.length} {node.children.length === 1 ? 'child' : 'children'}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Children */}
+                {isExpanded && hasChildren && (
+                    <div className="ml-8 border-l-2 border-gray-300 pl-4 space-y-2">
+                        {node.children.map((child, index) => (
+                            <TreeNode
+                                key={child.id}
+                                node={child}
+                                depth={depth + 1}
+                                isLast={index === node.children.length - 1}
+                            />
+                        ))}
                     </div>
                 )}
             </div>
         );
     };
 
-    // Improved level view with parent information
-    const LevelView: React.FC<{ level: number }> = ({ level }) => {
-        const nodesAtLevel = getNodesAtLevel(level);
+    // List view component
+    const ListView: React.FC = () => {
+        if (!treeData) return null;
 
-        if (nodesAtLevel.length === 0 || !isLevelVisible(level)) return null;
+        const allNodes: UserNode[] = [];
+        const traverse = (node: UserNode) => {
+            allNodes.push(node);
+            node.children.forEach(child => traverse(child));
+        };
+        traverse(treeData);
+
+        // Group by level
+        const nodesByLevel = allNodes.reduce((acc, node) => {
+            if (!acc[node.level]) acc[node.level] = [];
+            acc[node.level].push(node);
+            return acc;
+        }, {} as Record<number, UserNode[]>);
 
         return (
-            <div className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-lg font-semibold text-gray-900 flex items-center">
-            <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm font-medium mr-3">
-              Level {level}
-            </span>
-                        <span className="text-gray-600 text-sm">{nodesAtLevel.length} members</span>
-                    </h4>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {nodesAtLevel.map((node, index) => {
-                        const isSelected = selectedNode?.id === node.id;
-                        const isCurrentUser = node.userId === userId;
-                        const isFocused = focusedNode?.id === node.id;
-
-                        return (
-                            <div
-                                key={`${node.userId}-${index}`}
-                                onClick={() => handleNodeClick(node, level)}
-                                className={`bg-white border rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${
-                                    isCurrentUser ? 'bg-indigo-100 border-2 border-indigo-300' :
-                                        isFocused ? 'bg-yellow-100 border-2 border-yellow-300' :
-                                            isSelected ? 'bg-green-100 border-2 border-green-300' : 'hover:bg-gray-50'
-                                }`}
-                            >
-                                <div className="flex items-center space-x-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                        isCurrentUser ? 'bg-indigo-500 text-white' :
-                                            isFocused ? 'bg-yellow-500 text-white' :
-                                                isSelected ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
-                                    }`}>
-                                        <Users className="h-5 w-5" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="font-medium text-gray-900">
-                                            {node.userData?.firstName || 'User'} {node.userData?.lastName || ''}
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                            ID: {node.sponsorshipNumber}
-                                        </div>
-
-                                        {/* Parent information */}
-                                        {level > 0 && node.parentName && (
-                                            <div className="text-xs text-gray-500 mt-1">
-                                                Parent: {node.parentName}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                    Level {level}
-                  </span>
-                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                        node.position === 'left' ? 'bg-blue-100 text-blue-700' :
-                                            node.position === 'right' ? 'bg-green-100 text-green-700' :
-                                                'bg-purple-100 text-purple-700'
-                                    }`}>
-                    {node.position === 'left' ? 'Left' : node.position === 'right' ? 'Right' : 'Root'}
-                  </span>
-                                </div>
+            <div className="space-y-6">
+                {Object.entries(nodesByLevel)
+                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                    .map(([level, nodes]) => (
+                        <div key={level}>
+                            <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-lg font-semibold text-gray-900 flex items-center">
+                                    <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm font-medium mr-3">
+                                        Level {level}
+                                    </span>
+                                    <span className="text-gray-600 text-sm">{nodes.length} members</span>
+                                </h4>
                             </div>
-                        );
-                    })}
-                </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {nodes.map(node => {
+                                    const isSelected = selectedNode?.id === node.id;
+                                    const isCurrentUser = node.userId === userId;
+
+                                    return (
+                                        <div
+                                            key={node.id}
+                                            onClick={() => setSelectedNode(node)}
+                                            className={`bg-white border rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${
+                                                isCurrentUser
+                                                    ? 'bg-indigo-50 border-2 border-indigo-500'
+                                                    : isSelected
+                                                        ? 'bg-green-50 border-2 border-green-500'
+                                                        : 'hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <div className="flex items-center space-x-3">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                                    isCurrentUser
+                                                        ? 'bg-indigo-500 text-white'
+                                                        : isSelected
+                                                            ? 'bg-green-500 text-white'
+                                                            : 'bg-gray-200 text-gray-600'
+                                                }`}>
+                                                    <Users className="h-5 w-5" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-gray-900">
+                                                        {node.userData.firstName} {node.userData.lastName}
+                                                        {isCurrentUser && <span className="ml-2 text-xs text-indigo-600">(You)</span>}
+                                                    </div>
+                                                    <div className="text-sm text-gray-500">
+                                                        ID: {node.sponsorshipNumber}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 flex items-center justify-between">
+                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                                    Level {node.level}
+                                                </span>
+                                                {node.children.length > 0 && (
+                                                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-medium flex items-center">
+                                                        <Users className="h-3 w-3 mr-1" />
+                                                        {node.children.length}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
             </div>
         );
     };
 
-    const renderTreeView = () => {
-        switch (viewMode) {
-            case 'levels':
-                return (
-                    <div className="space-y-6">
-                        {visibleLevels.map(level => (
-                            <LevelView key={level} level={level} />
-                        ))}
-                    </div>
-                );
-
-            case 'tree':
-            default:
-                return (
-                    <div className="space-y-8">
-                        <DetailedNode node={focusedNode} position="root" level={focusedNode?.level || 0} />
-                    </div>
-                );
-        }
-    };
-
-    const userNode = treeManager.getUserPosition(userId);
-    const stats = treeManager.getTreeStats(userId);
-
     if (loading) {
         return (
-            <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                <p className="text-gray-500 mt-2">Loading network data...</p>
+            <div className="text-center py-12">
+                <Loader2 className="h-12 w-12 animate-spin text-indigo-600 mx-auto mb-4" />
+                <p className="text-gray-500">Loading your network...</p>
             </div>
         );
     }
 
-    if (!userNode || !treeData || treeData.length === 0) {
+    if (!treeData) {
         return (
             <div className="bg-white rounded-xl shadow-sm p-8 text-center">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No Network Data</h3>
-                <p className="text-gray-600">User not found in the MLM network or no data available.</p>
+                <p className="text-gray-600">You don't have any referrals yet. Start building your network!</p>
             </div>
         );
     }
 
     return (
-        <div>
+        <div className="space-y-6">
             {/* Network Overview */}
-            <div className="bg-white rounded-xl shadow-sm mb-8">
+            <div className="bg-white rounded-xl shadow-sm">
                 <div className="p-6 border-b border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-900">Network Overview</h3>
                 </div>
 
                 <div className="p-6">
-                    {/* Network Balance */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-6">
-                        <div className="flex items-center space-x-4">
-                            <div className="flex-1">
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span>Left Side</span>
-                                    <span>{dashboardStats.leftSideCount} members</span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div
-                                        className="bg-blue-600 h-2 rounded-full"
-                                        style={{
-                                            width: `${dashboardStats.totalDownline > 0 ? (dashboardStats.leftSideCount / dashboardStats.totalDownline) * 100 : 0}%`
-                                        }}
-                                    ></div>
-                                </div>
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span>Right Side</span>
-                                    <span>{dashboardStats.rightSideCount} members</span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div
-                                        className="bg-green-600 h-2 rounded-full"
-                                        style={{
-                                            width: `${dashboardStats.totalDownline > 0 ? (dashboardStats.rightSideCount / dashboardStats.totalDownline) * 100 : 0}%`
-                                        }}
-                                    ></div>
-                                </div>
-                            </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center p-4 bg-indigo-50 rounded-lg">
+                            <div className="text-3xl font-bold text-indigo-600">{stats.totalDownline}</div>
+                            <div className="text-sm text-gray-600 mt-1">Total Network</div>
+                        </div>
+                        <div className="text-center p-4 bg-purple-50 rounded-lg">
+                            <div className="text-3xl font-bold text-purple-600">{stats.directReferrals}</div>
+                            <div className="text-sm text-gray-600 mt-1">Direct Referrals</div>
+                        </div>
+                        <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                            <div className="text-3xl font-bold text-yellow-600">{stats.maxDepth + 1}</div>
+                            <div className="text-sm text-gray-600 mt-1">Depth Levels</div>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                            <div className="text-3xl font-bold text-green-600">{expandedNodes.size}</div>
+                            <div className="text-sm text-gray-600 mt-1">Expanded Nodes</div>
                         </div>
                     </div>
-
-                    {/* Stats */}
-                    <div className="p-6 bg-gray-50 border-b border-gray-200">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-indigo-600">{stats.totalDownline}</div>
-                                <div className="text-sm text-gray-600">Total Network</div>
-                            </div>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-purple-600">{stats.directReferrals}</div>
-                                <div className="text-sm text-gray-600">Direct Referrals</div>
-                            </div>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-yellow-600">{actualMaxDepth + 1}</div>
-                                <div className="text-sm text-gray-600">Total Levels</div>
-                            </div>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-red-600">{visibleLevels.length}</div>
-                                <div className="text-sm text-gray-600">Visible Levels</div>
-                            </div>
-                        </div>
-                    </div>
-
                 </div>
             </div>
 
-            {/* Binary Tree Visualization */}
+            {/* Network Visualization */}
             <div className="bg-white rounded-xl shadow-sm">
-                {/* Enhanced Header with View Controls */}
+                {/* Controls */}
                 <div className="p-6 border-b border-gray-200">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
-                        <div>
-                            <p className="text-gray-600">Showing {visibleLevels.length} levels at a time</p>
-                        </div>
+                        <div className="flex items-center space-x-4">
+                            {/* View Mode */}
+                            <select
+                                value={viewMode}
+                                onChange={(e) => setViewMode(e.target.value as ViewMode)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                            >
+                                <option value="tree">Tree View</option>
+                                <option value="list">List View</option>
+                            </select>
 
-                        <div className="flex flex-wrap items-center gap-4">
-                            {/* View Mode Selector */}
-                            <div className="flex items-center space-x-2">
-                                <label className="text-sm font-medium text-gray-700">View:</label>
+                            {/* Depth Control */}
+                            {viewMode === 'tree' && (
                                 <select
-                                    value={viewMode}
-                                    onChange={(e) => setViewMode(e.target.value as ViewMode)}
-                                    className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                                    value={maxVisibleDepth}
+                                    onChange={(e) => setMaxVisibleDepth(parseInt(e.target.value))}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                                 >
-                                    <option value="tree">Tree View</option>
-                                    <option value="levels">Level View</option>
+                                    <option value={1}>Show 1 Level</option>
+                                    <option value={2}>Show 2 Levels</option>
+                                    <option value={3}>Show 3 Levels</option>
+                                    <option value={5}>Show 5 Levels</option>
+                                    <option value={10}>Show 10 Levels</option>
+                                    <option value={999}>Show All</option>
                                 </select>
-                            </div>
-
-                            {/* Navigation Controls */}
-                            <div className="flex items-center space-x-2">
-                                <button
-                                    onClick={navigateToPreviousLevels}
-                                    disabled={navigationHistory.length <= 1}
-                                    className={`p-2 rounded-lg flex items-center ${
-                                        navigationHistory.length <= 1
-                                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                                    }`}
-                                    title="Previous Levels"
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                </button>
-
-                                <button
-                                    onClick={navigateToRoot}
-                                    disabled={focusedNode?.userId === userNode.userId}
-                                    className={`p-2 rounded-lg flex items-center ${
-                                        focusedNode?.userId === userNode.userId
-                                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                                    }`}
-                                    title="Back to Root"
-                                >
-                                    <Home className="h-4 w-4" />
-                                </button>
-                            </div>
-
-                            {/* Zoom Controls */}
-                            <div className="flex items-center space-x-2">
-                                <button
-                                    onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.1))}
-                                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                                >
-                                    <Minus className="h-4 w-4" />
-                                </button>
-                                <span className="text-sm font-medium text-gray-700 min-w-[50px] text-center">
-                                  {Math.round(zoomLevel * 100)}%
-                                </span>
-                                <button
-                                    onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.1))}
-                                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                                >
-                                    <Plus className="h-4 w-4" />
-                                </button>
-
-                                <button
-                                    onClick={() => {
-                                        setZoomLevel(1);
-                                        navigateToRoot();
-                                    }}
-                                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                                    title="Reset View"
-                                >
-                                    <RotateCcw className="h-4 w-4" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Tree Visualization */}
-                <div className="relative">
-                    <div
-                        ref={scrollContainerRef}
-                        className="p-8 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200"
-                        style={{
-                            minHeight: '500px',
-                            maxHeight: '800px',
-                            scrollBehavior: 'smooth'
-                        }}
-                    >
-                        <div
-                            style={{
-                                transform: `scale(${zoomLevel})`,
-                                transformOrigin: 'top center',
-                                width: 'fit-content',
-                                minWidth: '100%'
-                            }}
-                        >
-                            {renderTreeView()}
-                        </div>
-                    </div>
-
-                    {/* Navigation Helper */}
-                    <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
-                        <div className="flex items-center space-x-4 text-sm text-gray-600">
-                            <div className="flex items-center space-x-1">
-                                <Eye className="h-4 w-4" />
-                                <span>Viewing levels {Math.min(...visibleLevels)} - {Math.max(...visibleLevels)}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <Grid3X3 className="h-4 w-4" />
-                                <span>Total depth: {actualMaxDepth + 1}</span>
-                            </div>
-                            {focusedNode && focusedNode.userId !== userNode.userId && (
-                                <div className="flex items-center space-x-1">
-                                    <Users className="h-4 w-4" />
-                                    <span>Focused on: {focusedNode.userData?.firstName}</span>
-                                </div>
                             )}
                         </div>
 
-                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <div className="flex items-center space-x-2">
+                            {/* Expand/Collapse */}
                             <button
-                                onClick={navigateToPreviousLevels}
-                                disabled={navigationHistory.length <= 1}
-                                className={`px-2 py-1 rounded ${
-                                    navigationHistory.length <= 1
-                                        ? 'text-gray-400 cursor-not-allowed'
-                                        : 'text-indigo-600 hover:bg-indigo-100'
-                                }`}
+                                onClick={() => expandToDepth(maxVisibleDepth)}
+                                className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 text-sm"
                             >
-                                Previous
+                                Expand All
+                            </button>
+                            <button
+                                onClick={collapseAll}
+                                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                            >
+                                Collapse All
+                            </button>
+
+                            {/* Zoom Controls */}
+                            {viewMode === 'tree' && (
+                                <>
+                                    <button
+                                        onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.1))}
+                                        className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                                    >
+                                        <Minus className="h-4 w-4" />
+                                    </button>
+                                    <span className="text-sm font-medium text-gray-700 min-w-[50px] text-center">
+                                        {Math.round(zoomLevel * 100)}%
+                                    </span>
+                                    <button
+                                        onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.1))}
+                                        className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </button>
+                                </>
+                            )}
+
+                            <button
+                                onClick={resetView}
+                                className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                                title="Reset View"
+                            >
+                                <RotateCcw className="h-4 w-4" />
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Selected Node Details */}
-                {selectedNode && (
-                    <div className="p-6 bg-indigo-50 border-t border-gray-200">
-                        <h4 className="text-lg font-semibold text-indigo-900 mb-4">Node Details</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
-                                <label className="text-sm font-medium text-indigo-700">Name</label>
-                                <p className="text-gray-900">
-                                    {selectedNode.userData?.firstName} {selectedNode.userData?.lastName}
-                                </p>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-indigo-700">Sponsorship Number</label>
-                                <p className="text-gray-900 font-mono">{selectedNode.sponsorshipNumber}</p>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-indigo-700">Level</label>
-                                <p className="text-gray-900">{selectedNode.level}</p>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-indigo-700">Position</label>
-                                <p className="text-gray-900 capitalize">{selectedNode.position}</p>
-                            </div>
+                {/* Tree Content */}
+                <div
+                    ref={scrollContainerRef}
+                    className="p-8 overflow-auto"
+                    style={{
+                        minHeight: '500px',
+                        maxHeight: '800px'
+                    }}
+                >
+                    <div
+                        style={{
+                            transform: viewMode === 'tree' ? `scale(${zoomLevel})` : 'none',
+                            transformOrigin: 'top left',
+                            transition: 'transform 0.2s'
+                        }}
+                    >
+                        {viewMode === 'tree' ? (
+                            <TreeNode node={treeData} depth={0} isLast={false} />
+                        ) : (
+                            <ListView />
+                        )}
+                    </div>
+                </div>
+
+                {/* Footer Info */}
+                <div className="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600">
+                    <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-1">
+                            <Grid3X3 className="h-4 w-4" />
+                            <span>Total Depth: {stats.maxDepth + 1}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                            <Users className="h-4 w-4" />
+                            <span>Total Members: {stats.totalDownline}</span>
                         </div>
                     </div>
-                )}
+                </div>
             </div>
+
+            {/* Selected Node Details */}
+            {selectedNode && (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Member Details</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="text-sm font-medium text-gray-600">Name</label>
+                            <p className="text-gray-900 font-medium">
+                                {selectedNode.userData.firstName} {selectedNode.userData.lastName}
+                            </p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-600">Sponsorship ID</label>
+                            <p className="text-gray-900 font-mono">{selectedNode.sponsorshipNumber}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-600">Email</label>
+                            <p className="text-gray-900">{selectedNode.userData.email}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-600">Level</label>
+                            <p className="text-gray-900">{selectedNode.level}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-600">Direct Children</label>
+                            <p className="text-gray-900">{selectedNode.children.length}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-600">Status</label>
+                            <p className="text-gray-900">
+                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                    selectedNode.isActive
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-red-100 text-red-700'
+                                }`}>
+                                    {selectedNode.isActive ? 'Active' : 'Inactive'}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

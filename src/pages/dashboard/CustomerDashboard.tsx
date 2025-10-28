@@ -15,7 +15,6 @@ import {
   Award,
   UserPlus,
   BarChart3,
-  FileText,
   CheckSquare,
   ExternalLink,
   Send,
@@ -23,18 +22,13 @@ import {
   Menu,
   X,
   Home,
-  Network,
-  GitBranch,
   CreditCard,
   Ticket,
   Share2,
   Wallet as WalletIcon,
-  Bell,
-  HelpCircle
 } from 'lucide-react';
-import MyNetwork from "../../components/mlm/MyNetwork.tsx";
+import MyNetwork from "../../components/mlm/MyNetwork";
 
-// Define interfaces for the data we expect from the API
 interface DashboardStats {
   totalReferrals: number;
   monthlyEarnings: number;
@@ -85,6 +79,7 @@ const CustomerDashboard: React.FC = () => {
     growthPercentage: 0
   });
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Navigation items
   const navigationItems = [
@@ -97,58 +92,96 @@ const CustomerDashboard: React.FC = () => {
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
     { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
-    // { id: 'settings', label: 'Settings', icon: Settings },
-    // { id: 'help', label: 'Help & Support', icon: HelpCircle }
   ];
 
-  // Load all dashboard data
+  // FIXED: Load dashboard data with proper error handling
   useEffect(() => {
-    if (user?.id) {
-      loadDashboardData();
-    }
+    let mounted = true;
+
+    const loadDashboardData = async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      console.log('🔄 Loading dashboard data for user:', user.id);
+
+      try {
+        // Load data in parallel with timeout
+        const loadPromises = [
+          loadTreeStats(),
+          loadRecentActivities(),
+          loadEarningsData()
+        ];
+
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Dashboard load timeout')), 10000)
+        );
+
+        await Promise.race([
+          Promise.allSettled(loadPromises),
+          timeoutPromise
+        ]);
+
+        if (mounted) {
+          console.log('✅ Dashboard data loaded successfully');
+          setInitialLoadComplete(true);
+        }
+      } catch (error: any) {
+        console.error('❌ Failed to load dashboard data:', error);
+        if (mounted) {
+          notification.showError('Error', 'Failed to load some dashboard data. Please refresh.');
+          setInitialLoadComplete(true); // Still show the dashboard
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDashboardData();
+
+    return () => {
+      mounted = false;
+    };
   }, [user?.id]);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
-    try {
-      // Load tree data
-      await loadTreeData(user!.id);
-
-      // Load all data in parallel
-      await Promise.all([
-        loadTreeStats(),
-        loadRecentActivities(),
-        loadEarningsData()
-      ]);
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      notification.showError('Error', 'Failed to load dashboard data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadTreeStats = async () => {
-    if (user?.id) {
-      try {
-        const stats = await getTreeStats(user.id);
-        setDashboardStats(prev => ({
-          ...prev,
-          totalReferrals: stats.totalDownline || 0,
-          leftSideCount: stats.leftSideCount || 0,
-          rightSideCount: stats.rightSideCount || 0,
-          directReferrals: stats.directReferrals || 0,
-          totalDownline: stats.totalDownline || 0,
-          currentLevel: stats.maxDepth || 0
-        }));
-      } catch (error) {
-        console.error('Failed to load tree stats:', error);
+    if (!user?.id) return;
+
+    try {
+      console.log('📊 Loading tree stats...');
+
+      // Load tree data first if not already loaded
+      if (!treeData || treeData.length === 0) {
+        await loadTreeData(user.id);
       }
+
+      const stats = await getTreeStats(user.id);
+      console.log('✅ Tree stats loaded:', stats);
+
+      setDashboardStats(prev => ({
+        ...prev,
+        totalReferrals: stats.totalDownline || 0,
+        leftSideCount: stats.leftSideCount || 0,
+        rightSideCount: stats.rightSideCount || 0,
+        directReferrals: stats.directReferrals || 0,
+        totalDownline: stats.totalDownline || 0,
+        currentLevel: stats.maxDepth || 0
+      }));
+    } catch (error) {
+      console.error('❌ Failed to load tree stats:', error);
+      // Don't throw - allow other data to load
     }
   };
 
   const loadRecentActivities = async () => {
     try {
+      console.log('📋 Loading recent activities...');
+
       // Simulate API call - replace with actual API endpoint
       const activities: RecentActivity[] = [
         {
@@ -171,14 +204,18 @@ const CustomerDashboard: React.FC = () => {
           timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
         }
       ];
+
       setRecentActivities(activities);
+      console.log('✅ Recent activities loaded');
     } catch (error) {
-      console.error('Failed to load recent activities:', error);
+      console.error('❌ Failed to load recent activities:', error);
     }
   };
 
   const loadEarningsData = async () => {
     try {
+      console.log('💰 Loading earnings data...');
+
       // Simulate API call - replace with actual API endpoint
       const earnings: EarningsData = {
         totalEarnings: 12450,
@@ -186,25 +223,24 @@ const CustomerDashboard: React.FC = () => {
         commissionRate: 12,
         growthPercentage: 15
       };
+
       setEarningsData(earnings);
+      console.log('✅ Earnings data loaded');
     } catch (error) {
-      console.error('Failed to load earnings data:', error);
+      console.error('❌ Failed to load earnings data:', error);
     }
   };
 
   const handleInviteMembers = () => {
-    // Navigate to referral links tab
     setActiveTab('referrals');
     notification.showInfo('Invite Members', 'Use your referral links to invite new members!');
   };
 
   const handleViewEarningsReport = () => {
-    // Navigate to earnings tab
     setActiveTab('earnings');
   };
 
   const handleUpgradePlan = () => {
-    // Navigate to upgrade page (would be implemented elsewhere)
     notification.showInfo('Upgrade Plan', 'Plan upgrade functionality would be implemented here.');
   };
 
@@ -259,12 +295,29 @@ const CustomerDashboard: React.FC = () => {
     }
   ];
 
-  if (loading) {
+  // FIXED: Show loading only on initial load
+  if (loading && !initialLoadComplete) {
     return (
         <div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
             <p className="text-gray-500 mt-4">Loading dashboard...</p>
+            <p className="text-gray-400 text-sm mt-2">Please wait...</p>
+          </div>
+        </div>
+    );
+  }
+
+  // FIXED: Show error if user not loaded
+  if (!user) {
+    return (
+        <div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 mb-4">
+              <X className="h-12 w-12 mx-auto" />
+            </div>
+            <p className="text-gray-900 font-semibold">User not found</p>
+            <p className="text-gray-500 mt-2">Please login again</p>
           </div>
         </div>
     );
@@ -276,7 +329,7 @@ const CustomerDashboard: React.FC = () => {
         <div className="lg:hidden fixed top-4 left-4 z-50">
           <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-md bg-indigo-600 text-white"
+              className="p-2 rounded-md bg-indigo-600 text-white shadow-lg"
           >
             {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
@@ -284,10 +337,10 @@ const CustomerDashboard: React.FC = () => {
 
         {/* Sidebar Navigation */}
         <div className={`
-          fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0 lg:shadow-none
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}>
+        fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
+        lg:relative lg:translate-x-0 lg:shadow-none
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <div className="flex items-center space-x-2">
               <div className="bg-indigo-600 p-2 rounded-lg">
@@ -335,10 +388,10 @@ const CustomerDashboard: React.FC = () => {
             {/* Header */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900">
-                Welcome back, {user?.firstName}!
+                Welcome back, {user?.firstName || 'User'}!
               </h1>
               <p className="text-gray-600 mt-2">
-                Sponsorship Number: <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber}</span>
+                Sponsorship Number: <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
               </p>
             </div>
 
@@ -371,23 +424,27 @@ const CustomerDashboard: React.FC = () => {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activities</h3>
                         <div className="space-y-4">
-                          {recentActivities.map((activity) => {
-                            const ActivityIcon = getActivityIcon(activity.type);
-                            return (
-                                <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                                  <div className="bg-indigo-100 p-2 rounded-full">
-                                    <ActivityIcon className="h-4 w-4 text-indigo-600" />
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {activity.message}
-                                      {activity.amount && `: $${activity.amount}`}
-                                    </p>
-                                    <p className="text-xs text-gray-500">{formatTimeAgo(activity.timestamp)}</p>
-                                  </div>
-                                </div>
-                            );
-                          })}
+                          {recentActivities.length > 0 ? (
+                              recentActivities.map((activity) => {
+                                const ActivityIcon = getActivityIcon(activity.type);
+                                return (
+                                    <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                                      <div className="bg-indigo-100 p-2 rounded-full">
+                                        <ActivityIcon className="h-4 w-4 text-indigo-600" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-sm font-medium text-gray-900">
+                                          {activity.message}
+                                          {activity.amount && `: $${activity.amount}`}
+                                        </p>
+                                        <p className="text-xs text-gray-500">{formatTimeAgo(activity.timestamp)}</p>
+                                      </div>
+                                    </div>
+                                );
+                              })
+                          ) : (
+                              <p className="text-gray-500 text-center py-4">No recent activities</p>
+                          )}
                         </div>
                       </div>
 
@@ -423,21 +480,10 @@ const CustomerDashboard: React.FC = () => {
 
                 {activeTab === 'network' && (
                     <div>
-                      {treeLoading ? (
-                          <div className="text-center py-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                            <p className="text-gray-500 mt-2">Loading network data...</p>
-                          </div>
-                      ) : (
-                          <MyNetwork
-                              treeData={treeData}
-                              dashboardStats={dashboardStats}
-                              userId={user?.id || ''}
-                          />
-                      )}
+                      {/* FIXED: Now uses the new MyNetwork component */}
+                      <MyNetwork userId={user?.id || ''} />
                     </div>
                 )}
-
 
                 {activeTab === 'transactions' && (
                     <div>
@@ -484,16 +530,6 @@ const CustomerDashboard: React.FC = () => {
                     </div>
                 )}
 
-                {/*{activeTab === 'notifications' && (*/}
-                {/*    <div>*/}
-                {/*      <h3 className="text-lg font-semibold text-gray-900 mb-4">Notifications</h3>*/}
-                {/*      <div className="text-center py-12 text-gray-500">*/}
-                {/*        <Bell className="h-12 w-12 mx-auto text-gray-300 mb-4" />*/}
-                {/*        <p>No new notifications</p>*/}
-                {/*      </div>*/}
-                {/*    </div>*/}
-                {/*)}*/}
-
                 {activeTab === 'wallets' && (
                     <div>
                       <WalletList userId={user?.id || ''} />
@@ -505,17 +541,6 @@ const CustomerDashboard: React.FC = () => {
                       <PaymentHistory userId={user?.id || ''} />
                     </div>
                 )}
-
-                {/*{activeTab === 'help' && (*/}
-                {/*    <div>*/}
-                {/*      <h3 className="text-lg font-semibold text-gray-900 mb-4">Help & Support</h3>*/}
-                {/*      <div className="text-center py-12 text-gray-500">*/}
-                {/*        <HelpCircle className="h-12 w-12 mx-auto text-gray-300 mb-4" />*/}
-                {/*        <p>Help and support content will be implemented here</p>*/}
-                {/*      </div>*/}
-                {/*    </div>*/}
-                {/*)}*/}
-
               </div>
             </div>
           </div>
