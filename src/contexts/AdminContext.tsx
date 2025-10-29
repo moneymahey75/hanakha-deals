@@ -28,6 +28,22 @@ interface GeneralSettings {
   usernameUniqueRequired: boolean;
   usernameAllowNumbers: boolean;
   usernameMustStartWithLetter: boolean;
+
+  // Password validation settings
+  passwordMinLength: number;
+  passwordMaxLength: number;
+  passwordRequireUppercase: boolean;
+  passwordRequireLowercase: boolean;
+  passwordRequireNumbers: boolean;
+  passwordRequireSpecialChars: boolean;
+  passwordAllowedSpecialChars: string;
+  passwordPreventCommon: boolean;
+  passwordPreventSequences: boolean;
+  passwordPreventRepeats: boolean;
+  passwordMaxConsecutive: number;
+  passwordMinUniqueChars: number;
+  passwordExpiryDays: number;
+  passwordHistoryCount: number;
 }
 
 interface SMSGateway {
@@ -107,7 +123,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     usernameForceLowerCase: true,
     usernameUniqueRequired: true,
     usernameAllowNumbers: true,
-    usernameMustStartWithLetter: true
+    usernameMustStartWithLetter: true,
+    // Password validation default settings
+    passwordMinLength: 8,
+    passwordMaxLength: 128,
+    passwordRequireUppercase: true,
+    passwordRequireLowercase: true,
+    passwordRequireNumbers: true,
+    passwordRequireSpecialChars: true,
+    passwordAllowedSpecialChars: '!@#$%^&*()_+-=[]{};:\'"|,.<>?/~`',
+    passwordPreventCommon: true,
+    passwordPreventSequences: true,
+    passwordPreventRepeats: true,
+    passwordMaxConsecutive: 3,
+    passwordMinUniqueChars: 5,
+    passwordExpiryDays: 90,
+    passwordHistoryCount: 5
   };
 
   const [settings, setSettings] = useState<GeneralSettings>(defaultSettings);
@@ -273,6 +304,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 loadedSettings.usernameMustStartWithLetter = Boolean(value);
                 break;
 
+                // Password validation settings
+              case 'password_min_length':
+                loadedSettings.passwordMinLength = parseInt(value) || defaultSettings.passwordMinLength;
+                break;
+              case 'password_max_length':
+                loadedSettings.passwordMaxLength = parseInt(value) || defaultSettings.passwordMaxLength;
+                break;
+              case 'password_require_uppercase':
+                loadedSettings.passwordRequireUppercase = Boolean(value);
+                break;
+              case 'password_require_lowercase':
+                loadedSettings.passwordRequireLowercase = Boolean(value);
+                break;
+              case 'password_require_numbers':
+                loadedSettings.passwordRequireNumbers = Boolean(value);
+                break;
+              case 'password_require_special_chars':
+                loadedSettings.passwordRequireSpecialChars = Boolean(value);
+                break;
+              case 'password_allowed_special_chars':
+                loadedSettings.passwordAllowedSpecialChars = value || defaultSettings.passwordAllowedSpecialChars;
+                break;
+              case 'password_prevent_common':
+                loadedSettings.passwordPreventCommon = Boolean(value);
+                break;
+              case 'password_prevent_sequences':
+                loadedSettings.passwordPreventSequences = Boolean(value);
+                break;
+              case 'password_prevent_repeats':
+                loadedSettings.passwordPreventRepeats = Boolean(value);
+                break;
+              case 'password_max_consecutive':
+                loadedSettings.passwordMaxConsecutive = parseInt(value) || defaultSettings.passwordMaxConsecutive;
+                break;
+              case 'password_min_unique_chars':
+                loadedSettings.passwordMinUniqueChars = parseInt(value) || defaultSettings.passwordMinUniqueChars;
+                break;
+              case 'password_expiry_days':
+                loadedSettings.passwordExpiryDays = parseInt(value) || defaultSettings.passwordExpiryDays;
+                break;
+              case 'password_history_count':
+                loadedSettings.passwordHistoryCount = parseInt(value) || defaultSettings.passwordHistoryCount;
+                break;
+
                 // SMS and SMTP settings
               case 'sms_gateway_provider':
                 // Handle SMS settings if needed
@@ -304,7 +379,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         });
 
-        // Merge loaded settings with defaults, ensuring all username settings are set
+        // Merge loaded settings with defaults, ensuring all settings are set
         const mergedSettings = {
           ...defaultSettings,
           ...loadedSettings,
@@ -314,7 +389,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           usernameMaxLength: loadedSettings.usernameMaxLength !== undefined ?
               loadedSettings.usernameMaxLength : defaultSettings.usernameMaxLength,
           usernameAllowedSpecialChars: loadedSettings.usernameAllowedSpecialChars ||
-              defaultSettings.usernameAllowedSpecialChars
+              defaultSettings.usernameAllowedSpecialChars,
+          // Password numeric values fallbacks
+          passwordMinLength: loadedSettings.passwordMinLength !== undefined ?
+              loadedSettings.passwordMinLength : defaultSettings.passwordMinLength,
+          passwordMaxLength: loadedSettings.passwordMaxLength !== undefined ?
+              loadedSettings.passwordMaxLength : defaultSettings.passwordMaxLength,
+          passwordMaxConsecutive: loadedSettings.passwordMaxConsecutive !== undefined ?
+              loadedSettings.passwordMaxConsecutive : defaultSettings.passwordMaxConsecutive,
+          passwordMinUniqueChars: loadedSettings.passwordMinUniqueChars !== undefined ?
+              loadedSettings.passwordMinUniqueChars : defaultSettings.passwordMinUniqueChars,
+          passwordExpiryDays: loadedSettings.passwordExpiryDays !== undefined ?
+              loadedSettings.passwordExpiryDays : defaultSettings.passwordExpiryDays,
+          passwordHistoryCount: loadedSettings.passwordHistoryCount !== undefined ?
+              loadedSettings.passwordHistoryCount : defaultSettings.passwordHistoryCount,
+          passwordAllowedSpecialChars: loadedSettings.passwordAllowedSpecialChars ||
+              defaultSettings.passwordAllowedSpecialChars
         };
 
         setSettings(mergedSettings);

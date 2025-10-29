@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
 import { checkSponsorshipNumberExists, supabase } from '../../lib/supabase';
-import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown, CheckCircle, XCircle, Info } from 'lucide-react';
+import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown, CheckCircle, XCircle, Info, Lock } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 
 const countryCodes = [
@@ -42,6 +42,23 @@ interface UsernameValidation {
   isValid: boolean;
   errors: string[];
   suggestions: string[];
+}
+
+interface PasswordValidation {
+  isValid: boolean;
+  errors: string[];
+  requirements: {
+    minLength: boolean;
+    maxLength: boolean;
+    hasUppercase: boolean;
+    hasLowercase: boolean;
+    hasNumber: boolean;
+    hasSpecialChar: boolean;
+    noCommon: boolean;
+    noSequences: boolean;
+    noRepeats: boolean;
+    minUniqueChars: boolean;
+  };
 }
 
 // Function to check if username already exists in tbl_user_profiles
@@ -99,6 +116,7 @@ const CustomerRegister: React.FC = () => {
   const [error, setError] = useState('');
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const [showUsernameTooltip, setShowUsernameTooltip] = useState(false);
+  const [showPasswordTooltip, setShowPasswordTooltip] = useState(false);
 
   // Referral validation state
   const [validatingReferral, setValidatingReferral] = useState(false);
@@ -113,10 +131,29 @@ const CustomerRegister: React.FC = () => {
   const [validatingUsername, setValidatingUsername] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
 
+  // Password validation state
+  const [passwordValidation, setPasswordValidation] = useState<PasswordValidation>({
+    isValid: false,
+    errors: [],
+    requirements: {
+      minLength: false,
+      maxLength: false,
+      hasUppercase: false,
+      hasLowercase: false,
+      hasNumber: false,
+      hasSpecialChar: false,
+      noCommon: false,
+      noSequences: false,
+      noRepeats: false,
+      minUniqueChars: false
+    }
+  });
+
   // Refs for preventing duplicate operations
   const referralInitialized = useRef(false);
   const validationTimeout = useRef<NodeJS.Timeout>();
   const usernameTimeout = useRef<NodeJS.Timeout>();
+  const passwordTimeout = useRef<NodeJS.Timeout>();
   const tooltipTimeout = useRef<NodeJS.Timeout>();
 
   // Initialize referral code from URL once
@@ -179,6 +216,42 @@ const CustomerRegister: React.FC = () => {
       }
     };
   }, [formData.userName]);
+
+  // Debounced password validation
+  useEffect(() => {
+    if (passwordTimeout.current) {
+      clearTimeout(passwordTimeout.current);
+    }
+
+    if (formData.password) {
+      passwordTimeout.current = setTimeout(() => {
+        validatePassword(formData.password);
+      }, 200);
+    } else {
+      setPasswordValidation({
+        isValid: false,
+        errors: [],
+        requirements: {
+          minLength: false,
+          maxLength: false,
+          hasUppercase: false,
+          hasLowercase: false,
+          hasNumber: false,
+          hasSpecialChar: false,
+          noCommon: false,
+          noSequences: false,
+          noRepeats: false,
+          minUniqueChars: false
+        }
+      });
+    }
+
+    return () => {
+      if (passwordTimeout.current) {
+        clearTimeout(passwordTimeout.current);
+      }
+    };
+  }, [formData.password]);
 
   const validateReferralCode = useCallback(async (referralCode: string) => {
     if (!referralCode.trim()) {
@@ -343,6 +416,139 @@ const CustomerRegister: React.FC = () => {
     }
   }, [settings]);
 
+  // Password validation function
+  const validatePassword = useCallback((password: string) => {
+    if (!password) {
+      setPasswordValidation({
+        isValid: false,
+        errors: [],
+        requirements: {
+          minLength: false,
+          maxLength: false,
+          hasUppercase: false,
+          hasLowercase: false,
+          hasNumber: false,
+          hasSpecialChar: false,
+          noCommon: false,
+          noSequences: false,
+          noRepeats: false,
+          minUniqueChars: false
+        }
+      });
+      return;
+    }
+
+    const errors: string[] = [];
+    const requirements = {
+      minLength: password.length >= settings.passwordMinLength,
+      maxLength: password.length <= settings.passwordMaxLength,
+      hasUppercase: settings.passwordRequireUppercase ? /[A-Z]/.test(password) : true,
+      hasLowercase: settings.passwordRequireLowercase ? /[a-z]/.test(password) : true,
+      hasNumber: settings.passwordRequireNumbers ? /\d/.test(password) : true,
+      hasSpecialChar: settings.passwordRequireSpecialChars ?
+          new RegExp(`[${settings.passwordAllowedSpecialChars.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}]`).test(password) : true,
+      noCommon: settings.passwordPreventCommon ? !isCommonPassword(password) : true,
+      noSequences: settings.passwordPreventSequences ? !hasSequences(password) : true,
+      noRepeats: settings.passwordPreventRepeats ? !hasRepeatedChars(password, settings.passwordMaxConsecutive) : true,
+      minUniqueChars: getUniqueCharsCount(password) >= settings.passwordMinUniqueChars
+    };
+
+    // Check individual requirements and add errors
+    if (!requirements.minLength) {
+      errors.push(`Password must be at least ${settings.passwordMinLength} characters`);
+    }
+
+    if (!requirements.maxLength) {
+      errors.push(`Password must not exceed ${settings.passwordMaxLength} characters`);
+    }
+
+    if (settings.passwordRequireUppercase && !requirements.hasUppercase) {
+      errors.push('Password must contain at least one uppercase letter (A-Z)');
+    }
+
+    if (settings.passwordRequireLowercase && !requirements.hasLowercase) {
+      errors.push('Password must contain at least one lowercase letter (a-z)');
+    }
+
+    if (settings.passwordRequireNumbers && !requirements.hasNumber) {
+      errors.push('Password must contain at least one number (0-9)');
+    }
+
+    if (settings.passwordRequireSpecialChars && !requirements.hasSpecialChar) {
+      errors.push(`Password must contain at least one special character: ${settings.passwordAllowedSpecialChars}`);
+    }
+
+    if (settings.passwordPreventCommon && !requirements.noCommon) {
+      errors.push('Password is too common. Please choose a stronger password');
+    }
+
+    if (settings.passwordPreventSequences && !requirements.noSequences) {
+      errors.push('Password contains sequential characters (abc, 123, etc.)');
+    }
+
+    if (settings.passwordPreventRepeats && !requirements.noRepeats) {
+      errors.push(`Password contains more than ${settings.passwordMaxConsecutive} consecutive identical characters`);
+    }
+
+    if (!requirements.minUniqueChars) {
+      errors.push(`Password must contain at least ${settings.passwordMinUniqueChars} unique characters`);
+    }
+
+    setPasswordValidation({
+      isValid: errors.length === 0,
+      errors,
+      requirements
+    });
+  }, [settings]);
+
+  // Helper functions for password validation
+  const isCommonPassword = (password: string): boolean => {
+    const commonPasswords = [
+      'password', '123456', 'password123', 'qwerty', 'letmein', 'welcome',
+      'admin', '12345678', '123456789', '12345', '1234567', '1234567890',
+      'abc123', 'password1', '1234', 'test', 'guest', 'passw0rd'
+    ];
+    return commonPasswords.includes(password.toLowerCase());
+  };
+
+  const hasSequences = (password: string): boolean => {
+    // Check for sequential characters (abc, 123, etc.)
+    const sequences = [
+      'abc', 'bcd', 'cde', 'def', 'efg', 'fgh', 'ghi', 'hij', 'ijk', 'jkl',
+      'klm', 'lmn', 'mno', 'nop', 'opq', 'pqr', 'qrs', 'rst', 'stu', 'tuv',
+      'uvw', 'vwx', 'wxy', 'xyz',
+      '012', '123', '234', '345', '456', '567', '678', '789', '890',
+      'qwe', 'wer', 'ert', 'rty', 'tyu', 'yui', 'uio', 'iop', 'asd',
+      'sdf', 'dfg', 'fgh', 'ghj', 'hjk', 'jkl', 'zxc', 'xcv', 'cvb', 'vbn', 'bnm'
+    ];
+
+    const lowerPassword = password.toLowerCase();
+    return sequences.some(seq => lowerPassword.includes(seq));
+  };
+
+  const hasRepeatedChars = (password: string, maxConsecutive: number): boolean => {
+    let currentChar = '';
+    let currentCount = 0;
+
+    for (let i = 0; i < password.length; i++) {
+      if (password[i] === currentChar) {
+        currentCount++;
+        if (currentCount > maxConsecutive) {
+          return true;
+        }
+      } else {
+        currentChar = password[i];
+        currentCount = 1;
+      }
+    }
+    return false;
+  };
+
+  const getUniqueCharsCount = (password: string): number => {
+    const uniqueChars = new Set(password);
+    return uniqueChars.size;
+  };
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
 
@@ -394,6 +600,20 @@ const CustomerRegister: React.FC = () => {
     }
   }, []);
 
+  const handlePasswordTooltip = useCallback((show: boolean) => {
+    if (tooltipTimeout.current) {
+      clearTimeout(tooltipTimeout.current);
+    }
+
+    if (show) {
+      setShowPasswordTooltip(true);
+    } else {
+      tooltipTimeout.current = setTimeout(() => {
+        setShowPasswordTooltip(false);
+      }, 300);
+    }
+  }, []);
+
   const validateForm = useCallback((): string | null => {
     if (!recaptchaToken) {
       return 'Please complete the reCAPTCHA verification';
@@ -405,6 +625,10 @@ const CustomerRegister: React.FC = () => {
 
     if (settings.usernameUniqueRequired && usernameAvailable === false) {
       return 'Username is already taken. Please choose a different one.';
+    }
+
+    if (!passwordValidation.isValid && formData.password) {
+      return 'Please fix password validation errors';
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -441,7 +665,7 @@ const CustomerRegister: React.FC = () => {
     }
 
     return null;
-  }, [formData, settings, recaptchaToken, usernameValidation, usernameAvailable]);
+  }, [formData, settings, recaptchaToken, usernameValidation, usernameAvailable, passwordValidation]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -457,6 +681,12 @@ const CustomerRegister: React.FC = () => {
     // Validate username
     if (!usernameValidation.isValid) {
       setError('Please fix username validation errors before submitting');
+      return;
+    }
+
+    // Validate password
+    if (!passwordValidation.isValid) {
+      setError('Please fix password validation errors before submitting');
       return;
     }
 
@@ -537,7 +767,7 @@ const CustomerRegister: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, settings, recaptchaToken, isSubmitting, validateForm, usernameValidation, usernameAvailable, register, navigate]);
+  }, [formData, settings, recaptchaToken, isSubmitting, validateForm, usernameValidation, usernameAvailable, passwordValidation, register, navigate]);
 
   const selectedCountry = countryCodes.find(country => country.code === formData.mobileCountryCode);
 
@@ -889,12 +1119,47 @@ const CustomerRegister: React.FC = () => {
                 </div>
               </div>
 
+              {/* Enhanced Password Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                    New Password *
-                  </label>
+                  <div className="flex items-center mb-2">
+                    <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                      New Password *
+                    </label>
+                    <div
+                        className="relative ml-2"
+                        onMouseEnter={() => handlePasswordTooltip(true)}
+                        onMouseLeave={() => handlePasswordTooltip(false)}
+                    >
+                      <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                      {showPasswordTooltip && (
+                          <div className="absolute z-10 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg bottom-full mb-2 left-1/2 transform -translate-x-1/2">
+                            <div className="font-medium mb-1">Password Requirements:</div>
+                            <ul className="space-y-1">
+                              <li>• {settings.passwordMinLength}-{settings.passwordMaxLength} characters</li>
+                              {settings.passwordRequireUppercase && <li>• At least one uppercase letter (A-Z)</li>}
+                              {settings.passwordRequireLowercase && <li>• At least one lowercase letter (a-z)</li>}
+                              {settings.passwordRequireNumbers && <li>• At least one number (0-9)</li>}
+                              {settings.passwordRequireSpecialChars && (
+                                  <li>• At least one special character: {settings.passwordAllowedSpecialChars}</li>
+                              )}
+                              {settings.passwordPreventCommon && <li>• Cannot be a common password</li>}
+                              {settings.passwordPreventSequences && <li>• Cannot contain sequences (abc, 123)</li>}
+                              {settings.passwordPreventRepeats && (
+                                  <li>• Max {settings.passwordMaxConsecutive} consecutive identical characters</li>
+                              )}
+                              <li>• At least {settings.passwordMinUniqueChars} unique characters</li>
+                            </ul>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400" />
+                    </div>
                     <input
                         id="password"
                         name="password"
@@ -902,21 +1167,154 @@ const CustomerRegister: React.FC = () => {
                         required
                         value={formData.password}
                         onChange={handleChange}
-                        className="block w-full py-3 px-4 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Choose a strong password"
+                        className={`block w-full pl-10 pr-10 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                            formData.password ?
+                                (passwordValidation.isValid ? 'border-green-300' : 'border-red-300') :
+                                'border-gray-300'
+                        }`}
+                        placeholder="Create a strong password"
                     />
                     <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
                     >
-                      {showPassword ? (
-                          <EyeOff className="h-5 w-5 text-gray-400" />
-                      ) : (
-                          <Eye className="h-5 w-5 text-gray-400" />
-                      )}
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
+
+                  {/* Password validation feedback */}
+                  {formData.password && (
+                      <div className="mt-3 bg-gray-50 rounded-lg p-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                          <div className={`flex items-center ${passwordValidation.requirements.minLength ? 'text-green-600' : 'text-red-600'}`}>
+                            {passwordValidation.requirements.minLength ? (
+                                <CheckCircle className="h-3 w-3 mr-2" />
+                            ) : (
+                                <XCircle className="h-3 w-3 mr-2" />
+                            )}
+                            {settings.passwordMinLength}+ characters
+                          </div>
+
+                          <div className={`flex items-center ${passwordValidation.requirements.maxLength ? 'text-green-600' : 'text-red-600'}`}>
+                            {passwordValidation.requirements.maxLength ? (
+                                <CheckCircle className="h-3 w-3 mr-2" />
+                            ) : (
+                                <XCircle className="h-3 w-3 mr-2" />
+                            )}
+                            Max {settings.passwordMaxLength} characters
+                          </div>
+
+                          {settings.passwordRequireUppercase && (
+                              <div className={`flex items-center ${passwordValidation.requirements.hasUppercase ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.hasUppercase ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                Uppercase letter
+                              </div>
+                          )}
+
+                          {settings.passwordRequireLowercase && (
+                              <div className={`flex items-center ${passwordValidation.requirements.hasLowercase ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.hasLowercase ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                Lowercase letter
+                              </div>
+                          )}
+
+                          {settings.passwordRequireNumbers && (
+                              <div className={`flex items-center ${passwordValidation.requirements.hasNumber ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.hasNumber ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                Number
+                              </div>
+                          )}
+
+                          {settings.passwordRequireSpecialChars && (
+                              <div className={`flex items-center ${passwordValidation.requirements.hasSpecialChar ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.hasSpecialChar ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                Special character
+                              </div>
+                          )}
+
+                          {settings.passwordPreventCommon && (
+                              <div className={`flex items-center ${passwordValidation.requirements.noCommon ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.noCommon ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                Not common
+                              </div>
+                          )}
+
+                          {settings.passwordPreventSequences && (
+                              <div className={`flex items-center ${passwordValidation.requirements.noSequences ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.noSequences ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                No sequences
+                              </div>
+                          )}
+
+                          {settings.passwordPreventRepeats && (
+                              <div className={`flex items-center ${passwordValidation.requirements.noRepeats ? 'text-green-600' : 'text-red-600'}`}>
+                                {passwordValidation.requirements.noRepeats ? (
+                                    <CheckCircle className="h-3 w-3 mr-2" />
+                                ) : (
+                                    <XCircle className="h-3 w-3 mr-2" />
+                                )}
+                                Max {settings.passwordMaxConsecutive} repeats
+                              </div>
+                          )}
+
+                          <div className={`flex items-center ${passwordValidation.requirements.minUniqueChars ? 'text-green-600' : 'text-red-600'}`}>
+                            {passwordValidation.requirements.minUniqueChars ? (
+                                <CheckCircle className="h-3 w-3 mr-2" />
+                            ) : (
+                                <XCircle className="h-3 w-3 mr-2" />
+                            )}
+                            {settings.passwordMinUniqueChars}+ unique chars
+                          </div>
+                        </div>
+
+                        {/* Password strength indicator */}
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span>Password strength:</span>
+                            <span className={
+                              passwordValidation.isValid ? 'text-green-600 font-medium' :
+                                  formData.password.length > 0 ? 'text-yellow-600' : 'text-gray-500'
+                            }>
+                              {passwordValidation.isValid ? 'Strong' :
+                                  formData.password.length > 0 ? 'Weak' : 'None'}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                                className={`h-2 rounded-full transition-all duration-300 ${
+                                    passwordValidation.isValid ? 'bg-green-500 w-full' :
+                                        formData.password.length > 0 ? 'bg-yellow-500 w-1/2' : 'bg-gray-300 w-0'
+                                }`}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                  )}
                 </div>
 
                 <div>
@@ -924,6 +1322,9 @@ const CustomerRegister: React.FC = () => {
                     Confirm Password *
                   </label>
                   <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400" />
+                    </div>
                     <input
                         id="confirmPassword"
                         name="confirmPassword"
@@ -931,21 +1332,27 @@ const CustomerRegister: React.FC = () => {
                         required
                         value={formData.confirmPassword}
                         onChange={handleChange}
-                        className="block w-full py-3 px-4 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className={`block w-full pl-10 pr-10 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                            formData.confirmPassword ?
+                                (formData.password === formData.confirmPassword ? 'border-green-300' : 'border-red-300') :
+                                'border-gray-300'
+                        }`}
                         placeholder="Confirm your password"
                     />
                     <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
                     >
-                      {showConfirmPassword ? (
-                          <EyeOff className="h-5 w-5 text-gray-400" />
-                      ) : (
-                          <Eye className="h-5 w-5 text-gray-400" />
-                      )}
+                      {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
+                  {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                      <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+                  )}
+                  {formData.confirmPassword && formData.password === formData.confirmPassword && (
+                      <p className="text-xs text-green-600 mt-1">Passwords match ✓</p>
+                  )}
                 </div>
               </div>
 
@@ -970,7 +1377,7 @@ const CustomerRegister: React.FC = () => {
 
               <button
                   type="submit"
-                  disabled={isSubmitting || !recaptchaToken || !usernameValidation.isValid}
+                  disabled={isSubmitting || !recaptchaToken || !usernameValidation.isValid || !passwordValidation.isValid}
                   className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
               >
                 {isSubmitting ? (
