@@ -12,6 +12,7 @@ import CompanyManagement from '../../components/admin/CompanyManagement';
 import CouponManagement from '../../components/admin/CouponManagement';
 import DailyTaskManagement from '../../components/admin/DailyTaskManagement';
 import WalletManagement from '../../components/admin/WalletManagement';
+import EarningDistributionSettings from '../../components/admin/EarningDistributionSettings';
 import {
   Users,
   Building,
@@ -32,7 +33,8 @@ import {
   Calendar,
   Wallet,
   Check,
-  X
+  X,
+  TrendingUp
 } from 'lucide-react';
 
 interface SubAdmin {
@@ -258,7 +260,8 @@ const AdminDashboard: React.FC = () => {
   const settingsTabs = [
     { id: 'general', label: 'General Settings', icon: Globe },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck },
-    { id: 'payment', label: 'Payment Settings', icon: FileText }
+    { id: 'payment', label: 'Payment Settings', icon: FileText },
+    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp }
   ];
 
   // =========================================================
@@ -513,6 +516,7 @@ const AdminDashboard: React.FC = () => {
                       {settingsTab === 'general' && <GeneralSettings />}
                       {settingsTab === 'registration' && <RegistrationSettings />}
                       {settingsTab === 'payment' && <PaymentSettings />}
+                      {settingsTab === 'earning' && <EarningDistributionSettings />}
                     </div>
                   </div>
                 </div>
