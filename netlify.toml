@@ -1,13 +1,13 @@
 [build]
-  publish = "dist"
-  command = "npm run build"
+publish = "dist"
+command = "npx vite build"
 
 [build.environment]
-  NODE_VERSION = "18"
-  VITE_SUPABASE_URL = "https://ytsvyxytwrphdwhweumi.supabase.co"
-  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0c3Z5eHl0d3JwaGR3aHdldW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MDIzMTksImV4cCI6MjA2Nzk3ODMxOX0.80HGyhasBcSKHLu1juN4UdT6Km8aDmqrhBVduYDQjZo"
+NODE_VERSION = "18"
+VITE_SUPABASE_URL = "https://ytsvyxytwrphdwhweumi.supabase.co"
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0c3Z5eHl0d3JwaGR3aHdldW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MDIzMTksImV4cCI6MjA2Nzk3ODMxOX0.80HGyhasBcSKHLu1juN4UdT6Km8aDmqrhBVduYDQjZo"
 
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+from = "/*"
+to = "/index.html"
+status = 200
