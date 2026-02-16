@@ -63,12 +63,6 @@ const Navbar: React.FC = () => {
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                  {settings.siteName}
-                </span>
-                <span className="text-xs text-gray-500 -mt-1">All Deals. One Sphere.</span>
-              </div>
             </Link>
           </div>
 
