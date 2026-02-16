@@ -98,7 +98,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Default settings as fallback
   const defaultSettings: GeneralSettings = {
-    siteName: 'HanakhaDeals',
+    siteName: 'KuponClix',
     logoUrl: 'https://images.pexels.com/photos/1779487/pexels-photo-1779487.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
     dateFormat: 'DD/MM/YYYY',
     timezone: 'UTC',
