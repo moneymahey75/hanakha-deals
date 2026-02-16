@@ -59,7 +59,8 @@ const Navbar: React.FC = () => {
                 <img
                   src={settings.logoUrl}
                   alt={settings.siteName}
-                  className="h-20 w-100 rounded-xl object-cover group-hover:shadow-lg transition-shadow duration-300"
+                  className="rounded-xl object-cover group-hover:shadow-lg transition-shadow duration-300"
+                  style={{ height: '60px' }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
