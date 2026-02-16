@@ -23,10 +23,6 @@ const Footer: React.FC = () => {
               <div>
                 <span className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
                 </span>
-                <span className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
-                  {settings.siteName}
-                </span>
-                <p className="text-sm text-gray-400">All Deals. One Sphere.</p>
               </div>
             </div>
             <p className="text-gray-300 mb-6 leading-relaxed max-w-md">
