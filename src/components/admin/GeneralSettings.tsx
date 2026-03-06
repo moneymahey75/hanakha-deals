@@ -96,10 +96,10 @@ const GeneralSettings: React.FC = () => {
         }
 
         // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
+        if (file.size > 10 * 1024 * 1024) {
             setSaveResult({
                 success: false,
-                message: 'Image file size must be less than 5MB'
+                message: 'Image file size must be less than 10MB'
             });
             return;
         }
