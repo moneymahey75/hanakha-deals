@@ -568,7 +568,7 @@ INSERT INTO email_templates (name, subject, body, template_type, variables) VALU
 
 -- Insert default system settings
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES
-('site_name', '"KuponClix"', 'Website name'),
+('site_name', '"ShopClick"', 'Website name'),
 ('logo_url', '"https://images.pexels.com/photos/1779487/pexels-photo-1779487.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop"', 'Logo URL'),
 ('email_verification_required', 'true', 'Require email verification'),
 ('mobile_verification_required', 'true', 'Require mobile verification'),

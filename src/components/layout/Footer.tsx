@@ -17,7 +17,8 @@ const Footer: React.FC = () => {
                 <img
                   src={settings.logoUrl}
                   alt={settings.siteName}
-                  className="h-20 w-100 rounded-xl object-cover shadow-lg"
+                  className="rounded-xl object-cover shadow-lg"
+                  style={{ width: '180px' }}
                 />
               </div>
               <div>

@@ -23,10 +23,10 @@ const Navbar: React.FC = () => {
     setIsMenuOpen(false);
     setIsCustomerDropdownOpen(false);
     setIsCompanyDropdownOpen(false);
-    
+
     if (location.pathname === path) {
-      window.scrollTo({ 
-        top: 0, 
+      window.scrollTo({
+        top: 0,
         behavior: 'smooth',
         left: 0
       });
@@ -60,7 +60,12 @@ const Navbar: React.FC = () => {
                   src={settings.logoUrl}
                   alt={settings.siteName}
                   className="rounded-xl object-cover group-hover:shadow-lg transition-shadow duration-300"
-                  style={{ height: '60px' }}
+                  style={{ width: '180px' }}
+                  onError={(e) => {
+                    // Fallback to loading GIF with proper sizing
+                    (e.target as HTMLImageElement).src = '/shopclick_logo.png';
+                    (e.target as HTMLImageElement).className = 'object-contain';
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
@@ -69,19 +74,19 @@ const Navbar: React.FC = () => {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-1">
-            <Link 
-              to="/" 
+            <Link
+              to="/"
               className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-emerald-600 hover:bg-emerald-50 transition-all duration-200 font-medium"
             >
               <Home className="h-4 w-4" />
               <span>Home</span>
             </Link>
-            
+
             {!user ? (
               <>
                 {/* Customer Dropdown */}
                 <div className="relative group">
-                  <button 
+                  <button
                     className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-emerald-600 hover:bg-emerald-50 transition-all duration-200 font-medium"
                     onMouseEnter={() => setIsCustomerDropdownOpen(true)}
                     onMouseLeave={() => setIsCustomerDropdownOpen(false)}
@@ -90,7 +95,7 @@ const Navbar: React.FC = () => {
                     <span>Customer</span>
                     <ChevronDown className="h-3 w-3" />
                   </button>
-                  <div 
+                  <div
                     className={`absolute top-full left-0 mt-1 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden transition-all duration-200 ${
                       isCustomerDropdownOpen ? 'opacity-100 visible transform translate-y-0' : 'opacity-0 invisible transform -translate-y-2'
                     }`}
@@ -137,10 +142,10 @@ const Navbar: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Company Dropdown */}
                 <div className="relative group">
-                  <button 
+                  <button
                     className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-green-600 hover:bg-green-50 transition-all duration-200 font-medium"
                     onMouseEnter={() => setIsCompanyDropdownOpen(true)}
                     onMouseLeave={() => setIsCompanyDropdownOpen(false)}
@@ -149,7 +154,7 @@ const Navbar: React.FC = () => {
                     <span>Company</span>
                     <ChevronDown className="h-3 w-3" />
                   </button>
-                  <div 
+                  <div
                     className={`absolute top-full left-0 mt-1 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden transition-all duration-200 ${
                       isCompanyDropdownOpen ? 'opacity-100 visible transform translate-y-0' : 'opacity-0 invisible transform -translate-y-2'
                     }`}
@@ -196,7 +201,7 @@ const Navbar: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <Link
                   to="/subscription-plans"
                   className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 font-medium"
@@ -217,7 +222,7 @@ const Navbar: React.FC = () => {
                     <div className="text-xs text-gray-500 capitalize">{user.userType}</div>
                   </div>
                 </div>
-                
+
                 <Link
                   to={getDashboardLink()}
                   className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 font-medium shadow-md hover:shadow-lg"
@@ -225,7 +230,7 @@ const Navbar: React.FC = () => {
                   <Settings className="h-4 w-4" />
                   <span>Dashboard</span>
                 </Link>
-                
+
                 <button
                   onClick={handleLogout}
                   className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 font-medium"
@@ -261,7 +266,7 @@ const Navbar: React.FC = () => {
               <Home className="h-5 w-5" />
               <span className="font-medium">Home</span>
             </Link>
-            
+
             {!user ? (
               <>
                 <div className="border-t border-gray-100 pt-3 mt-3">
@@ -306,7 +311,7 @@ const Navbar: React.FC = () => {
                     </div>
                   </Link>
                 </div>
-                
+
                 <div className="border-t border-gray-100 pt-3 mt-3">
                   <p className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</p>
                   <Link
@@ -349,7 +354,7 @@ const Navbar: React.FC = () => {
                     </div>
                   </Link>
                 </div>
-                
+
                 <div className="border-t border-gray-100 pt-3 mt-3">
                   <Link
                     to="/subscription-plans"
@@ -379,7 +384,7 @@ const Navbar: React.FC = () => {
                     <div className="text-sm text-gray-500 capitalize">{user.userType}</div>
                   </div>
                 </div>
-                
+
                 <Link
                   to={getDashboardLink()}
                   className="flex items-center space-x-3 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition-all duration-200 mb-2"
@@ -388,7 +393,7 @@ const Navbar: React.FC = () => {
                   <Settings className="h-5 w-5" />
                   <span className="font-medium">Dashboard</span>
                 </Link>
-                
+
                 <button
                   onClick={handleLogout}
                   className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 w-full"

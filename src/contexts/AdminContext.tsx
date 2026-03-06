@@ -98,8 +98,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Default settings as fallback
   const defaultSettings: GeneralSettings = {
-    siteName: 'KuponClix',
-    logoUrl: 'https://images.pexels.com/photos/1779487/pexels-photo-1779487.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop',
+    siteName: 'ShopClick',
+    logoUrl: '/shopclick_logo.png',
     dateFormat: 'DD/MM/YYYY',
     timezone: 'UTC',
     emailVerificationRequired: true,
