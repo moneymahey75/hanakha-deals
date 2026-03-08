@@ -1,17 +1,19 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey'
 };
-serve(async (req)=>{
-  // Handle CORS preflight
+
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
+    return new Response(null, {
+      status: 200,
       headers: corsHeaders
     });
   }
+
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({
       error: 'Method not allowed'
@@ -23,10 +25,11 @@ serve(async (req)=>{
       }
     });
   }
+
   try {
     const body = await req.json();
     const { user_id, contact_info, otp_type } = body;
-    // Input validation
+
     if (!user_id || !contact_info || !otp_type) {
       return new Response(JSON.stringify({
         error: 'user_id, contact_info, and otp_type are required'
@@ -38,10 +41,8 @@ serve(async (req)=>{
         }
       });
     }
-    if (![
-      'email',
-      'mobile'
-    ].includes(otp_type)) {
+
+    if (!['email', 'mobile'].includes(otp_type)) {
       return new Response(JSON.stringify({
         error: 'otp_type must be either "email" or "mobile"'
       }), {
@@ -52,7 +53,7 @@ serve(async (req)=>{
         }
       });
     }
-    // Validate contact info format
+
     if (otp_type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact_info)) {
       return new Response(JSON.stringify({
         error: 'Invalid email format'
@@ -64,6 +65,7 @@ serve(async (req)=>{
         }
       });
     }
+
     if (otp_type === 'mobile' && !/^\+\d{10,15}$/.test(contact_info)) {
       return new Response(JSON.stringify({
         error: 'Invalid mobile format. Should include country code (e.g., +1234567890)'
@@ -75,83 +77,58 @@ serve(async (req)=>{
         }
       });
     }
-    // Generate 6-digit OTP
+
     const otp_code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires_at = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    // Initialize Supabase client
-    const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    // Store OTP in database
-    const { data: otpData, error: otpError } = await supabase.from('tbl_otp_verifications').insert({
-      tov_user_id: user_id,
-      tov_otp_code: otp_code,
-      tov_otp_type: otp_type,
-      tov_contact_info: contact_info,
-      tov_expires_at: expires_at.toISOString(),
-      tov_is_verified: false,
-      tov_attempts: 0
-    }).select().single();
-    if (otpError) {
-      console.error('Database error:', otpError);
-      return new Response(JSON.stringify({
-        error: 'Failed to store OTP in database',
-        details: otpError.message
-      }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-    // Get system settings for site name
-    const { data: settings } = await supabase.from('tbl_system_settings').select('tss_setting_key, tss_setting_value');
-    const settingsMap = settings?.reduce((acc, setting)=>{
-      acc[setting.tss_setting_key] = setting.tss_setting_value;
-      return acc;
-    }, {}) || {};
-    const siteName = settingsMap.site_name?.replace(/"/g, '') || 'DealSphere';
-    // Send OTP based on type
+    const expires_at = new Date(Date.now() + 10 * 60 * 1000);
+
+    const siteName = 'ShopClick';
+
     let sendResult;
     if (otp_type === 'email') {
       sendResult = await sendEmailOTP(contact_info, otp_code, siteName);
     } else {
       sendResult = await sendSMSOTP(contact_info, otp_code, siteName);
     }
-    if (!sendResult.success) {
-      console.error(`Failed to send ${otp_type} OTP:`, sendResult.error);
-      // Don't fail the entire request - OTP is stored, just log the send failure
-    }
-    // Return success response
-    const response = {
-      success: true,
-      message: `OTP sent to ${contact_info}`,
-      otp_id: otpData.tov_id,
+
+    const response: any = {
+      success: sendResult.success,
+      message: sendResult.success
+        ? `OTP sent to ${contact_info}`
+        : `Failed to send OTP: ${sendResult.error}`,
       expires_at: expires_at.toISOString()
     };
-    // Add debug info in development
-    if (Deno.env.get('NODE_ENV') === 'development' || !Deno.env.get('NODE_ENV')) {
+
+    if (sendResult.success) {
       response.debug_info = {
         otp_code: otp_code,
         contact_info: contact_info,
         otp_type: otp_type,
-        send_result: sendResult.success,
-        note: `${otp_type} OTP ${sendResult.success ? 'sent successfully' : 'simulated'}`
+        provider: sendResult.provider || 'unknown',
+        message_id: sendResult.messageId || sendResult.messageSid,
+        note: `${otp_type} OTP sent successfully`
+      };
+    } else {
+      response.error_details = {
+        provider_error: sendResult.error,
+        contact_info: contact_info,
+        otp_type: otp_type
       };
     }
+
     return new Response(JSON.stringify(response), {
-      status: 200,
+      status: sendResult.success ? 200 : 500,
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json'
       }
     });
+
   } catch (error) {
     console.error('Send OTP error:', error);
-    let errorMessage = 'Internal server error';
-    if (error instanceof Error) {
-      errorMessage = error.message;
-    }
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return new Response(JSON.stringify({
+      success: false,
       error: errorMessage
     }), {
       status: 500,
@@ -162,18 +139,22 @@ serve(async (req)=>{
     });
   }
 });
-async function sendEmailOTP(email, otp, siteName) {
+
+async function sendEmailOTP(email: string, otp: string, siteName: string) {
   try {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+
     if (!RESEND_API_KEY) {
-      console.log('📧 Resend not configured, simulating email send');
+      console.error('RESEND_API_KEY not configured');
       return {
-        success: true,
-        messageId: 'sim_' + Date.now()
+        success: false,
+        error: 'Email service not configured. Please add RESEND_API_KEY secret.'
       };
     }
+
     const emailSubject = `Your OTP Code - ${siteName}`;
     const emailBody = createEmailTemplate(otp, siteName);
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -181,87 +162,134 @@ async function sendEmailOTP(email, otp, siteName) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: `${siteName} <noreply@${siteName.toLowerCase().replace(/\s+/g, '')}.com>`,
-        to: [
-          email
-        ],
+        from: `${siteName} <noreply@shopclick.com>`,
+        to: [email],
         subject: emailSubject,
         html: emailBody
       })
     });
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Resend API error:', errorText);
       return {
         success: false,
-        error: `Resend API error: ${response.status}`
+        error: `Resend API error: ${response.status} - ${errorText}`
       };
     }
+
     const result = await response.json();
-    console.log('✅ Email sent successfully via Resend');
+    console.log('Email sent successfully via Resend:', result.id);
+
     return {
       success: true,
+      provider: 'resend',
       messageId: result.id
     };
+
   } catch (error) {
-    console.error('❌ Failed to send email OTP:', error);
+    console.error('Failed to send email OTP:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Email send failed'
     };
   }
 }
-async function sendSMSOTP(mobile, otp, siteName) {
+
+async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
   try {
-    console.log('📱 Twilio variables started');
+    console.log('Starting SMS send process...');
+
     const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
     const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
     const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
+
+    console.log('Checking Twilio configuration...');
+    console.log('TWILIO_ACCOUNT_SID:', TWILIO_ACCOUNT_SID ? `Set (${TWILIO_ACCOUNT_SID.substring(0, 10)}...)` : 'NOT SET');
+    console.log('TWILIO_AUTH_TOKEN:', TWILIO_AUTH_TOKEN ? 'Set (hidden)' : 'NOT SET');
+    console.log('TWILIO_PHONE_NUMBER:', TWILIO_PHONE_NUMBER || 'NOT SET');
+
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-      console.log('📱 Twilio not configured, simulating SMS send');
-      return {
-        success: true,
-        messageSid: 'sim_' + Date.now()
-      };
-    }
-    const message = `Your ${siteName} verification code is: ${otp}. This code expires in 10 minutes. Do not share this code with anyone.`;
-    const authHeader = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authHeader}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        From: TWILIO_PHONE_NUMBER,
-        To: mobile,
-        Body: message
-      })
-    });
-    console.log('Twilio response', response);
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Twilio API error:', errorText);
+      const missingVars = [];
+      if (!TWILIO_ACCOUNT_SID) missingVars.push('TWILIO_ACCOUNT_SID');
+      if (!TWILIO_AUTH_TOKEN) missingVars.push('TWILIO_AUTH_TOKEN');
+      if (!TWILIO_PHONE_NUMBER) missingVars.push('TWILIO_PHONE_NUMBER');
+
+      const errorMsg = `Twilio not configured. Missing: ${missingVars.join(', ')}`;
+      console.error(errorMsg);
+
       return {
         success: false,
-        error: `Twilio API error: ${response.status}`
+        error: errorMsg
       };
     }
+
+    const message = `Your ${siteName} verification code is: ${otp}. This code expires in 10 minutes. Do not share this code with anyone.`;
+
+    console.log(`Sending SMS to ${mobile}...`);
+    console.log(`Message: ${message}`);
+    console.log(`From: ${TWILIO_PHONE_NUMBER}`);
+
+    const authHeader = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authHeader}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          From: TWILIO_PHONE_NUMBER,
+          To: mobile,
+          Body: message
+        }).toString()
+      }
+    );
+
+    console.log('Twilio response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Twilio API error response:', errorText);
+
+      let errorDetails = errorText;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetails = errorJson.message || errorText;
+      } catch (e) {
+        console.log('Could not parse Twilio error as JSON');
+      }
+
+      return {
+        success: false,
+        error: `Twilio API error (${response.status}): ${errorDetails}`
+      };
+    }
+
     const result = await response.json();
-    console.log('✅ SMS sent successfully via Twilio');
+    console.log('SMS sent successfully via Twilio');
+    console.log('Message SID:', result.sid);
+    console.log('Status:', result.status);
+
     return {
       success: true,
-      messageSid: result.sid
+      provider: 'twilio',
+      messageSid: result.sid,
+      status: result.status
     };
+
   } catch (error) {
-    console.error('❌ Failed to send SMS OTP:', error);
+    console.error('Failed to send SMS OTP:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'SMS send failed'
     };
   }
 }
-function createEmailTemplate(otp, siteName) {
+
+function createEmailTemplate(otp: string, siteName: string): string {
   return `
     <!DOCTYPE html>
     <html>
@@ -270,13 +298,13 @@ function createEmailTemplate(otp, siteName) {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Email Verification - ${siteName}</title>
       <style>
-        body { 
+        body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           line-height: 1.6;
           color: #333;
-          max-width: 600px; 
-          margin: 0 auto; 
-          padding: 20px; 
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
           background-color: #f8f9fa;
         }
         .container {
@@ -285,41 +313,41 @@ function createEmailTemplate(otp, siteName) {
           overflow: hidden;
           box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        .header { 
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-          color: white; 
-          padding: 40px 30px; 
-          text-align: center; 
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 40px 30px;
+          text-align: center;
         }
         .header h1 {
           margin: 0;
           font-size: 28px;
           font-weight: 600;
         }
-        .content { 
-          padding: 40px 30px; 
+        .content {
+          padding: 40px 30px;
           text-align: center;
         }
-        .otp-box { 
+        .otp-box {
           background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
-          border: 2px solid #667eea; 
-          padding: 30px; 
-          margin: 30px 0; 
-          border-radius: 12px; 
+          border: 2px solid #667eea;
+          padding: 30px;
+          margin: 30px 0;
+          border-radius: 12px;
         }
-        .otp-code { 
-          font-size: 36px; 
-          font-weight: bold; 
-          color: #667eea; 
-          letter-spacing: 8px; 
+        .otp-code {
+          font-size: 36px;
+          font-weight: bold;
+          color: #667eea;
+          letter-spacing: 8px;
           margin: 15px 0;
           font-family: monospace;
         }
-        .footer { 
-          text-align: center; 
-          margin-top: 30px; 
-          color: #6c757d; 
-          font-size: 14px; 
+        .footer {
+          text-align: center;
+          margin-top: 30px;
+          color: #6c757d;
+          font-size: 14px;
         }
         @media (max-width: 600px) {
           .content { padding: 20px; }
@@ -337,7 +365,7 @@ function createEmailTemplate(otp, siteName) {
           <p style="font-size: 18px; margin-bottom: 20px;">
             Use the verification code below to complete your email verification:
           </p>
-          
+
           <div class="otp-box">
             <p style="margin: 0; font-weight: 600;">Your Verification Code:</p>
             <div class="otp-code">${otp}</div>
@@ -345,7 +373,7 @@ function createEmailTemplate(otp, siteName) {
               <strong>Valid for 10 minutes only</strong>
             </p>
           </div>
-          
+
           <p style="color: #6c757d; margin-top: 30px;">
             If you didn't request this code, please ignore this email.
           </p>
