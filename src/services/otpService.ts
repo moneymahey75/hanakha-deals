@@ -372,6 +372,25 @@ export class OTPService {
       const cacheKey = this.getCacheKey(userId, otpType);
       const cachedOTP = otpCache.get(cacheKey);
 
+      // Detailed logging for debugging
+      const now = Date.now();
+      console.log('=== OTP Verification Debug ===');
+      console.log('Current time:', now);
+      console.log('User ID:', userId);
+      console.log('OTP Type:', otpType);
+      console.log('Entered OTP:', otpCode);
+      console.log('Cached OTP found:', !!cachedOTP);
+      if (cachedOTP) {
+        console.log('Cached OTP code:', cachedOTP.otp);
+        console.log('Cached OTP status:', cachedOTP.status);
+        console.log('Cached OTP expires:', cachedOTP.expires);
+        console.log('Time until expiry (seconds):', Math.floor((cachedOTP.expires - now) / 1000));
+        console.log('OTP match:', cachedOTP.otp === otpCode);
+        console.log('Status is sent:', cachedOTP.status === 'sent');
+        console.log('Not expired:', now < cachedOTP.expires);
+      }
+      console.log('=== End Debug ===');
+
       // Check for configurable test OTP
       const testOTPSettings = await this.getTestOTPSettings();
       if (testOTPSettings.enabled && otpCode === testOTPSettings.code) {
@@ -389,7 +408,7 @@ export class OTPService {
       }
 
       // Check cache first for performance
-      if (cachedOTP && cachedOTP.otp === otpCode && cachedOTP.status === 'sent' && Date.now() < cachedOTP.expires) {
+      if (cachedOTP && cachedOTP.otp === otpCode && cachedOTP.status === 'sent' && now < cachedOTP.expires) {
         console.log('Cache OTP verification successful');
         await this.updateUserVerificationStatus(userId, otpType);
         otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
