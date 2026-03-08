@@ -145,9 +145,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let subscriptionData = null;
 
       try {
-        // Use a single query with joins to reduce connection usage
-        // tbl_companies(*),
-        const { data: combinedData, error: combinedError } = await supabaseBatch
+        // Use the authenticated supabase client instead of batch client
+        const { data: combinedData, error: combinedError } = await supabase
             .from('tbl_users')
             .select(`
             *,
@@ -620,8 +619,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🔍 Checking verification status for user:', userId);
 
-      // Optimize verification status check with single query
-      const { data: userData, error: userError } = await supabaseBatch
+      // Use authenticated supabase client
+      const { data: userData, error: userError } = await supabase
         .from('tbl_users')
         .select('tu_email_verified, tu_mobile_verified, tu_is_verified')
         .eq('tu_id', userId)
@@ -632,8 +631,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { needsVerification: false, settings: null };
       }
 
-      // Get system settings with caching
-      const { data: settingsData } = await supabaseBatch
+      // Get system settings with authenticated client
+      const { data: settingsData } = await supabase
         .from('tbl_system_settings')
         .select('tss_setting_key, tss_setting_value')
         .in('tss_setting_key', [
