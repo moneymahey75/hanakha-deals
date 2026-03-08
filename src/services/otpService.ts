@@ -309,12 +309,16 @@ export class OTPService {
         }
       } catch (sendErr: any) {
         sendError = sendErr.message;
-        console.warn(`${otpType} OTP send failed:`, sendError);
-        // Don't throw error - OTP is cached, just log the send failure
-        sendResult = false;
+        console.error(`${otpType} OTP send failed:`, sendError);
+        throw new Error(sendError || `Failed to send ${otpType} OTP`);
       }
 
-      // Cache the OTP with sent status (even if send failed - OTP is cached for verification)
+      // Only cache if send was successful
+      if (!sendResult) {
+        throw new Error(sendError || `Failed to send ${otpType} OTP`);
+      }
+
+      // Cache the OTP with sent status only after successful send
       otpCache.set(cacheKey, {
         otp: otpCode,
         expires: expiresAt.getTime(),
@@ -323,22 +327,17 @@ export class OTPService {
         lastSentAt: now
       });
 
-      console.log(`OTP processed for ${otpType}: ${contactInfo}`);
+      console.log(`OTP sent successfully for ${otpType}: ${contactInfo}`);
 
       return {
         success: true,
         message: `OTP sent to ${contactInfo}`,
-        //otpId: otpRecord?.tov_id,
         expiresAt: expiresAt.toISOString(),
         debug_info: {
           otp_code: otpCode,
           contact_info: contactInfo,
           otp_type: otpType,
-          send_result: sendResult,
-          send_error: sendError,
-          note: sendResult
-              ? `${otpType === 'mobile' ? 'SMS' : 'Email'} OTP sent successfully`
-              : `OTP cached for verification but ${otpType === 'mobile' ? 'SMS' : 'email'} sending ${sendError ? 'failed: ' + sendError : 'simulated'}`
+          note: `${otpType === 'mobile' ? 'SMS' : 'Email'} OTP sent successfully`
         }
       };
 
@@ -582,313 +581,66 @@ export class OTPService {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
       if (!supabaseUrl) {
-        console.log('Supabase URL not configured, simulating email send');
-        // Add delay to simulate email service
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return true;
+        throw new Error('Supabase URL not configured');
       }
 
-      // Try to send via Edge Function first
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for email
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-        console.log(`Sending Email OTP to ${email} via Edge Function...`);
+      console.log(`Sending Email OTP to ${email} via Edge Function...`);
 
-        const response = await fetch(`${supabaseUrl}/functions/v1/send-otp`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            contact_info: email,
-            otp_type: 'email'
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const errorMessage = errorData.error || `HTTP ${response.status}`;
-          console.error('Email Edge function error:', errorMessage);
-          throw new Error(`Failed to send email OTP: ${errorMessage}`);
-        }
-
-        const result = await response.json();
-        console.log('Email OTP sent successfully via Edge Function', result);
-        return true;
-
-      } catch (edgeError: any) {
-        if (edgeError.name === 'AbortError') {
-          console.error('Email OTP send timeout');
-          throw new Error('Email sending timed out');
-        }
-        
-        console.warn('Edge function failed for email, trying alternative method:', edgeError.message);
-        
-        // Fallback to direct email service integration
-        return await this.sendEmailDirect(email, otp);
-      }
-
-    } catch (error) {
-      console.error('Failed to send email OTP:', error);
-      return false;
-    }
-  }
-
-  // Direct email sending as fallback (you can integrate your preferred email service here)
-  private async sendEmailDirect(email: string, otp: string): Promise<boolean> {
-    try {
-      // Option 1: Resend API integration
-      const resendApiKey = import.meta.env.VITE_RESEND_API_KEY;
-      if (resendApiKey) {
-        return await this.sendViaResend(email, otp, resendApiKey);
-      }
-
-      // Option 2: SendGrid API integration  
-      const sendGridApiKey = import.meta.env.VITE_SENDGRID_API_KEY;
-      if (sendGridApiKey) {
-        return await this.sendViaSendGrid(email, otp, sendGridApiKey);
-      }
-
-      // Option 3: EmailJS integration (client-side)
-      const emailJsConfig = {
-        serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID,
-        templateId: import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-        publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY
-      };
-      
-      if (emailJsConfig.serviceId && emailJsConfig.templateId && emailJsConfig.publicKey) {
-        return await this.sendViaEmailJS(email, otp, emailJsConfig);
-      }
-
-      // If no email service is configured, simulate for development
-      console.log(`Email OTP simulation: would send ${otp} to ${email}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return true;
-
-    } catch (error) {
-      console.error('Failed to send email via direct method:', error);
-      return false;
-    }
-  }
-
-  // Resend API integration
-  private async sendViaResend(email: string, otp: string, apiKey: string): Promise<boolean> {
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-otp`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          from: 'noreply@yourdomain.com', // Replace with your verified domain
-          to: [email],
-          subject: 'Your OTP Verification Code',
-          html: this.createEmailTemplate(otp, 'YourAppName') // Replace with your app name
+          user_id: userId,
+          contact_info: email,
+          otp_type: 'email'
         }),
+        signal: controller.signal
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Resend API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
-      }
+      clearTimeout(timeoutId);
 
       const result = await response.json();
-      console.log('Email sent successfully via Resend:', result.id);
-      return true;
-    } catch (error) {
-      console.error('Resend email sending failed:', error);
-      return false;
-    }
-  }
+      console.log('Email OTP response:', result);
 
-  // SendGrid API integration
-  private async sendViaSendGrid(email: string, otp: string, apiKey: string): Promise<boolean> {
-    try {
-      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [{
-            to: [{ email: email }],
-            subject: 'Your OTP Verification Code'
-          }],
-          from: { email: 'noreply@yourdomain.com' }, // Replace with your verified email
-          content: [{
-            type: 'text/html',
-            value: this.createEmailTemplate(otp, 'YourAppName') // Replace with your app name
-          }]
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`SendGrid API error: ${response.status} - ${errorData}`);
+      if (!response.ok || !result.success) {
+        const errorMessage = result.error_details?.provider_error ||
+                           result.error ||
+                           result.message ||
+                           `HTTP ${response.status}`;
+        console.error('Email Edge function error:', errorMessage);
+        throw new Error(errorMessage);
       }
 
-      console.log('Email sent successfully via SendGrid');
+      console.log('Email OTP sent successfully via Edge Function');
       return true;
-    } catch (error) {
-      console.error('SendGrid email sending failed:', error);
-      return false;
-    }
-  }
 
-  // EmailJS integration (client-side email service)
-  private async sendViaEmailJS(email: string, otp: string, config: any): Promise<boolean> {
-    try {
-      // Note: EmailJS requires the EmailJS SDK to be loaded
-      // Add this to your index.html: <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-      
-      if (typeof window !== 'undefined' && (window as any).emailjs) {
-        const emailjs = (window as any).emailjs;
-        
-        const templateParams = {
-          to_email: email,
-          otp_code: otp,
-          app_name: 'YourAppName' // Replace with your app name
-        };
-
-        const response = await emailjs.send(
-          config.serviceId,
-          config.templateId,
-          templateParams,
-          config.publicKey
-        );
-
-        console.log('Email sent successfully via EmailJS:', response);
-        return true;
-      } else {
-        throw new Error('EmailJS SDK not loaded');
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('Email OTP send timeout');
+        throw new Error('Email sending timed out. Please try again.');
       }
-    } catch (error) {
-      console.error('EmailJS sending failed:', error);
-      return false;
+      console.error('Failed to send email OTP:', error);
+      throw error;
     }
   }
 
-  // Create HTML email template
-  private createEmailTemplate(otp: string, appName: string): string {
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verification - ${appName}</title>
-        <style>
-          body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            background-color: #f8f9fa;
-          }
-          .container {
-            background: white;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          }
-          .header { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            color: white; 
-            padding: 40px 30px; 
-            text-align: center; 
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 600;
-          }
-          .content { 
-            padding: 40px 30px; 
-            text-align: center;
-          }
-          .otp-box { 
-            background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
-            border: 2px solid #667eea; 
-            padding: 30px; 
-            margin: 30px 0; 
-            border-radius: 12px; 
-          }
-          .otp-code { 
-            font-size: 36px; 
-            font-weight: bold; 
-            color: #667eea; 
-            letter-spacing: 8px; 
-            margin: 15px 0;
-            font-family: monospace;
-          }
-          .footer { 
-            text-align: center; 
-            margin-top: 30px; 
-            color: #6c757d; 
-            font-size: 14px; 
-          }
-          @media (max-width: 600px) {
-            .content { padding: 20px; }
-            .otp-code { font-size: 28px; letter-spacing: 4px; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>Email Verification</h1>
-            <p>Secure your ${appName} account</p>
-          </div>
-          <div class="content">
-            <p style="font-size: 18px; margin-bottom: 20px;">
-              Use the verification code below to complete your email verification:
-            </p>
-            
-            <div class="otp-box">
-              <p style="margin: 0; font-weight: 600;">Your Verification Code:</p>
-              <div class="otp-code">${otp}</div>
-              <p style="margin: 0; color: #6c757d; font-size: 14px;">
-                <strong>Valid for 10 minutes only</strong>
-              </p>
-            </div>
-            
-            <p style="color: #6c757d; margin-top: 30px;">
-              If you didn't request this code, please ignore this email.
-            </p>
-          </div>
-          <div class="footer">
-            <p>This is an automated email. Please do not reply.</p>
-            <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-  }
 
   private async sendMobileOTP(userId: string, mobile: string, otp: string): Promise<boolean> {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
       if (!supabaseUrl) {
-        console.log('Supabase URL not configured, simulating SMS send');
-        // Add delay to simulate SMS service
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return true;
+        throw new Error('Supabase URL not configured');
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
       console.log(`Sending SMS OTP to ${mobile} via Edge Function...`);
 
@@ -908,23 +660,27 @@ export class OTPService {
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || `HTTP ${response.status}`;
+      const result = await response.json();
+      console.log('SMS OTP response:', result);
+
+      if (!response.ok || !result.success) {
+        const errorMessage = result.error_details?.provider_error ||
+                           result.error ||
+                           result.message ||
+                           `HTTP ${response.status}`;
         console.error('Edge function error:', errorMessage);
-        throw new Error(`Failed to send mobile OTP: ${errorMessage}`);
+        throw new Error(errorMessage);
       }
 
-      const result = await response.json();
-      console.log('SMS OTP sent successfully via Edge Function', result);
+      console.log('SMS OTP sent successfully via Edge Function');
       return true;
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.error('SMS OTP send timeout');
-        throw new Error('SMS sending timed out');
+        throw new Error('SMS sending timed out. Please try again.');
       }
       console.error('Failed to send mobile OTP:', error);
-      return false;
+      throw error;
     }
   }
 
