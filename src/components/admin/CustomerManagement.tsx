@@ -186,6 +186,18 @@ const CustomerManagement: React.FC = () => {
 
     const handleToggleStatus = async (customer: Customer, currentStatus: boolean) => {
         try {
+            // Debug: Check auth status
+            const { data: authStatus } = await supabase.rpc('debug_auth_status');
+            console.log('🔍 Auth Status:', authStatus);
+
+            if (!authStatus?.is_authenticated) {
+                throw new Error('Not authenticated. Please log out and log back in.');
+            }
+
+            if (!authStatus?.admin_exists) {
+                throw new Error('Admin account not properly linked. Please contact support.');
+            }
+
             const { data: result, error } = await supabase.rpc('admin_update_customer_user', {
                 p_user_id: customer.tu_id,
                 p_email: customer.tu_email,
@@ -195,8 +207,15 @@ const CustomerManagement: React.FC = () => {
                 p_is_active: !currentStatus
             });
 
-            if (error) throw error;
-            if (!result?.success) throw new Error(result?.error || 'Failed to update status');
+            if (error) {
+                console.error('RPC Error:', error);
+                throw error;
+            }
+
+            if (!result?.success) {
+                console.error('RPC returned error:', result);
+                throw new Error(result?.error || 'Failed to update status');
+            }
 
             notification.showSuccess(
                 'Status Updated',
@@ -204,9 +223,9 @@ const CustomerManagement: React.FC = () => {
             );
 
             loadCustomers();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to update customer status:', error);
-            notification.showError('Update Failed', 'Failed to update customer status');
+            notification.showError('Update Failed', error?.message || 'Failed to update customer status');
         }
     };
 
