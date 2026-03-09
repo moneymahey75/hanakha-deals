@@ -261,7 +261,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         tau_auth_uid: adminData.admin_auth_uid
       };
 
-      // Authenticate with Supabase Auth to enable RLS - THIS IS MANDATORY
+      // Authenticate with Supabase Auth to enable RLS
       console.log('🔐 Authenticating with Supabase Auth...');
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -269,71 +269,32 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
 
       if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          console.log('📝 Creating Supabase Auth user for admin...');
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: email.trim(),
-            password: password,
-            options: {
-              data: {
-                is_admin: true,
-                admin_id: user.tau_id,
-                admin_role: user.tau_role
-              },
-              emailRedirectTo: undefined
-            }
-          });
-
-          if (signUpError) {
-            console.error('❌ Failed to create auth user:', signUpError);
-            throw new Error('Failed to setup authentication. Please contact support.');
-          }
-
-          if (!signUpData.user) {
-            throw new Error('Failed to create authentication session.');
-          }
-
-          console.log('✅ Auth user created, now signing in...');
-          const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password: password
-          });
-
-          if (signInError) {
-            throw new Error('Authentication setup failed. Please try logging in again.');
-          }
-
-          await supabase.rpc('update_admin_auth_uid', {
-            p_admin_id: user.tau_id,
-            p_auth_uid: signUpData.user.id
-          });
-          user.tau_auth_uid = signUpData.user.id;
-          console.log('✅ Admin linked to auth user:', signUpData.user.id);
-        } else {
-          console.error('❌ Supabase Auth failed:', authError);
-          throw new Error('Authentication failed. Please check your credentials.');
-        }
-      } else {
-        console.log('✅ Supabase Auth successful');
-        if (authData.user) {
-          if (!user.tau_auth_uid) {
-            await supabase.rpc('update_admin_auth_uid', {
-              p_admin_id: user.tau_id,
-              p_auth_uid: authData.user.id
-            });
-            user.tau_auth_uid = authData.user.id;
-            console.log('✅ Admin linked to auth user:', authData.user.id);
-          }
-
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('Failed to establish authenticated session.');
-          }
-          console.log('✅ Authenticated session established, auth.uid() will work');
-        } else {
-          throw new Error('Authentication failed to return user data.');
-        }
+        console.error('❌ Supabase Auth failed:', authError);
+        throw new Error('Invalid email or password');
       }
+
+      if (!authData.user) {
+        throw new Error('Authentication failed');
+      }
+
+      console.log('✅ Supabase Auth successful');
+
+      // Link auth user to admin if not already linked
+      if (!user.tau_auth_uid) {
+        await supabase.rpc('update_admin_auth_uid', {
+          p_admin_id: user.tau_id,
+          p_auth_uid: authData.user.id
+        });
+        user.tau_auth_uid = authData.user.id;
+        console.log('✅ Admin linked to auth user:', authData.user.id);
+      }
+
+      // Verify session is established
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Failed to establish authenticated session');
+      }
+      console.log('✅ Authenticated session established, auth.uid() will work');
 
       // All checks passed — login success
       const sessionToken = `admin-session-${user.tau_id}-${Date.now()}`;
