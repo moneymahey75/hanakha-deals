@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
-import { useAuth } from '../../contexts/AuthContext';
 import {
   Gift,
   Plus,
@@ -72,7 +71,6 @@ interface Company {
 
 const CouponManagement: React.FC = () => {
   const { admin, hasPermission, getSubAdmins, createSubAdmin, updateSubAdmin, deleteSubAdmin, resetSubAdminPassword, logout } = useAdminAuth();
-  const { user } = useAuth();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -181,9 +179,9 @@ const CouponManagement: React.FC = () => {
     e.preventDefault();
     console.log('🎯 Form submitted');
 
-    if (!user?.id) {
-      console.error('❌ No user ID found');
-      notification.showError('Error', 'User not authenticated');
+    if (!admin?.id) {
+      console.error('❌ No admin ID found');
+      notification.showError('Error', 'Admin not authenticated');
       return;
     }
 
@@ -192,14 +190,14 @@ const CouponManagement: React.FC = () => {
       return;
     }
 
-    console.log('📦 Form data:', user);
+    console.log('📦 Admin data:', admin);
     console.log('📦 Form data:', newCoupon);
 
     try {
       const { error } = await supabase
           .from('tbl_coupons')
           .insert({
-            tc_created_by: user.id,
+            tc_created_by: admin.id,
             tc_company_id: newCoupon.company_id,
             tc_title: newCoupon.title,
             tc_description: newCoupon.description,
