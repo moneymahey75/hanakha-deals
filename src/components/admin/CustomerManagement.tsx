@@ -1,33 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
-import {
-    Users,
-    Search,
-    Filter,
-    Eye,
-    Edit,
-    Trash2,
-    UserCheck,
-    UserX,
-    Mail,
-    Phone,
-    Calendar,
-    DollarSign,
-    ArrowLeft,
-    Save,
-    X,
-    CheckCircle,
-    AlertCircle,
-    CreditCard,
-    User,
-    Settings,
-    ChevronLeft,
-    ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
-    MoreHorizontal
-} from 'lucide-react';
+import { Users, Search, Filter, Eye, CreditCard as Edit, Trash2, UserCheck, UserX, Mail, Phone, Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle, CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreHorizontal } from 'lucide-react';
 
 interface Customer {
     tu_id: string;
