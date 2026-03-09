@@ -31,10 +31,6 @@ interface Coupon {
     name: string;
     email: string;
   };
-  creator_info?: {
-    name: string;
-    email: string;
-  };
 }
 
 interface Company {
@@ -116,10 +112,7 @@ const CouponManagement: React.FC = () => {
           .from('tbl_coupons')
           .select(`
           *,
-          tbl_companies(tc_company_name, tc_official_email),
-          tbl_users!tbl_coupons_tc_created_by_fkey(
-            tbl_user_profiles(tup_first_name, tup_last_name)
-          )
+          tbl_companies(tc_company_name, tc_official_email)
         `)
           .order('tc_created_at', { ascending: false });
 
@@ -133,10 +126,6 @@ const CouponManagement: React.FC = () => {
         company_info: coupon.tbl_companies ? {
           name: coupon.tbl_companies.tc_company_name,
           email: coupon.tbl_companies.tc_official_email
-        } : undefined,
-        creator_info: coupon.tbl_users?.tbl_user_profiles ? {
-          name: `${coupon.tbl_users.tbl_user_profiles.tup_first_name} ${coupon.tbl_users.tbl_user_profiles.tup_last_name}`,
-          email: ''
         } : undefined
       }));
 
@@ -169,10 +158,19 @@ const CouponManagement: React.FC = () => {
     console.log('📦 Form data:', newCoupon);
 
     try {
+      // Get the admin's auth UID from Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        notification.showError('Error', 'Authentication failed');
+        return;
+      }
+
       const { error } = await supabase
           .from('tbl_coupons')
           .insert({
-            tc_created_by: admin.id,
+            tc_created_by: null, // Null for admin-created coupons
+            tc_created_by_admin_uid: user.id, // Store admin's auth UID
             tc_company_id: newCoupon.company_id,
             tc_title: newCoupon.title,
             tc_description: newCoupon.description,
