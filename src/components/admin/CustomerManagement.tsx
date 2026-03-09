@@ -186,30 +186,23 @@ const CustomerManagement: React.FC = () => {
 
     const handleToggleStatus = async (customer: Customer, currentStatus: boolean) => {
         try {
-            // Try new structure first
-            let { error } = await supabase
-                .from('tbl_users')
-                .update({ is_active: !currentStatus })
-                .eq('id', customer.tu_id);
+            const { data: result, error } = await supabase.rpc('admin_update_customer_user', {
+                p_user_id: customer.tu_id,
+                p_email: customer.tu_email,
+                p_is_verified: customer.tu_is_verified,
+                p_email_verified: customer.tu_email_verified,
+                p_mobile_verified: customer.tu_mobile_verified,
+                p_is_active: !currentStatus
+            });
 
-            // If new structure fails, try old structure
-            if (error && error.message.includes('relation "users" does not exist')) {
-                const { error: oldError } = await supabase
-                    .from('tbl_users')
-                    .update({ tu_is_active: !currentStatus })
-                    .eq('tu_id', customer.tu_id);
-
-                if (oldError) throw oldError;
-            } else if (error) {
-                throw error;
-            }
+            if (error) throw error;
+            if (!result?.success) throw new Error(result?.error || 'Failed to update status');
 
             notification.showSuccess(
                 'Status Updated',
                 `Customer ${customer.tbl_user_profiles?.tup_first_name || 'account'} has been ${!currentStatus ? 'activated' : 'deactivated'}`
             );
 
-            // Reload customers
             loadCustomers();
         } catch (error) {
             console.error('Failed to update customer status:', error);
@@ -697,35 +690,31 @@ const CustomerDetails: React.FC<{
         if (!customer) return;
 
         try {
-            // Update tbl_users table
             console.log('Edit Data:', editData);
 
-            const { error: userError } = await supabase
-                .from('tbl_users')
-                .update({
-                    tu_email: editData.email,
-                    tu_is_verified: editData.email_verified || editData.mobile_verified,
-                    tu_email_verified: editData.email_verified,
-                    tu_mobile_verified: editData.mobile_verified,
-                    tu_is_active: editData.is_active
-                })
-                .eq('tu_id', customer.tu_id);
+            const { data: userResult, error: userError } = await supabase.rpc('admin_update_customer_user', {
+                p_user_id: customer.tu_id,
+                p_email: editData.email,
+                p_is_verified: editData.email_verified || editData.mobile_verified,
+                p_email_verified: editData.email_verified,
+                p_mobile_verified: editData.mobile_verified,
+                p_is_active: editData.is_active
+            });
 
             if (userError) throw userError;
+            if (!userResult?.success) throw new Error(userResult?.error || 'Failed to update user');
 
-            // Update tbl_user_profiles table
-            const { error: profileError } = await supabase
-                .from('tbl_user_profiles')
-                .update({
-                    tup_first_name: editData.first_name,
-                    tup_last_name: editData.last_name,
-                    tup_username: editData.username,
-                    tup_mobile: editData.mobile,
-                    tup_gender: editData.gender
-                })
-                .eq('tup_user_id', customer.tu_id);
+            const { data: profileResult, error: profileError } = await supabase.rpc('admin_update_customer_profile', {
+                p_user_id: customer.tu_id,
+                p_first_name: editData.first_name,
+                p_last_name: editData.last_name,
+                p_username: editData.username,
+                p_mobile: editData.mobile,
+                p_gender: editData.gender
+            });
 
             if (profileError) throw profileError;
+            if (!profileResult?.success) throw new Error(profileResult?.error || 'Failed to update profile');
 
             notification.showSuccess('Customer Updated', 'Customer information has been updated successfully');
             setEditMode(false);
