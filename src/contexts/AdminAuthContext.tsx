@@ -37,7 +37,7 @@ interface SubAdmin {
 interface AdminAuthContextType {
   admin: AdminUser | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   createSubAdmin: (data: {
     email: string;
     fullName: string;
@@ -237,6 +237,54 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         tau_auth_uid: adminData.admin_auth_uid
       };
 
+      // Authenticate with Supabase Auth to enable RLS
+      console.log('🔐 Authenticating with Supabase Auth...');
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password
+        });
+
+        if (authError) {
+          if (authError.message.includes('Invalid login credentials')) {
+            console.log('📝 Creating Supabase Auth user for admin...');
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: email.trim(),
+              password: password,
+              options: {
+                data: {
+                  is_admin: true,
+                  admin_id: user.tau_id,
+                  admin_role: user.tau_role
+                }
+              }
+            });
+
+            if (signUpError) {
+              console.error('❌ Failed to create auth user:', signUpError);
+            } else if (signUpData.user) {
+              console.log('✅ Auth user created');
+              await supabase.rpc('update_admin_auth_uid', {
+                p_admin_id: user.tau_id,
+                p_auth_uid: signUpData.user.id
+              });
+              user.tau_auth_uid = signUpData.user.id;
+            }
+          }
+        } else {
+          console.log('✅ Supabase Auth successful');
+          if (authData.user && !user.tau_auth_uid) {
+            await supabase.rpc('update_admin_auth_uid', {
+              p_admin_id: user.tau_id,
+              p_auth_uid: authData.user.id
+            });
+            user.tau_auth_uid = authData.user.id;
+          }
+        }
+      } catch (authError) {
+        console.error('⚠️ Auth setup failed:', authError);
+      }
+
       // All checks passed — login success
       const sessionToken = `admin-session-${user.tau_id}-${Date.now()}`;
       sessionStorage.setItem('admin_session_token', sessionToken);
@@ -271,9 +319,17 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     sessionStorage.removeItem('admin_session_token');
     setAdmin(null);
+
+    // Sign out from Supabase Auth
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out from Supabase Auth:', error);
+    }
+
     notification.showInfo('Logged Out', 'Successfully logged out of admin panel.');
   };
 
