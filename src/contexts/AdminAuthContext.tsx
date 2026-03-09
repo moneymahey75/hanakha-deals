@@ -120,26 +120,18 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
-      // FIX: Use a robust fetch method with a timeout to prevent hanging.
-      const fetchAdminUser = async (id: string) => {
-        const { data: user, error } = await supabase
-            .from('tbl_admin_users')
-            .select('*')
-            .eq('tau_id', id)
-            .single();
+      // Fetch admin user data using RPC
+      const { data: userData, error: userError } = await supabase
+        .rpc('get_admin_by_id', {
+          p_admin_id: adminId
+        });
 
-        if (error) throw error;
-        return user;
-      };
+      if (userError || !userData || userData.length === 0) {
+        console.error('❌ Failed to fetch admin user:', userError);
+        throw new Error('Session validation failed');
+      }
 
-      const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Admin user validation timeout (3s)')), 3000)
-      );
-
-      const user: any = await Promise.race([
-        fetchAdminUser(adminId),
-        timeoutPromise
-      ]);
+      const user: any = userData[0];
 
       if (!user) {
         throw new Error('User data could not be fetched.');
@@ -193,91 +185,57 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       console.log('🔍 Starting admin login process for:', email);
 
-      let user: any = null;
-      let error: any = null;
+      console.log('🔐 Fetching admin user data...');
 
-      // Try to get admin user from database using service role to bypass RLS
-      const result = await supabase
-          .from('tbl_admin_users')
-          .select('*')
-          .eq('tau_email', email.trim())
-          .single();
+      // Use secure RPC function to get admin user data
+      const { data: loginData, error: loginError } = await supabase
+        .rpc('admin_login_verify', {
+          p_email: email.trim()
+        });
 
-      user = result.data;
-      error = result.error;
-
-      if (error || !user) {
-        console.error('❌ Admin user not found in database:', error);
-
-        // If RLS is blocking, try with service role
-        if (error?.code === '42501' || error?.message?.includes('RLS') || error?.message?.includes('policy')) {
-          console.log('🔄 RLS detected, attempting service role query...');
-
-          // Create a service role client for admin operations
-          // Note: This relies on global environment variables being available/correct
-          const { createClient } = await import('@supabase/supabase-js');
-          const serviceClient = createClient(
-              import.meta.env.VITE_SUPABASE_URL,
-              import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
-              {
-                auth: {
-                  autoRefreshToken: false,
-                  persistSession: false
-                }
-              }
-          );
-
-          const { data: serviceUser, error: serviceError } = await serviceClient
-              .from('tbl_admin_users')
-              .select('*')
-              .eq('tau_email', email.trim())
-              .single();
-
-          if (serviceError || !serviceUser) {
-            console.error('❌ Service role query also failed:', serviceError);
-            throw new Error('Invalid email or password');
-          }
-
-          user = serviceUser;
-          console.log('✅ Service role query successful');
-        } else {
-          throw new Error('Invalid email or password');
-        }
-      } else {
-        console.log('✅ Regular query successful');
-      }
-
-      if (!user) {
+      if (loginError) {
+        console.error('❌ Admin login RPC failed:', loginError);
         throw new Error('Invalid email or password');
       }
 
-      if (!user.tau_is_active) {
-        throw new Error('Account is inactive. Please contact the administrator.');
+      if (!loginData || loginData.length === 0) {
+        console.error('❌ Admin user not found');
+        throw new Error('Invalid email or password');
       }
+
+      const adminData = loginData[0];
 
       console.log('🔐 Verifying password...');
 
-      // Handle default admin credentials and bcrypt verification
+      // Verify password using bcrypt
       let passwordMatch = false;
-
-      // Try bcrypt verification for other accounts
       try {
-        // FIX: Ensure bcrypt is imported correctly (if using module bundler)
         const bcrypt = await import('bcryptjs');
-        passwordMatch = await bcrypt.compare(password, user.tau_password_hash);
+        passwordMatch = await bcrypt.compare(password, adminData.admin_password_hash);
         console.log('✅ Using bcrypt for password verification');
       } catch (bcryptError) {
         console.log('⚠️ bcrypt not available, using fallback verification', bcryptError);
-        // Fallback: direct comparison (not secure for production)
-        passwordMatch = password === user.tau_password_hash;
+        passwordMatch = password === adminData.admin_password_hash;
       }
 
       if (!passwordMatch) {
-        console.log('❌ Password verification failed');
+        console.error('❌ Password verification failed');
         throw new Error('Invalid email or password');
       }
 
       console.log('✅ Password verified successfully');
+
+      const user = {
+        tau_id: adminData.admin_id,
+        tau_email: adminData.admin_email,
+        tau_full_name: adminData.admin_full_name,
+        tau_role: adminData.admin_role,
+        tau_permissions: adminData.admin_permissions,
+        tau_is_active: adminData.admin_is_active,
+        tau_last_login: adminData.admin_last_login,
+        tau_created_at: adminData.admin_created_at,
+        tau_auth_uid: adminData.admin_auth_uid
+      };
 
       // All checks passed — login success
       const sessionToken = `admin-session-${user.tau_id}-${Date.now()}`;
@@ -296,12 +254,11 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       setAdmin(adminUser);
 
-      // Update last login
+      // Update last login using RPC
       try {
-        await supabase
-            .from('tbl_admin_users')
-            .update({ tau_last_login: new Date().toISOString() })
-            .eq('tau_id', user.tau_id);
+        await supabase.rpc('admin_update_last_login', {
+          p_admin_id: user.tau_id
+        });
       } catch (updateError) {
         console.warn('Failed to update last login time:', updateError);
       }
