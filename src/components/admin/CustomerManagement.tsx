@@ -143,62 +143,45 @@ const CustomerManagement: React.FC = () => {
 
             console.log('🔍 Loading customers from database...');
 
-            // Build the base query
-            let query = supabase
-                .from('tbl_users')
-                .select(`
-                    tu_id,
-                    tu_email,
-                    tu_user_type,
-                    tu_is_verified,
-                    tu_email_verified,
-                    tu_mobile_verified,
-                    tu_is_active,
-                    tu_created_at,
-                    tu_updated_at,
-                    tbl_user_profiles (
-                      tup_id,
-                      tup_first_name,
-                      tup_last_name,
-                      tup_username,
-                      tup_mobile,
-                      tup_gender,
-                      tup_sponsorship_number,
-                      tup_parent_account,
-                      tup_created_at,
-                      tup_updated_at
-                    )
-                `, { count: 'exact' })
-                .eq('tu_user_type', 'customer');
+            const offset = (currentPage - 1) * itemsPerPage;
 
-            // Apply filters if any
-            if (searchTerm) {
-                query = query.or(`tu_email.ilike.%${searchTerm}%,tbl_user_profiles.tup_first_name.ilike.%${searchTerm}%,tbl_user_profiles.tup_last_name.ilike.%${searchTerm}%,tbl_user_profiles.tup_username.ilike.%${searchTerm}%,tbl_user_profiles.tup_sponsorship_number.ilike.%${searchTerm}%`);
-            }
-
-            if (statusFilter !== 'all') {
-                query = query.eq('tu_is_active', statusFilter === 'active');
-            }
-
-            if (verificationFilter !== 'all') {
-                query = query.eq('tu_is_verified', verificationFilter === 'verified');
-            }
-
-            // Apply pagination and ordering
-            query = query
-                .order('tu_created_at', { ascending: false })
-                .range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1);
-
-            const { data: customers, error, count } = await query;
+            const { data, error } = await supabase.rpc('admin_get_customers', {
+                p_search_term: searchTerm || null,
+                p_status_filter: statusFilter,
+                p_verification_filter: verificationFilter,
+                p_offset: offset,
+                p_limit: itemsPerPage
+            });
 
             if (error) {
                 console.error('❌ Failed to load customers:', error);
                 throw error;
             }
 
-            console.log('✅ Customers loaded:', customers);
-            setCustomers(customers || []);
-            setTotalCount(count || 0);
+            console.log('✅ Customers loaded:', data);
+
+            if (data && data.length > 0) {
+                const totalCount = data[0]?.total_count || 0;
+
+                const formattedCustomers = data.map((row: any) => ({
+                    tu_id: row.tu_id,
+                    tu_email: row.tu_email,
+                    tu_user_type: row.tu_user_type,
+                    tu_is_verified: row.tu_is_verified,
+                    tu_email_verified: row.tu_email_verified,
+                    tu_mobile_verified: row.tu_mobile_verified,
+                    tu_is_active: row.tu_is_active,
+                    tu_created_at: row.tu_created_at,
+                    tu_updated_at: row.tu_updated_at,
+                    tbl_user_profiles: row.profile_data
+                }));
+
+                setCustomers(formattedCustomers);
+                setTotalCount(totalCount);
+            } else {
+                setCustomers([]);
+                setTotalCount(0);
+            }
 
         } catch (error) {
             console.error('❌ Failed to load customers:', error);
