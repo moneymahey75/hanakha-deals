@@ -1,21 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
-import {
-  CreditCard,
-  Plus,
-  Edit,
-  Trash2,
-  Save,
-  X,
-  CheckCircle,
-  AlertCircle,
-  DollarSign,
-  Calendar,
-  Package,
-  UserPlus,
-  TrendingUp
-} from 'lucide-react';
+import { CreditCard, Plus, CreditCard as Edit, Trash2, Save, X, CheckCircle, AlertCircle, DollarSign, Calendar, Package, UserPlus, TrendingUp } from 'lucide-react';
 
 interface SubscriptionPlan {
   tsp_id: string;
