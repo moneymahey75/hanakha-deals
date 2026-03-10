@@ -32,57 +32,26 @@ const SubscriptionPlans: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 Loading subscription plans from database...');
-      
+      console.log('🔍 Loading registration plan from database...');
+
       const { data, error } = await supabase
         .from('tbl_subscription_plans')
         .select('*')
         .eq('tsp_is_active', true)
+        .eq('tsp_type', 'registration')
         .order('tsp_price', { ascending: true });
 
       if (error) {
         console.error('❌ Failed to load plans:', error);
         throw error;
       }
-      
+
       console.log('✅ Plans loaded successfully:', data?.length || 0, 'plans');
       setPlans(data || []);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
       setError('Failed to load subscription plans. Please try again.');
-      // Fallback to default plans if database fails
-      setPlans([
-        {
-          tsp_id: '1',
-          tsp_name: 'Basic Plan',
-          tsp_description: 'Perfect for beginners starting their MLM journey',
-          tsp_price: 50,
-          tsp_duration_days: 30,
-          tsp_features: ['MLM Tree Access', 'Basic Dashboard', 'Email Support', 'Mobile App Access'],
-          tsp_is_active: true,
-          tsp_created_at: new Date().toISOString()
-        },
-        {
-          tsp_id: '2',
-          tsp_name: 'Premium Plan',
-          tsp_description: 'For serious entrepreneurs ready to scale',
-          tsp_price: 100,
-          tsp_duration_days: 30,
-          tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics & Reports', 'Marketing Tools', 'API Access'],
-          tsp_is_active: true,
-          tsp_created_at: new Date().toISOString()
-        },
-        {
-          tsp_id: '3',
-          tsp_name: 'Enterprise Plan',
-          tsp_description: 'Complete solution for enterprise-level operations',
-          tsp_price: 200,
-          tsp_duration_days: 30,
-          tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics & Reports', 'Marketing Tools', 'API Access', 'Custom Branding', 'White Label Options'],
-          tsp_is_active: true,
-          tsp_created_at: new Date().toISOString()
-        }
-      ]);
+      setPlans([]);
     } finally {
       setLoading(false);
     }
@@ -131,29 +100,29 @@ const SubscriptionPlans: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center space-x-2 bg-indigo-100 rounded-full px-6 py-3 mb-6">
-            <Package className="h-5 w-5 text-indigo-600" />
-            <span className="text-sm font-semibold text-indigo-600">USDT Subscription Plans</span>
+          <div className="inline-flex items-center space-x-2 bg-green-100 rounded-full px-6 py-3 mb-6">
+            <Package className="h-5 w-5 text-green-600" />
+            <span className="text-sm font-semibold text-green-600">ONE-TIME REGISTRATION FEE</span>
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-            Choose Your <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">USDT Plan</span>
+            Join for Just <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">$5 USDT</span>
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-            {user 
-              ? 'Select the perfect USDT subscription plan to unlock your MLM dashboard and start earning.'
-              : 'Explore our USDT subscription plans. Login to purchase and start your MLM journey.'
+            {user
+              ? 'Complete your registration with a one-time $5 USDT payment and start earning $2 for every person you refer!'
+              : 'Register now for just $5 USDT and earn $2 USDT for every person who joins through your referral link.'
             }
           </p>
           
-          {/* USDT Payment Info */}
+          {/* Registration Benefits */}
           <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl p-6 max-w-2xl mx-auto">
             <div className="flex items-center justify-center space-x-3 mb-3">
-              <CreditCard className="h-6 w-6" />
-              <h3 className="text-xl font-bold">Secure USDT Payments</h3>
+              <Users className="h-6 w-6" />
+              <h3 className="text-xl font-bold">Earn $2 Per Referral</h3>
               <Shield className="h-6 w-6" />
             </div>
             <p className="text-green-100">
-              All payments are processed in USDT (BEP-20) on BNB Smart Chain for instant, secure, and transparent transactions.
+              Pay once, earn forever! For every person who registers using your referral link, you earn $2 USDT paid directly to your wallet.
             </p>
           </div>
         </div>
@@ -174,47 +143,38 @@ const SubscriptionPlans: React.FC = () => {
           </div>
         )}
 
-        {/* Plans Grid - Same format as admin panel */}
+        {/* Registration Plan - Centered */}
         {plans.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {plans.map((plan, index) => (
+          <div className="flex justify-center max-w-2xl mx-auto">
+            {plans.map((plan) => (
               <div
                 key={plan.tsp_id}
-                className={`bg-white rounded-2xl shadow-xl border-2 p-8 relative transform transition-all duration-300 hover:scale-105 hover:shadow-2xl ${
-                  index === 1 ? 'border-indigo-500 ring-4 ring-indigo-200' : 'border-gray-200 hover:border-indigo-300'
-                }`}
+                className="bg-white rounded-2xl shadow-xl border-2 border-green-500 ring-4 ring-green-200 p-8 relative transform transition-all duration-300 hover:scale-105 hover:shadow-2xl w-full"
               >
-                {/* Popular Badge */}
-                {index === 1 && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-full text-sm font-bold flex items-center space-x-2 shadow-lg">
-                      <Star className="h-4 w-4" />
-                      <span>Most Popular</span>
-                    </div>
+                {/* Featured Badge */}
+                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                  <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-2 rounded-full text-sm font-bold flex items-center space-x-2 shadow-lg">
+                    <Star className="h-4 w-4" />
+                    <span>Limited Time Offer</span>
                   </div>
-                )}
+                </div>
 
                 {/* Plan Header */}
                 <div className="text-center mb-8">
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${
-                    index === 0 ? 'bg-blue-100' : index === 1 ? 'bg-indigo-100' : 'bg-purple-100'
-                  }`}>
-                    <Package className={`h-8 w-8 ${
-                      index === 0 ? 'text-blue-600' : index === 1 ? 'text-indigo-600' : 'text-purple-600'
-                    }`} />
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-green-100">
+                    <Package className="h-8 w-8 text-green-600" />
                   </div>
                   
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.tsp_name}</h3>
                   
-                  {/* USDT Price Display - Same as admin panel */}
+                  {/* USDT Price Display */}
                   <div className="flex items-center justify-center mb-4">
-                    <span className="text-4xl font-bold text-gray-900">{plan.tsp_price}</span>
-                    <span className="text-2xl font-bold text-indigo-600 ml-2">USDT</span>
+                    <span className="text-5xl font-bold text-gray-900">${plan.tsp_price}</span>
+                    <span className="text-3xl font-bold text-green-600 ml-2">USDT</span>
                   </div>
-                  
-                  <div className="flex items-center justify-center space-x-2 text-gray-600">
-                    <Calendar className="h-4 w-4" />
-                    <span>{plan.tsp_duration_days} days subscription</span>
+
+                  <div className="bg-green-50 rounded-lg px-4 py-2 inline-block mb-4">
+                    <span className="text-green-700 font-semibold">One-Time Payment • Lifetime Access</span>
                   </div>
                   
                   <p className="text-gray-600 mt-3">{plan.tsp_description}</p>
@@ -253,17 +213,13 @@ const SubscriptionPlans: React.FC = () => {
                 {/* Select Button */}
                 <button
                   onClick={() => handleSelectPlan(plan.tsp_id)}
-                  className={`w-full py-4 px-6 rounded-xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl transform hover:-translate-y-1 ${
-                    index === 1
-                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
-                      : 'bg-gradient-to-r from-gray-800 to-gray-900 text-white hover:from-gray-900 hover:to-black'
-                  }`}
+                  className="w-full py-4 px-6 rounded-xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl transform hover:-translate-y-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700"
                 >
                   <CreditCard className="h-5 w-5" />
                   <span>
-                    {user 
-                      ? `Pay ${plan.tsp_price} USDT - Select Plan`
-                      : `Select ${plan.tsp_name} - ${plan.tsp_price} USDT`
+                    {user
+                      ? `Pay $${plan.tsp_price} USDT & Get Started`
+                      : `Register Now - $${plan.tsp_price} USDT`
                     }
                   </span>
                   <ArrowRight className="h-5 w-5" />
@@ -272,7 +228,7 @@ const SubscriptionPlans: React.FC = () => {
                 {/* Plan Benefits */}
                 <div className="mt-4 text-center">
                   <p className="text-xs text-gray-500">
-                    ✓ Instant activation • ✓ 24/7 support • ✓ USDT payments
+                    ✓ Instant activation • ✓ Earn $2 per referral • ✓ Secure USDT payments
                   </p>
                 </div>
               </div>
