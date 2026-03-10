@@ -5,7 +5,7 @@ import {
     Users, Search, Eye, CreditCard as Edit, UserCheck, UserX, Mail, Phone,
     Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle,
     CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft,
-    ChevronsRight, MoreHorizontal
+    ChevronsRight, MoreHorizontal, Key, LogIn
 } from 'lucide-react';
 
 interface Customer {
@@ -201,7 +201,6 @@ const CustomerManagement: React.FC = () => {
             if (error) throw error;
             if (!result?.success) throw new Error(result?.error || 'Failed to update status');
 
-            // ✅ Immediately update the customer in the list
             const updatedCustomer = { ...customer, tu_is_active: !currentStatus };
             setCustomers(prev => prev.map(c => c.tu_id === customer.tu_id ? updatedCustomer : c));
 
@@ -212,6 +211,74 @@ const CustomerManagement: React.FC = () => {
         } catch (error: any) {
             console.error('Failed to update customer status:', error);
             notification.showError('Update Failed', error?.message || 'Failed to update customer status');
+        }
+    };
+
+    const handleResetPassword = async (customer: Customer) => {
+        const confirmed = window.confirm(
+            `Are you sure you want to reset the password for ${customer.tbl_user_profiles?.tup_first_name || customer.tu_email}?\n\nA new temporary password will be generated.`
+        );
+
+        if (!confirmed) return;
+
+        const newPassword = prompt('Enter new password for this user (minimum 8 characters):');
+        if (!newPassword) return;
+
+        if (newPassword.length < 8) {
+            notification.showError('Invalid Password', 'Password must be at least 8 characters long');
+            return;
+        }
+
+        try {
+            const { data: result, error } = await supabase.rpc('admin_reset_user_password', {
+                p_user_id: customer.tu_id,
+                p_new_password: newPassword
+            });
+
+            if (error) throw error;
+            if (!result?.success) throw new Error(result?.error || 'Failed to reset password');
+
+            notification.showSuccess(
+                'Password Reset',
+                `Password reset successfully for ${customer.tbl_user_profiles?.tup_first_name || customer.tu_email}`
+            );
+
+            alert(`New password: ${newPassword}\n\nPlease share this with the user securely.`);
+        } catch (error: any) {
+            console.error('Failed to reset password:', error);
+            notification.showError('Reset Failed', error?.message || 'Failed to reset password');
+        }
+    };
+
+    const handleLoginAsUser = async (customer: Customer) => {
+        const confirmed = window.confirm(
+            `Login as ${customer.tbl_user_profiles?.tup_first_name || customer.tu_email}?\n\nThis will log you out of the admin panel and log you in as this user.`
+        );
+
+        if (!confirmed) return;
+
+        try {
+            const { data: result, error } = await supabase.rpc('admin_get_user_auth_info', {
+                p_user_id: customer.tu_id
+            });
+
+            if (error) throw error;
+            if (!result?.success) throw new Error(result?.error || 'Failed to get user info');
+
+            const userData = result.user_data;
+
+            notification.showInfo(
+                'Impersonation Notice',
+                'This feature requires the user password. Please reset the password first, then login as the user from the frontend.'
+            );
+
+            const resetPassword = window.confirm('Would you like to reset this user\'s password now?');
+            if (resetPassword) {
+                await handleResetPassword(customer);
+            }
+        } catch (error: any) {
+            console.error('Failed to get user info:', error);
+            notification.showError('Failed', error?.message || 'Failed to login as user');
         }
     };
 
@@ -438,6 +505,20 @@ const CustomerManagement: React.FC = () => {
                                             title="View Details"
                                         >
                                             <Eye className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleResetPassword(customer)}
+                                            className="text-orange-600 hover:text-orange-800 p-1 rounded hover:bg-orange-50"
+                                            title="Reset Password"
+                                        >
+                                            <Key className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleLoginAsUser(customer)}
+                                            className="text-purple-600 hover:text-purple-800 p-1 rounded hover:bg-purple-50"
+                                            title="Login As User"
+                                        >
+                                            <LogIn className="h-4 w-4" />
                                         </button>
                                         <button
                                             onClick={() => handleToggleStatus(customer, customer.tu_is_active)}

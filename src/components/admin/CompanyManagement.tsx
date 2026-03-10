@@ -18,6 +18,8 @@ import {
   Calendar,
   ArrowLeft,
   Save,
+  Key,
+  LogIn,
   X,
   AlertTriangle,
   User,
@@ -185,6 +187,72 @@ const CompanyManagement: React.FC = () => {
       loadCompanies();
     } catch (error: any) {
       notification.showError('Deletion Failed', 'Failed to delete company');
+    }
+  };
+
+  const handleResetCompanyPassword = async (company: Company) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to reset the password for ${company.tc_company_name}?\n\nA new password will be generated.`
+    );
+
+    if (!confirmed) return;
+
+    const newPassword = prompt('Enter new password for this company (minimum 8 characters):');
+    if (!newPassword) return;
+
+    if (newPassword.length < 8) {
+      notification.showError('Invalid Password', 'Password must be at least 8 characters long');
+      return;
+    }
+
+    try {
+      const { data: result, error } = await supabase.rpc('admin_reset_user_password', {
+        p_user_id: company.tc_user_id,
+        p_new_password: newPassword
+      });
+
+      if (error) throw error;
+      if (!result?.success) throw new Error(result?.error || 'Failed to reset password');
+
+      notification.showSuccess(
+        'Password Reset',
+        `Password reset successfully for ${company.tc_company_name}`
+      );
+
+      alert(`New password: ${newPassword}\n\nPlease share this with the company securely.`);
+    } catch (error: any) {
+      console.error('Failed to reset password:', error);
+      notification.showError('Reset Failed', error?.message || 'Failed to reset password');
+    }
+  };
+
+  const handleLoginAsCompany = async (company: Company) => {
+    const confirmed = window.confirm(
+      `Login as ${company.tc_company_name}?\n\nThis will log you out of the admin panel and log you in as this company.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const { data: result, error } = await supabase.rpc('admin_get_user_auth_info', {
+        p_user_id: company.tc_user_id
+      });
+
+      if (error) throw error;
+      if (!result?.success) throw new Error(result?.error || 'Failed to get company info');
+
+      notification.showInfo(
+        'Impersonation Notice',
+        'This feature requires the company password. Please reset the password first, then login as the company from the frontend.'
+      );
+
+      const resetPassword = window.confirm('Would you like to reset this company\'s password now?');
+      if (resetPassword) {
+        await handleResetCompanyPassword(company);
+      }
+    } catch (error: any) {
+      console.error('Failed to get company info:', error);
+      notification.showError('Failed', error?.message || 'Failed to login as company');
     }
   };
 
@@ -506,6 +574,20 @@ const CompanyManagement: React.FC = () => {
                                 </button>
                               </>
                           )}
+                          <button
+                              onClick={() => handleResetCompanyPassword(company)}
+                              className="text-orange-600 hover:text-orange-800 p-1 rounded hover:bg-orange-50"
+                              title="Reset Password"
+                          >
+                            <Key className="h-4 w-4" />
+                          </button>
+                          <button
+                              onClick={() => handleLoginAsCompany(company)}
+                              className="text-purple-600 hover:text-purple-800 p-1 rounded hover:bg-purple-50"
+                              title="Login As Company"
+                          >
+                            <LogIn className="h-4 w-4" />
+                          </button>
                           <button
                               onClick={() => handleDeleteCompany(company.tc_id)}
                               className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50"

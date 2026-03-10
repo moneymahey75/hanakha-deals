@@ -57,14 +57,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('🔍 Initializing authentication...');
 
+        // Check if there's an admin session active - if so, don't initialize user session
+        const adminSessionToken = sessionStorage.getItem('admin_session_token');
+        if (adminSessionToken && adminSessionToken !== 'null' && adminSessionToken !== 'undefined') {
+          console.log('⚠️ Admin session detected, skipping user session initialization');
+          setUser(null);
+          setLoading(false);
+          setIsInitialized(true);
+          return;
+        }
+
         // First, check if there's an existing Supabase session
         const { data: { session: existingSession } } = await supabase.auth.getSession();
 
         if (existingSession?.user) {
           console.log('✅ Found existing Supabase session:', existingSession.user.id);
-          // Save to sessionStorage if not already saved
-          sessionManager.saveSession(existingSession);
-          await fetchUserData(existingSession.user.id);
+          // Verify this is not an admin user
+          const { data: adminCheck } = await supabase
+            .from('tbl_admin_users')
+            .select('tau_id')
+            .eq('tau_auth_uid', existingSession.user.id)
+            .maybeSingle();
+
+          if (adminCheck) {
+            console.log('⚠️ Session belongs to admin user, clearing for frontend');
+            await supabase.auth.signOut();
+            setUser(null);
+          } else {
+            // Save to sessionStorage if not already saved
+            sessionManager.saveSession(existingSession);
+            await fetchUserData(existingSession.user.id);
+          }
         } else {
           // Try to restore from sessionStorage
           console.log('🔍 Checking sessionStorage for saved session...');
