@@ -55,8 +55,8 @@ BEGIN
   -- Update password in auth.users using admin privileges
   -- Note: This updates the Supabase auth password
   UPDATE auth.users
-  SET 
-    encrypted_password = crypt(p_new_password, gen_salt('bf')),
+  SET
+    encrypted_password = extensions.crypt(p_new_password, extensions.gen_salt('bf')),
     updated_at = now()
   WHERE id = v_auth_id;
   

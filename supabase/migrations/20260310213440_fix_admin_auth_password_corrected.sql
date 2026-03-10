@@ -1,9 +1,10 @@
 /*
-  # Fix Admin Authentication Password
+  # Fix Admin Authentication Password (Corrected)
   
   1. Purpose
     - Updates the admin user's password in auth.users
     - Ensures password matches "Admin@123456"
+    - Uses proper schema-qualified pgcrypto functions
     
   2. Security
     - Uses SECURITY DEFINER to bypass RLS
@@ -24,7 +25,7 @@ BEGIN
 
   IF v_user_id IS NOT NULL THEN
     -- Update password using Supabase's auth schema
-    -- Note: Direct password update using crypt function
+    -- Note: Direct password update using crypt function with proper schema
     UPDATE auth.users
     SET
       encrypted_password = extensions.crypt('Admin@123456', extensions.gen_salt('bf')),
