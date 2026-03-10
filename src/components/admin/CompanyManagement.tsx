@@ -108,7 +108,7 @@ const CompanyManagement: React.FC = () => {
               .from('tbl_users')
               .select('tu_email, tu_is_active')
               .eq('tu_id', company.tc_user_id)
-              .single();
+              .maybeSingle();
 
             return {
               ...company,
