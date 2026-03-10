@@ -203,42 +203,41 @@ const CompanyManagement: React.FC = () => {
     e.preventDefault();
     try {
       console.log('🏢 Creating company account...');
-      
-      // Create user account via Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+
+      // ✅ Use admin API to create user WITHOUT affecting current session
+      const { data: adminAuthData, error: adminAuthError } = await supabase.auth.admin.createUser({
         email: newCompany.user_email,
         password: newCompany.password,
-        options: {
-          emailRedirectTo: undefined
-        }
+        email_confirm: true  // skip email confirmation
       });
 
-      if (authError) {
-        console.error('Auth error:', authError);
-        throw new Error(`Authentication error: ${authError.message}`);
+      if (adminAuthError) {
+        console.error('Auth error:', adminAuthError);
+        throw new Error(`Authentication error: ${adminAuthError.message}`);
       }
 
-      if (!authData.user) {
-        throw new Error('Failed to create user account - no user data returned');
+      if (!adminAuthData.user) {
+        throw new Error('Failed to create user account');
       }
 
-      console.log('✅ User account created:', authData.user.id);
+      console.log('✅ User account created:', adminAuthData.user.id);
 
       // Create user record in tbl_users
       const { error: userError } = await supabase
-        .from('tbl_users')
-        .insert({
-          tu_id: authData.user.id,
-          tu_email: newCompany.user_email,
-          tu_user_type: 'company',
-          tu_is_verified: true,
-          tu_email_verified: true,
-          tu_mobile_verified: true,
-          tu_is_active: true
-        });
+          .from('tbl_users')
+          .insert({
+            tu_id: adminAuthData.user.id,
+            tu_email: newCompany.user_email,
+            tu_user_type: 'company',
+            tu_is_verified: true,
+            tu_email_verified: true,
+            tu_mobile_verified: true,
+            tu_is_active: true
+          });
 
       if (userError) {
-        console.error('User record error:', userError);
+        // Rollback: delete the auth user if tbl_users insert fails
+        await supabase.auth.admin.deleteUser(adminAuthData.user.id);
         throw new Error(`Failed to create user record: ${userError.message}`);
       }
 
@@ -246,23 +245,24 @@ const CompanyManagement: React.FC = () => {
 
       // Create company record
       const { error: companyError } = await supabase
-        .from('tbl_companies')
-        .insert({
-          tc_user_id: authData.user.id,
-          tc_company_name: newCompany.company_name,
-          tc_brand_name: newCompany.brand_name || null,
-          tc_business_type: newCompany.business_type || null,
-          tc_business_category: newCompany.business_category || null,
-          tc_registration_number: newCompany.registration_number,
-          tc_gstin: newCompany.gstin,
-          tc_website_url: newCompany.website_url || null,
-          tc_official_email: newCompany.official_email,
-          tc_affiliate_code: newCompany.affiliate_code || null,
-          tc_verification_status: newCompany.verification_status
-        });
+          .from('tbl_companies')
+          .insert({
+            tc_user_id: adminAuthData.user.id,
+            tc_company_name: newCompany.company_name,
+            tc_brand_name: newCompany.brand_name || null,
+            tc_business_type: newCompany.business_type || null,
+            tc_business_category: newCompany.business_category || null,
+            tc_registration_number: newCompany.registration_number,
+            tc_gstin: newCompany.gstin,
+            tc_website_url: newCompany.website_url || null,
+            tc_official_email: newCompany.official_email,
+            tc_affiliate_code: newCompany.affiliate_code || null,
+            tc_verification_status: newCompany.verification_status
+          });
 
       if (companyError) {
-        console.error('Company record error:', companyError);
+        // Rollback both if company insert fails
+        await supabase.auth.admin.deleteUser(adminAuthData.user.id);
         throw new Error(`Failed to create company record: ${companyError.message}`);
       }
 
