@@ -756,11 +756,12 @@ const CustomerRegister: React.FC = () => {
               mobileRequired: settings.mobileVerificationRequired,
               eitherRequired: settings.eitherVerificationRequired
             },
-            fromRegistration: true
+            fromRegistration: true,
+            returnTo: '/registration-payment'
           }
         });
       } else {
-        navigate('/subscription-plans');
+        navigate('/registration-payment');
       }
     } catch (err) {
       // Error handling is done by notification system in AuthContext

@@ -12,6 +12,7 @@ import Footer from './components/layout/Footer';
 import Home from './pages/Home';
 import CustomerLogin from './pages/auth/CustomerLogin';
 import CustomerRegister from './pages/auth/CustomerRegister';
+import RegistrationPayment from './pages/auth/RegistrationPayment';
 import CompanyLogin from './pages/auth/CompanyLogin';
 import CompanyRegister from './pages/auth/CompanyRegister';
 import CustomerDashboard from './pages/dashboard/CustomerDashboard';
@@ -88,6 +89,11 @@ function App() {
                             {/* Customer Routes */}
                             <Route path="/customer/login" element={<CustomerLogin />} />
                             <Route path="/customer/register" element={<CustomerRegister />} />
+                            <Route path="/registration-payment" element={
+                              <ProtectedRoute userType="customer">
+                                <RegistrationPayment />
+                              </ProtectedRoute>
+                            } />
                             <Route path="/customer/dashboard" element={
                               <ProtectedRoute userType="customer">
                                 <CustomerDashboard />

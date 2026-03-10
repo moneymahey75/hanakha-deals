@@ -38,6 +38,7 @@ const SubscriptionPlans: React.FC = () => {
         .from('tbl_subscription_plans')
         .select('*')
         .eq('tsp_is_active', true)
+        .eq('tsp_type', 'upgrade')
         .order('tsp_price', { ascending: true });
 
       if (error) {

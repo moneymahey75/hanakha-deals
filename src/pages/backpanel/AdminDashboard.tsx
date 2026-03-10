@@ -6,6 +6,7 @@ import GeneralSettings from '../../components/admin/GeneralSettings';
 import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
 import PaymentSettings from '../../components/admin/PaymentSettings';
+import PendingPayments from '../../components/admin/PendingPayments';
 import AdminManagement from '../../components/admin/AdminManagement';
 import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
 import CompanyManagement from '../../components/admin/CompanyManagement';
@@ -474,10 +475,7 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {activeTab === 'payments' && hasPermission('payments', 'read') && (
-                <div className="bg-white rounded-xl shadow-sm p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Management</h3>
-                  <p className="text-gray-600">Payment management interface will be displayed here.</p>
-                </div>
+                <PendingPayments />
             )}
 
             {activeTab === 'admins' && hasPermission('admins', 'read') && (
