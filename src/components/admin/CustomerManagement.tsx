@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
+import { useAuth } from '../../contexts/AuthContext';
 import {
     Users, Search, Eye, CreditCard as Edit, UserCheck, UserX, Mail, Phone,
     Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle,
@@ -112,6 +113,7 @@ const CustomerManagement: React.FC = () => {
     const [totalCount, setTotalCount] = useState(0);
 
     const notification = useNotification();
+    const { impersonateCustomer } = useAuth();
 
     const loadCustomers = async () => {
         try {
@@ -251,34 +253,20 @@ const CustomerManagement: React.FC = () => {
     };
 
     const handleLoginAsUser = async (customer: Customer) => {
+        const customerName = customer.tbl_user_profiles?.tup_first_name
+            ? `${customer.tbl_user_profiles.tup_first_name} ${customer.tbl_user_profiles.tup_last_name || ''}`
+            : customer.tu_email;
+
         const confirmed = window.confirm(
-            `Login as ${customer.tbl_user_profiles?.tup_first_name || customer.tu_email}?\n\nThis will log you out of the admin panel and log you in as this user.`
+            `Login as ${customerName}?\n\nThis will open the customer's account in a new tab.`
         );
 
         if (!confirmed) return;
 
         try {
-            const { data: result, error } = await supabase.rpc('admin_get_user_auth_info', {
-                p_user_id: customer.tu_id
-            });
-
-            if (error) throw error;
-            if (!result?.success) throw new Error(result?.error || 'Failed to get user info');
-
-            const userData = result.user_data;
-
-            notification.showInfo(
-                'Impersonation Notice',
-                'This feature requires the user password. Please reset the password first, then login as the user from the frontend.'
-            );
-
-            const resetPassword = window.confirm('Would you like to reset this user\'s password now?');
-            if (resetPassword) {
-                await handleResetPassword(customer);
-            }
+            await impersonateCustomer(customer.tu_id);
         } catch (error: any) {
-            console.error('Failed to get user info:', error);
-            notification.showError('Failed', error?.message || 'Failed to login as user');
+            console.error('Failed to impersonate customer:', error);
         }
     };
 

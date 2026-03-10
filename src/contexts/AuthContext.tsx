@@ -28,6 +28,7 @@ interface AuthContextType {
   sendOTPToUser: (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => Promise<any>;
   fetchUserData: (userId: string) => Promise<void>;
   checkVerificationStatus: (userId: string) => Promise<{ needsVerification: boolean; settings: any }>;
+  impersonateCustomer: (customerId: string) => Promise<void>;
   loading: boolean;
 }
 
@@ -726,6 +727,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const impersonateCustomer = async (customerId: string) => {
+    try {
+      console.log('🎭 Starting customer impersonation for:', customerId);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-impersonate`;
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ customerId }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Impersonation failed');
+      }
+
+      console.log('✅ Impersonation authorized, opening customer session in new tab');
+
+      if (result.signin_url) {
+        window.open(result.signin_url, '_blank');
+        notification.showSuccess('Impersonation Started', `Opening ${result.customer_email}'s account in new tab`);
+      } else {
+        throw new Error('No sign-in URL received');
+      }
+    } catch (error: any) {
+      console.error('❌ Impersonation failed:', error);
+      notification.showError('Impersonation Failed', error?.message || 'Failed to impersonate customer');
+      throw error;
+    }
+  };
+
   const value = {
     user,
     login,
@@ -737,6 +779,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sendOTPToUser,
     fetchUserData,
     checkVerificationStatus,
+    impersonateCustomer,
     loading
   };
 
