@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
-import { Users, Search, Filter, Eye, CreditCard as Edit, Trash2, UserCheck, UserX, Mail, Phone, Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle, CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreHorizontal } from 'lucide-react';
+import {
+    Users, Search, Eye, CreditCard as Edit, UserCheck, UserX, Mail, Phone,
+    Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle,
+    CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft,
+    ChevronsRight, MoreHorizontal
+} from 'lucide-react';
 
 interface Customer {
     tu_id: string;
@@ -101,21 +106,18 @@ const CustomerManagement: React.FC = () => {
     const [editMode, setEditMode] = useState(false);
     const [activeTab, setActiveTab] = useState('profile');
 
-    // Enhanced Pagination state
+    // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [totalCount, setTotalCount] = useState(0);
 
     const notification = useNotification();
 
-    // Load customers with pagination
     const loadCustomers = async () => {
         try {
             setLoading(true);
             setListLoading(true);
             setError(null);
-
-            console.log('🔍 Loading customers from database...');
 
             const offset = (currentPage - 1) * itemsPerPage;
 
@@ -127,16 +129,10 @@ const CustomerManagement: React.FC = () => {
                 p_limit: itemsPerPage
             });
 
-            if (error) {
-                console.error('❌ Failed to load customers:', error);
-                throw error;
-            }
-
-            console.log('✅ Customers loaded:', data);
+            if (error) throw error;
 
             if (data && data.length > 0) {
-                const totalCount = data[0]?.total_count || 0;
-
+                const total = data[0]?.total_count || 0;
                 const formattedCustomers = data.map((row: any) => ({
                     tu_id: row.tu_id,
                     tu_email: row.tu_email,
@@ -146,19 +142,16 @@ const CustomerManagement: React.FC = () => {
                     tu_mobile_verified: row.tu_mobile_verified,
                     tu_is_active: row.tu_is_active,
                     tu_created_at: row.tu_created_at,
-                    tu_updated_at: row.tu_updated_at,
                     tbl_user_profiles: row.profile_data
                 }));
-
                 setCustomers(formattedCustomers);
-                setTotalCount(totalCount);
+                setTotalCount(total);
             } else {
                 setCustomers([]);
                 setTotalCount(0);
             }
-
         } catch (error) {
-            console.error('❌ Failed to load customers:', error);
+            console.error('Failed to load customers:', error);
             setError('Failed to load customers. Please try again.');
             notification.showError('Load Failed', 'Failed to load customer data from database');
         } finally {
@@ -167,12 +160,10 @@ const CustomerManagement: React.FC = () => {
         }
     };
 
-    // Reload when filters or pagination change
     useEffect(() => {
         loadCustomers();
     }, [searchTerm, statusFilter, verificationFilter, currentPage, itemsPerPage]);
 
-    // Reset to first page when filters change
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, statusFilter, verificationFilter]);
@@ -184,19 +175,19 @@ const CustomerManagement: React.FC = () => {
         setEditMode(false);
     };
 
+    // ✅ When customer is updated from detail view, sync it back to the list
+    const handleCustomerUpdated = (updatedCustomer: Customer) => {
+        setCustomers(prev =>
+            prev.map(c => c.tu_id === updatedCustomer.tu_id ? updatedCustomer : c)
+        );
+        setSelectedCustomer(updatedCustomer);
+    };
+
     const handleToggleStatus = async (customer: Customer, currentStatus: boolean) => {
         try {
-            // Debug: Check auth status
             const { data: authStatus } = await supabase.rpc('debug_auth_status');
-            console.log('🔍 Auth Status:', authStatus);
-
-            if (!authStatus?.is_authenticated) {
-                throw new Error('Not authenticated. Please log out and log back in.');
-            }
-
-            if (!authStatus?.admin_exists) {
-                throw new Error('Admin account not properly linked. Please contact support.');
-            }
+            if (!authStatus?.is_authenticated) throw new Error('Not authenticated. Please log out and log back in.');
+            if (!authStatus?.admin_exists) throw new Error('Admin account not properly linked. Please contact support.');
 
             const { data: result, error } = await supabase.rpc('admin_update_customer_user', {
                 p_user_id: customer.tu_id,
@@ -207,80 +198,42 @@ const CustomerManagement: React.FC = () => {
                 p_is_active: !currentStatus
             });
 
-            if (error) {
-                console.error('RPC Error:', error);
-                throw error;
-            }
+            if (error) throw error;
+            if (!result?.success) throw new Error(result?.error || 'Failed to update status');
 
-            if (!result?.success) {
-                console.error('RPC returned error:', result);
-                throw new Error(result?.error || 'Failed to update status');
-            }
+            // ✅ Immediately update the customer in the list
+            const updatedCustomer = { ...customer, tu_is_active: !currentStatus };
+            setCustomers(prev => prev.map(c => c.tu_id === customer.tu_id ? updatedCustomer : c));
 
             notification.showSuccess(
                 'Status Updated',
                 `Customer ${customer.tbl_user_profiles?.tup_first_name || 'account'} has been ${!currentStatus ? 'activated' : 'deactivated'}`
             );
-
-            loadCustomers();
         } catch (error: any) {
             console.error('Failed to update customer status:', error);
             notification.showError('Update Failed', error?.message || 'Failed to update customer status');
         }
     };
 
-    // Pagination logic
     const totalPages = Math.ceil(totalCount / itemsPerPage);
 
-    // Improved pagination with limited page numbers
     const getPageNumbers = () => {
-        const pageNumbers = [];
+        const pageNumbers: (number | string)[] = [];
         const maxVisiblePages = 5;
 
         if (totalPages <= maxVisiblePages) {
-            // Show all pages if total pages is less than max visible
-            for (let i = 1; i <= totalPages; i++) {
-                pageNumbers.push(i);
-            }
+            for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
         } else {
-            // Always include first page
             pageNumbers.push(1);
-
-            // Calculate start and end of visible page range
             let startPage = Math.max(2, currentPage - 1);
             let endPage = Math.min(totalPages - 1, currentPage + 1);
-
-            // Adjust if we're near the beginning
-            if (currentPage <= 3) {
-                endPage = 4;
-            }
-
-            // Adjust if we're near the end
-            if (currentPage >= totalPages - 2) {
-                startPage = totalPages - 3;
-            }
-
-            // Add ellipsis after first page if needed
-            if (startPage > 2) {
-                pageNumbers.push('...');
-            }
-
-            // Add middle pages
-            for (let i = startPage; i <= endPage; i++) {
-                pageNumbers.push(i);
-            }
-
-            // Add ellipsis before last page if needed
-            if (endPage < totalPages - 1) {
-                pageNumbers.push('...');
-            }
-
-            // Always include last page
-            if (totalPages > 1) {
-                pageNumbers.push(totalPages);
-            }
+            if (currentPage <= 3) endPage = 4;
+            if (currentPage >= totalPages - 2) startPage = totalPages - 3;
+            if (startPage > 2) pageNumbers.push('...');
+            for (let i = startPage; i <= endPage; i++) pageNumbers.push(i);
+            if (endPage < totalPages - 1) pageNumbers.push('...');
+            if (totalPages > 1) pageNumbers.push(totalPages);
         }
-
         return pageNumbers;
     };
 
@@ -306,7 +259,7 @@ const CustomerManagement: React.FC = () => {
                     <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to Load Customers</h3>
                     <p className="text-gray-600 mb-4">{error}</p>
                     <button
-                        onClick={() => loadCustomers()}
+                        onClick={loadCustomers}
                         className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 mx-auto"
                     >
                         <Users className="h-4 w-4" />
@@ -326,7 +279,8 @@ const CustomerManagement: React.FC = () => {
                     setSelectedCustomer(null);
                     setEditMode(false);
                 }}
-                onUpdate={() => loadCustomers()}
+                onUpdate={loadCustomers}
+                onCustomerUpdated={handleCustomerUpdated}
                 editMode={editMode}
                 setEditMode={setEditMode}
                 activeTab={activeTab}
@@ -349,17 +303,12 @@ const CustomerManagement: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
-                        <div className="text-sm text-gray-500">
-                            Total: {totalCount} customers
-                        </div>
+                        <div className="text-sm text-gray-500">Total: {totalCount} customers</div>
                         <div className="flex items-center space-x-2">
                             <label className="text-sm text-gray-600">Show:</label>
                             <select
                                 value={itemsPerPage}
-                                onChange={(e) => {
-                                    setItemsPerPage(Number(e.target.value));
-                                    setCurrentPage(1);
-                                }}
+                                onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                                 className="border border-gray-300 rounded-lg px-3 py-1 focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="5">5</option>
@@ -388,7 +337,6 @@ const CustomerManagement: React.FC = () => {
                             />
                         </div>
                     </div>
-
                     <div>
                         <select
                             value={statusFilter}
@@ -400,7 +348,6 @@ const CustomerManagement: React.FC = () => {
                             <option value="inactive">Inactive</option>
                         </select>
                     </div>
-
                     <div>
                         <select
                             value={verificationFilter}
@@ -420,135 +367,95 @@ const CustomerManagement: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Customer
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Contact
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Verification
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Joined
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Actions
-                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                     {listLoading ? (
                         <TableSkeleton rows={itemsPerPage} />
                     ) : (
-                        <>
-                            {customers.map((customer) => (
-                                <tr key={customer.tu_id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center">
-                                            <div className="flex-shrink-0 h-10 w-10">
-                                                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                                                        <span className="text-white font-medium text-sm">
-                                                            {customer.tbl_user_profiles?.tup_first_name?.charAt(0) || 'U'}
-                                                        </span>
-                                                </div>
-                                            </div>
-                                            <div className="ml-4">
-                                                <div className="text-sm font-medium text-gray-900">
-                                                    {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
-                                                </div>
-                                                <div className="text-sm text-gray-500">
-                                                    @{customer.tbl_user_profiles?.tup_username}
-                                                </div>
-                                                <div className="text-xs text-gray-400">
-                                                    {customer.tbl_user_profiles?.tup_sponsorship_number}
-                                                </div>
+                        customers.map((customer) => (
+                            <tr key={customer.tu_id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex items-center">
+                                        <div className="flex-shrink-0 h-10 w-10">
+                                            <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                                                    <span className="text-white font-medium text-sm">
+                                                        {customer.tbl_user_profiles?.tup_first_name?.charAt(0) || 'U'}
+                                                    </span>
                                             </div>
                                         </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-900">{customer.tu_email}</div>
-                                        <div className="text-sm text-gray-500">{customer.tbl_user_profiles?.tup_mobile}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex space-x-2">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                    customer.tu_email_verified
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                    <Mail className="h-3 w-3 mr-1" />
-                                                    {customer.tu_email_verified ? 'Email ✓' : 'Email ✗'}
-                                                </span>
-                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                customer.tu_mobile_verified
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-red-100 text-red-800'
-                                            }`}>
-                                                    <Phone className="h-3 w-3 mr-1" />
-                                                {customer.tu_mobile_verified ? 'Mobile ✓' : 'Mobile ✗'}
-                                                </span>
+                                        <div className="ml-4">
+                                            <div className="text-sm font-medium text-gray-900">
+                                                {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
+                                            </div>
+                                            <div className="text-sm text-gray-500">@{customer.tbl_user_profiles?.tup_username}</div>
+                                            <div className="text-xs text-gray-400">{customer.tbl_user_profiles?.tup_sponsorship_number}</div>
                                         </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                customer.tu_is_active
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-red-100 text-red-800'
-                                            }`}>
-                                                {customer.tu_is_active ? (
-                                                    <>
-                                                        <UserCheck className="h-3 w-3 mr-1" />
-                                                        Active
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <UserX className="h-3 w-3 mr-1" />
-                                                        Inactive
-                                                    </>
-                                                )}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm text-gray-900">{customer.tu_email}</div>
+                                    <div className="text-sm text-gray-500">{customer.tbl_user_profiles?.tup_mobile}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex space-x-2">
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${customer.tu_email_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                <Mail className="h-3 w-3 mr-1" />
+                                                {customer.tu_email_verified ? 'Email ✓' : 'Email ✗'}
                                             </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <div className="flex items-center">
-                                            <Calendar className="h-4 w-4 mr-1" />
-                                            {new Date(customer.tu_created_at).toLocaleDateString()}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                        <div className="flex space-x-2">
-                                            <button
-                                                onClick={() => handleViewCustomer(customer)}
-                                                className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
-                                                title="View Details"
-                                            >
-                                                <Eye className="h-4 w-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleToggleStatus(customer, customer.tu_is_active)}
-                                                className={`p-1 rounded ${
-                                                    customer.tu_is_active
-                                                        ? 'text-red-600 hover:text-red-800 hover:bg-red-50'
-                                                        : 'text-green-600 hover:text-green-800 hover:bg-green-50'
-                                                }`}
-                                                title={customer.tu_is_active ? 'Deactivate' : 'Activate'}
-                                            >
-                                                {customer.tu_is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </>
+                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${customer.tu_mobile_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                <Phone className="h-3 w-3 mr-1" />
+                                            {customer.tu_mobile_verified ? 'Mobile ✓' : 'Mobile ✗'}
+                                            </span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${customer.tu_is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                            {customer.tu_is_active ? (
+                                                <><UserCheck className="h-3 w-3 mr-1" />Active</>
+                                            ) : (
+                                                <><UserX className="h-3 w-3 mr-1" />Inactive</>
+                                            )}
+                                        </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <div className="flex items-center">
+                                        <Calendar className="h-4 w-4 mr-1" />
+                                        {new Date(customer.tu_created_at).toLocaleDateString()}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <div className="flex space-x-2">
+                                        <button
+                                            onClick={() => handleViewCustomer(customer)}
+                                            className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                                            title="View Details"
+                                        >
+                                            <Eye className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleToggleStatus(customer, customer.tu_is_active)}
+                                            className={`p-1 rounded ${customer.tu_is_active ? 'text-red-600 hover:text-red-800 hover:bg-red-50' : 'text-green-600 hover:text-green-800 hover:bg-green-50'}`}
+                                            title={customer.tu_is_active ? 'Deactivate' : 'Activate'}
+                                        >
+                                            {customer.tu_is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))
                     )}
                     </tbody>
                 </table>
             </div>
 
-            {/* Enhanced Pagination Controls */}
+            {/* Pagination */}
             {totalCount > 0 && (
                 <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                     <div className="text-sm text-gray-700">
@@ -556,70 +463,28 @@ const CustomerManagement: React.FC = () => {
                         <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalCount)}</span> of{' '}
                         <span className="font-medium">{totalCount}</span> customers
                     </div>
-
                     <div className="flex items-center space-x-1">
-                        <button
-                            onClick={() => setCurrentPage(1)}
-                            disabled={currentPage === 1}
-                            className={`px-3 py-1 rounded-md ${
-                                currentPage === 1
-                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                            title="First Page"
-                        >
+                        <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
+                                className={`px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
                             <ChevronsLeft className="h-4 w-4" />
                         </button>
-                        <button
-                            onClick={() => paginate(currentPage - 1)}
-                            disabled={currentPage === 1}
-                            className={`px-3 py-1 rounded-md ${
-                                currentPage === 1
-                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                        >
+                        <button onClick={() => paginate(currentPage - 1)} disabled={currentPage === 1}
+                                className={`px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
                             <ChevronLeft className="h-4 w-4" />
                         </button>
-
                         {getPageNumbers().map((page, index) => (
-                            <button
-                                key={index}
-                                onClick={() => paginate(page)}
-                                className={`px-3 py-1 rounded-md ${
-                                    page === currentPage
-                                        ? 'bg-blue-600 text-white'
-                                        : page === '...'
-                                            ? 'bg-transparent text-gray-500 cursor-default'
-                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                }`}
-                                disabled={page === '...'}
-                            >
+                            <button key={index} onClick={() => paginate(page)}
+                                    className={`px-3 py-1 rounded-md ${page === currentPage ? 'bg-blue-600 text-white' : page === '...' ? 'bg-transparent text-gray-500 cursor-default' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                    disabled={page === '...'}>
                                 {page === '...' ? <MoreHorizontal className="h-4 w-4" /> : page}
                             </button>
                         ))}
-
-                        <button
-                            onClick={() => paginate(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                            className={`px-3 py-1 rounded-md ${
-                                currentPage === totalPages
-                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                        >
+                        <button onClick={() => paginate(currentPage + 1)} disabled={currentPage === totalPages}
+                                className={`px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
                             <ChevronRight className="h-4 w-4" />
                         </button>
-                        <button
-                            onClick={() => setCurrentPage(totalPages)}
-                            disabled={currentPage === totalPages}
-                            className={`px-3 py-1 rounded-md ${
-                                currentPage === totalPages
-                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                            title="Last Page"
-                        >
+                        <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
+                                className={`px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
                             <ChevronsRight className="h-4 w-4" />
                         </button>
                     </div>
@@ -634,8 +499,7 @@ const CustomerManagement: React.FC = () => {
                     <p className="text-gray-600">
                         {searchTerm || statusFilter !== 'all' || verificationFilter !== 'all'
                             ? 'Try adjusting your search criteria'
-                            : 'No customers have registered yet'
-                        }
+                            : 'No customers have registered yet'}
                     </p>
                 </div>
             )}
@@ -643,16 +507,23 @@ const CustomerManagement: React.FC = () => {
     );
 };
 
-// Customer Details Component with Sub-sections
+// ─────────────────────────────────────────────
+// CustomerDetails Component
+// ─────────────────────────────────────────────
 const CustomerDetails: React.FC<{
     customer: Customer;
     onBack: () => void;
     onUpdate: () => void;
+    onCustomerUpdated: (customer: Customer) => void; // ✅ new prop
     editMode: boolean;
     setEditMode: (mode: boolean) => void;
     activeTab: string;
     setActiveTab: (tab: string) => void;
-}> = ({ customer, onBack, onUpdate, editMode, setEditMode, activeTab, setActiveTab }) => {
+}> = ({ customer: initialCustomer, onBack, onUpdate, onCustomerUpdated, editMode, setEditMode, activeTab, setActiveTab }) => {
+
+    // ✅ Local customer state — decoupled from parent prop
+    const [customer, setCustomer] = useState<Customer>(initialCustomer);
+
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(false);
     const [editData, setEditData] = useState({
@@ -680,18 +551,18 @@ const CustomerDetails: React.FC<{
             const { data: payments, error } = await supabase
                 .from('tbl_payments')
                 .select(`
-          tp_id,
-          tp_amount,
-          tp_currency,
-          tp_payment_method,
-          tp_payment_status,
-          tp_transaction_id,
-          tp_created_at,
-          tbl_subscription_plans (
-            tsp_name,
-            tsp_price
-          )
-        `)
+                    tp_id,
+                    tp_amount,
+                    tp_currency,
+                    tp_payment_method,
+                    tp_payment_status,
+                    tp_transaction_id,
+                    tp_created_at,
+                    tbl_subscription_plans (
+                        tsp_name,
+                        tsp_price
+                    )
+                `)
                 .eq('tp_user_id', customer.tu_id)
                 .order('tp_created_at', { ascending: false });
 
@@ -709,8 +580,6 @@ const CustomerDetails: React.FC<{
         if (!customer) return;
 
         try {
-            console.log('Edit Data:', editData);
-
             const { data: userResult, error: userError } = await supabase.rpc('admin_update_customer_user', {
                 p_user_id: customer.tu_id,
                 p_email: editData.email,
@@ -735,9 +604,38 @@ const CustomerDetails: React.FC<{
             if (profileError) throw profileError;
             if (!profileResult?.success) throw new Error(profileResult?.error || 'Failed to update profile');
 
-            notification.showSuccess('Customer Updated', 'Customer information has been updated successfully');
-            setEditMode(false);
+            // ✅ Build updated customer object immediately
+            const updatedCustomer: Customer = {
+                ...customer,
+                tu_email: editData.email,
+                tu_is_active: editData.is_active,
+                tu_email_verified: editData.email_verified,
+                tu_mobile_verified: editData.mobile_verified,
+                tu_is_verified: editData.email_verified || editData.mobile_verified,
+                tbl_user_profiles: customer.tbl_user_profiles
+                    ? {
+                        ...customer.tbl_user_profiles,
+                        tup_first_name: editData.first_name,
+                        tup_last_name: editData.last_name,
+                        tup_username: editData.username,
+                        tup_mobile: editData.mobile,
+                        tup_gender: editData.gender,
+                    }
+                    : null
+            };
+
+            // ✅ Update local state — detail view reflects changes instantly
+            setCustomer(updatedCustomer);
+
+            // ✅ Sync updated customer back to the parent list
+            onCustomerUpdated(updatedCustomer);
+
+            // ✅ Refresh list in background
             onUpdate();
+
+            setEditMode(false);
+            notification.showSuccess('Customer Updated', 'Customer information has been updated successfully');
+
         } catch (error) {
             console.error('Failed to update customer:', error);
             notification.showError('Update Failed', 'Failed to update customer information');
@@ -762,6 +660,7 @@ const CustomerDetails: React.FC<{
                             <span>Back to Customers</span>
                         </button>
                         <div>
+                            {/* ✅ Header name updates immediately after save */}
                             <h3 className="text-lg font-semibold text-gray-900">
                                 {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
                             </h3>
@@ -838,12 +737,9 @@ const CustomerDetails: React.FC<{
                                         <div>
                                             <label className="text-sm font-medium text-gray-500">First Name</label>
                                             {editMode ? (
-                                                <input
-                                                    type="text"
-                                                    value={editData.first_name}
-                                                    onChange={(e) => setEditData(prev => ({ ...prev, first_name: e.target.value }))}
-                                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                />
+                                                <input type="text" value={editData.first_name}
+                                                       onChange={(e) => setEditData(prev => ({ ...prev, first_name: e.target.value }))}
+                                                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                             ) : (
                                                 <p className="text-gray-900 mt-1">{customer.tbl_user_profiles?.tup_first_name || 'Not provided'}</p>
                                             )}
@@ -851,12 +747,9 @@ const CustomerDetails: React.FC<{
                                         <div>
                                             <label className="text-sm font-medium text-gray-500">Last Name</label>
                                             {editMode ? (
-                                                <input
-                                                    type="text"
-                                                    value={editData.last_name}
-                                                    onChange={(e) => setEditData(prev => ({ ...prev, last_name: e.target.value }))}
-                                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                />
+                                                <input type="text" value={editData.last_name}
+                                                       onChange={(e) => setEditData(prev => ({ ...prev, last_name: e.target.value }))}
+                                                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                             ) : (
                                                 <p className="text-gray-900 mt-1">{customer.tbl_user_profiles?.tup_last_name || 'Not provided'}</p>
                                             )}
@@ -865,12 +758,9 @@ const CustomerDetails: React.FC<{
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Username</label>
                                         {editMode ? (
-                                            <input
-                                                type="text"
-                                                value={editData.username}
-                                                onChange={(e) => setEditData(prev => ({ ...prev, username: e.target.value }))}
-                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            />
+                                            <input type="text" value={editData.username}
+                                                   onChange={(e) => setEditData(prev => ({ ...prev, username: e.target.value }))}
+                                                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                         ) : (
                                             <p className="text-gray-900 mt-1">@{customer.tbl_user_profiles?.tup_username || 'Not set'}</p>
                                         )}
@@ -878,12 +768,9 @@ const CustomerDetails: React.FC<{
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Email</label>
                                         {editMode ? (
-                                            <input
-                                                type="email"
-                                                value={editData.email}
-                                                onChange={(e) => setEditData(prev => ({ ...prev, email: e.target.value }))}
-                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            />
+                                            <input type="email" value={editData.email}
+                                                   onChange={(e) => setEditData(prev => ({ ...prev, email: e.target.value }))}
+                                                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                         ) : (
                                             <p className="text-gray-900 mt-1">{customer.tu_email}</p>
                                         )}
@@ -891,12 +778,9 @@ const CustomerDetails: React.FC<{
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Mobile</label>
                                         {editMode ? (
-                                            <input
-                                                type="tel"
-                                                value={editData.mobile}
-                                                onChange={(e) => setEditData(prev => ({ ...prev, mobile: e.target.value }))}
-                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            />
+                                            <input type="tel" value={editData.mobile}
+                                                   onChange={(e) => setEditData(prev => ({ ...prev, mobile: e.target.value }))}
+                                                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                         ) : (
                                             <p className="text-gray-900 mt-1">{customer.tbl_user_profiles?.tup_mobile || 'Not provided'}</p>
                                         )}
@@ -904,11 +788,9 @@ const CustomerDetails: React.FC<{
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Gender</label>
                                         {editMode ? (
-                                            <select
-                                                value={editData.gender}
-                                                onChange={(e) => setEditData(prev => ({ ...prev, gender: e.target.value }))}
-                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            >
+                                            <select value={editData.gender}
+                                                    onChange={(e) => setEditData(prev => ({ ...prev, gender: e.target.value }))}
+                                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                                 <option value="">Select gender</option>
                                                 <option value="male">Male</option>
                                                 <option value="female">Female</option>
@@ -941,30 +823,18 @@ const CustomerDetails: React.FC<{
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Account Status</label>
                                         {editMode ? (
-                                            <select
-                                                value={editData.is_active ? 'active' : 'inactive'}
-                                                onChange={(e) => setEditData(prev => ({ ...prev, is_active: e.target.value === 'active' }))}
-                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            >
+                                            <select value={editData.is_active ? 'active' : 'inactive'}
+                                                    onChange={(e) => setEditData(prev => ({ ...prev, is_active: e.target.value === 'active' }))}
+                                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                                 <option value="active">Active</option>
                                                 <option value="inactive">Inactive</option>
                                             </select>
                                         ) : (
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${
-                                                customer.tu_is_active
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-red-100 text-red-800'
-                                            }`}>
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${customer.tu_is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                                                 {customer.tu_is_active ? (
-                                                    <>
-                                                        <CheckCircle className="h-4 w-4 mr-1" />
-                                                        Active
-                                                    </>
+                                                    <><CheckCircle className="h-4 w-4 mr-1" />Active</>
                                                 ) : (
-                                                    <>
-                                                        <AlertCircle className="h-4 w-4 mr-1" />
-                                                        Inactive
-                                                    </>
+                                                    <><AlertCircle className="h-4 w-4 mr-1" />Inactive</>
                                                 )}
                                             </span>
                                         )}
@@ -976,12 +846,9 @@ const CustomerDetails: React.FC<{
                                                 <span className="text-sm">Email Verification</span>
                                                 {editMode ? (
                                                     <label className="relative inline-flex items-center cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={editData.email_verified}
-                                                            onChange={(e) => setEditData(prev => ({ ...prev, email_verified: e.target.checked }))}
-                                                            className="sr-only peer"
-                                                        />
+                                                        <input type="checkbox" checked={editData.email_verified}
+                                                               onChange={(e) => setEditData(prev => ({ ...prev, email_verified: e.target.checked }))}
+                                                               className="sr-only peer" />
                                                         <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                                     </label>
                                                 ) : (
@@ -992,12 +859,9 @@ const CustomerDetails: React.FC<{
                                                 <span className="text-sm">Mobile Verification</span>
                                                 {editMode ? (
                                                     <label className="relative inline-flex items-center cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={editData.mobile_verified}
-                                                            onChange={(e) => setEditData(prev => ({ ...prev, mobile_verified: e.target.checked }))}
-                                                            className="sr-only peer"
-                                                        />
+                                                        <input type="checkbox" checked={editData.mobile_verified}
+                                                               onChange={(e) => setEditData(prev => ({ ...prev, mobile_verified: e.target.checked }))}
+                                                               className="sr-only peer" />
                                                         <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                                     </label>
                                                 ) : (
@@ -1019,9 +883,7 @@ const CustomerDetails: React.FC<{
                                 <CreditCard className="h-5 w-5 mr-2" />
                                 Payment Transaction History
                             </h4>
-                            <div className="text-sm text-gray-500">
-                                Total: {transactions.length} transactions
-                            </div>
+                            <div className="text-sm text-gray-500">Total: {transactions.length} transactions</div>
                         </div>
 
                         {loading ? (
@@ -1060,16 +922,11 @@ const CustomerDetails: React.FC<{
                                                 </div>
                                             </div>
                                             <div className="text-right ml-6">
-                                                <p className="text-2xl font-bold text-gray-900">
-                                                    ${transaction.amount}
-                                                </p>
+                                                <p className="text-2xl font-bold text-gray-900">${transaction.amount}</p>
                                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                                                    transaction.payment_status === 'completed'
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : transaction.payment_status === 'pending'
-                                                            ? 'bg-yellow-100 text-yellow-800'
-                                                            : transaction.payment_status === 'failed'
-                                                                ? 'bg-red-100 text-red-800'
+                                                    transaction.payment_status === 'completed' ? 'bg-green-100 text-green-800'
+                                                        : transaction.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800'
+                                                            : transaction.payment_status === 'failed' ? 'bg-red-100 text-red-800'
                                                                 : 'bg-gray-100 text-gray-800'
                                                 }`}>
                                                     {transaction.payment_status === 'completed' && <CheckCircle className="h-3 w-3 mr-1" />}
