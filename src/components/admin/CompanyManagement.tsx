@@ -1,32 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../ui/NotificationProvider';
-import {
-  Building,
-  Search,
-  Filter,
-  Eye,
-  Edit,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Mail,
-  Phone,
-  Globe,
-  FileText,
-  Calendar,
-  ArrowLeft,
-  Save,
-  Key,
-  LogIn,
-  X,
-  AlertTriangle,
-  User,
-  Settings,
-  Plus,
-  RefreshCw
-} from 'lucide-react';
+import { Building, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Mail, Phone, Globe, FileText, Calendar, ArrowLeft, Save, Key, LogIn, X, AlertTriangle, User, Settings, Plus, RefreshCw } from 'lucide-react';
 
 interface Company {
   tc_id: string;
