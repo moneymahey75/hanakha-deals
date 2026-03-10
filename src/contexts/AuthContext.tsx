@@ -72,19 +72,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (existingSession?.user) {
           console.log('✅ Found existing Supabase session:', existingSession.user.id);
-          // Verify this is not an admin user
-          const { data: adminCheck } = await supabase
-            .from('tbl_admin_users')
-            .select('tau_id')
-            .eq('tau_auth_uid', existingSession.user.id)
-            .maybeSingle();
 
-          if (adminCheck) {
-            console.log('⚠️ Session belongs to admin user, clearing for frontend');
-            await supabase.auth.signOut();
-            setUser(null);
-          } else {
-            // Save to sessionStorage if not already saved
+          // Check if this session belongs to an admin (skip if adminSessionToken exists)
+          // This check only happens if there's a Supabase session but no admin session token
+          try {
+            const { data: adminCheck, error: adminCheckError } = await supabase
+              .from('tbl_admin_users')
+              .select('tau_id')
+              .eq('tau_auth_uid', existingSession.user.id)
+              .maybeSingle();
+
+            // If there's an error checking admin, just proceed (might be permission issue)
+            if (!adminCheckError && adminCheck) {
+              console.log('⚠️ Session belongs to admin user, clearing for frontend');
+              await supabase.auth.signOut();
+              setUser(null);
+            } else {
+              // Save to sessionStorage if not already saved
+              sessionManager.saveSession(existingSession);
+              await fetchUserData(existingSession.user.id);
+            }
+          } catch (error) {
+            // If admin check fails, assume it's a regular user and proceed
+            console.log('ℹ️ Admin check failed, assuming regular user:', error);
             sessionManager.saveSession(existingSession);
             await fetchUserData(existingSession.user.id);
           }

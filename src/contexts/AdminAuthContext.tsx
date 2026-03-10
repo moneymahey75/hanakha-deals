@@ -79,21 +79,39 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     // Check for existing admin session in sessionStorage
     const sessionToken = sessionStorage.getItem('admin_session_token');
+    console.log('🔍 AdminAuthContext initializing, token exists:', !!sessionToken);
+
     if (sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined') {
       // FIX: Add a small delay to allow sessionUtils to run its 'keep-alive' logic first
       // This prevents a potential race condition with session renewal on load.
-      setTimeout(() => validateSession(sessionToken), 50);
+      console.log('⏳ Waiting 50ms before validating admin session...');
+      setTimeout(() => {
+        console.log('▶️ Starting admin session validation...');
+        validateSession(sessionToken);
+      }, 50);
     } else {
+      console.log('ℹ️ No admin session token found, setting loading to false');
       setLoading(false);
     }
   }, []);
 
   const validateSession = async (sessionToken: string) => {
+    console.log('🔍 validateSession called with token:', sessionToken.substring(0, 30) + '...');
+
+    // Add a safety timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ Session validation timeout - forcing loading to false');
+      setLoading(false);
+      sessionStorage.removeItem('admin_session_token');
+    }, 10000); // 10 second timeout
+
     try {
       // Check if session token is valid format and not expired
       if (!sessionToken || sessionToken === 'null' || sessionToken === 'undefined') {
+        console.log('❌ Invalid session token format');
         sessionStorage.removeItem('admin_session_token');
         await supabase.auth.signOut();
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
@@ -102,32 +120,40 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const match = sessionToken.match(/^admin-session-(.+)-(\d+)$/);
 
       if (!match) {
+        console.log('❌ Session token does not match expected format');
         sessionStorage.removeItem('admin_session_token');
         await supabase.auth.signOut();
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
 
       const adminId = match[1];
       const timestamp = match[2];
+      console.log('✅ Extracted admin ID:', adminId);
 
       // Check if session is expired (8-hour expiration for better security)
       const sessionAge = Date.now() - parseInt(timestamp);
       const maxSessionAge = 8 * 60 * 60 * 1000; // 8 hours
 
       if (sessionAge > maxSessionAge) {
-        console.log('❌ Session expired');
+        console.log('❌ Session expired (age:', Math.floor(sessionAge / 1000 / 60), 'minutes)');
         sessionStorage.removeItem('admin_session_token');
         await supabase.auth.signOut();
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
 
+      console.log('✅ Session age valid:', Math.floor(sessionAge / 1000 / 60), 'minutes');
+
       // Check Supabase Auth session first
+      console.log('🔍 Checking Supabase Auth session...');
       const { data: { session: authSession } } = await supabase.auth.getSession();
       if (!authSession) {
         console.log('❌ No Supabase Auth session found, clearing admin session');
         sessionStorage.removeItem('admin_session_token');
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
@@ -135,17 +161,22 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.log('✅ Supabase Auth session active, auth.uid():', authSession.user.id);
 
       // Fetch admin user data using RPC
+      console.log('🔍 Fetching admin user data via RPC...');
       const { data: userData, error: userError } = await supabase
         .rpc('get_admin_by_id', {
           p_admin_id: adminId
         });
 
+      console.log('📊 RPC response:', { userData, userError });
+
       if (userError || !userData || userData.length === 0) {
         console.error('❌ Failed to fetch admin user:', userError);
+        clearTimeout(timeoutId);
         throw new Error('Session validation failed');
       }
 
       const user: any = userData[0];
+      console.log('✅ Admin user data fetched:', user.tau_email);
 
       if (!user) {
         throw new Error('User data could not be fetched.');
@@ -155,6 +186,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.log('❌ Admin account is inactive');
         sessionStorage.removeItem('admin_session_token');
         await supabase.auth.signOut();
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
@@ -164,6 +196,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.error('❌ Auth user mismatch');
         sessionStorage.removeItem('admin_session_token');
         await supabase.auth.signOut();
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
@@ -195,12 +228,15 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       console.log('✅ Session validated successfully for:', adminUser.email);
       setAdmin(adminUser);
+      clearTimeout(timeoutId);
     } catch (error) {
       sessionStorage.removeItem('admin_session_token');
       await supabase.auth.signOut();
-      console.error('Session validation failed:', error);
+      console.error('❌ Session validation failed:', error);
       setAdmin(null);
+      clearTimeout(timeoutId);
     } finally {
+      console.log('🏁 Setting loading to false');
       setLoading(false);
     }
   };
