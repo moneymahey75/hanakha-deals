@@ -731,9 +731,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🎭 Starting customer impersonation for:', customerId);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
+      const adminSessionToken = sessionStorage.getItem('admin_session_token');
+      if (!adminSessionToken) {
+        throw new Error('Admin session not found');
       }
 
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-impersonate`;
@@ -741,7 +741,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'X-Admin-Session': adminSessionToken,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ customerId }),
