@@ -158,8 +158,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
+    // Handle tab visibility changes to refresh session
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && isInitialized && user) {
+        console.log('👁️ Tab became visible, checking session validity');
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error('❌ Error checking session:', error);
+            return;
+          }
+
+          if (!session) {
+            console.warn('⚠️ No valid session found, logging out');
+            logout();
+          } else {
+            console.log('✅ Session is valid');
+            // Optionally refresh user data to ensure it's up to date
+            if (session.user.id === user.id) {
+              sessionManager.saveSession(session);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error handling visibility change:', error);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [isInitialized, user?.id]);
 

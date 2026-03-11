@@ -11,7 +11,7 @@ export interface SessionInfo {
 export const sessionUtils = {
   // Get detailed session information
   getSessionInfo: (): SessionInfo => {
-    const currentUserId = typeof window !== 'undefined' ? sessionStorage.getItem('current-user-id') : null;
+    const currentUserId = typeof window !== 'undefined' ? localStorage.getItem('current-user-id') : null;
     const session = sessionManager.getSession(currentUserId);
 
     if (!session) {
@@ -169,10 +169,10 @@ export const sessionUtils = {
       }
     });
 
-    // Handle storage events (for multi-tab synchronization)
+    // Handle storage events (for multi-tab synchronization with localStorage)
     window.addEventListener('storage', (e) => {
       try {
-        const currentUserId = sessionStorage.getItem('current-user-id');
+        const currentUserId = localStorage.getItem('current-user-id');
 
         // Handle user session cleared in another tab
         if (e.key === `supabase-session-${currentUserId}` && e.newValue === null) {
@@ -191,7 +191,7 @@ export const sessionUtils = {
           }
         }
 
-        // Handle admin session cleared in another tab
+        // Handle admin session cleared in another tab (admin uses sessionStorage)
         if (e.key === 'admin_session_token' && e.newValue === null) {
           if (sessionUtils.isInAdminArea() && !sessionUtils.isOnLoginPage()) {
             console.log('🔄 Admin session cleared in another tab, redirecting...');
@@ -201,7 +201,7 @@ export const sessionUtils = {
           }
         }
 
-        // Handle admin session changed in another tab
+        // Handle admin session changed in another tab (admin uses sessionStorage)
         if (e.key === 'admin_session_token' && e.newValue && e.newValue !== e.oldValue) {
           if (sessionUtils.isInAdminArea() && !sessionUtils.isOnLoginPage()) {
             console.log('🔄 Admin session changed in another tab, reloading...');
