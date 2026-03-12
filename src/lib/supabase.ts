@@ -751,12 +751,12 @@ export const getTreeStatisticsWithRedis = async (userId: string) => {
 export const checkSponsorshipNumberExists = async (sponsorshipNumber: string) => {
   try {
     const { data, error } = await supabase
-        .from('tbl_user_profiles')
-        .select('tup_sponsorship_number')
-        .eq('tup_sponsorship_number', sponsorshipNumber)
-        .single();
+        .rpc('get_sponsor_by_sponsorship_number', {
+          p_sponsorship_number: sponsorshipNumber
+        });
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+
+    if ((error && error.code !== 'PGRST116') || !data || data.length === 0) { // PGRST116 = no rows returned
       throw error;
     }
 
