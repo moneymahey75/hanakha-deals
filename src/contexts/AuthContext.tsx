@@ -58,10 +58,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('🔍 Initializing authentication...');
 
-        // Check if there's an admin session active - if so, don't initialize user session
-        const adminSessionToken = sessionStorage.getItem('admin_session_token');
-        if (adminSessionToken && adminSessionToken !== 'null' && adminSessionToken !== 'undefined') {
-          console.log('⚠️ Admin session detected, skipping user session initialization');
+        // Check session type - if it's admin, don't initialize customer session
+        const sessionType = sessionStorage.getItem('session_type');
+        if (sessionType === 'admin') {
+          console.log('⚠️ Admin session active, skipping customer session initialization');
           setUser(null);
           setLoading(false);
           setIsInitialized(true);
@@ -86,6 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // If there's an error checking admin, just proceed (might be permission issue)
             if (!adminCheckError && adminCheck) {
               console.log('⚠️ Session belongs to admin user, clearing for frontend');
+              sessionStorage.removeItem('session_type');
               await supabase.auth.signOut();
               setUser(null);
             } else {
@@ -314,6 +315,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasActiveSubscription: !!subscriptionData,
         subscriptionFound: !!subscriptionData
       });
+
+      // Mark session as customer type when user data is loaded
+      sessionStorage.setItem('session_type', 'customer');
       setUser(user);
     } catch (error) {
       console.error('❌ Error fetching user data:', error);
@@ -327,8 +331,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🔍 Attempting login for:', emailOrUsername);
 
-      // Clear any existing session data first
+      // Clear any existing session data first (including admin sessions)
       console.log('🧹 Clearing existing session data...');
+      sessionStorage.removeItem('session_type');
+      sessionStorage.removeItem('admin_session_token');
       sessionManager.removeSession();
       await supabase.auth.signOut();
       setUser(null);
@@ -371,6 +377,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Explicitly save the session
       console.log('💾 Saving session after login...');
       sessionManager.saveSession(authData.session);
+
+      // Mark session type as customer
+      sessionStorage.setItem('session_type', 'customer');
 
       // Log login activity
       try {
@@ -581,6 +590,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Clear all session data
       console.log('🧹 Clearing all session data during logout...');
       sessionManager.removeSession(currentUserId);
+      sessionStorage.removeItem('session_type');
 
       // Sign out from Supabase
       supabase.auth.signOut();

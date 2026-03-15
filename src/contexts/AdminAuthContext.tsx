@@ -77,9 +77,18 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const notification = useNotification();
 
   useEffect(() => {
-    // Check for existing admin session in sessionStorage
+    // Check session type first - only initialize if it's an admin session or no session type set
+    const sessionType = sessionStorage.getItem('session_type');
     const sessionToken = sessionStorage.getItem('admin_session_token');
-    console.log('🔍 AdminAuthContext initializing, token exists:', !!sessionToken);
+
+    console.log('🔍 AdminAuthContext initializing, session type:', sessionType, 'token exists:', !!sessionToken);
+
+    // If there's a customer session active, don't initialize admin
+    if (sessionType === 'customer') {
+      console.log('⚠️ Customer session detected, skipping admin initialization');
+      setLoading(false);
+      return;
+    }
 
     if (sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined') {
       // FIX: Add a small delay to allow sessionUtils to run its 'keep-alive' logic first
@@ -159,6 +168,27 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       console.log('✅ Supabase Auth session active, auth.uid():', authSession.user.id);
+
+      // Check if this session belongs to a customer user
+      try {
+        const { data: customerCheck } = await supabase
+          .from('tbl_users')
+          .select('tu_id')
+          .eq('tu_id', authSession.user.id)
+          .maybeSingle();
+
+        if (customerCheck) {
+          console.log('⚠️ Session belongs to customer user, clearing admin session');
+          sessionStorage.removeItem('admin_session_token');
+          sessionStorage.removeItem('session_type');
+          await supabase.auth.signOut();
+          clearTimeout(timeoutId);
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.log('ℹ️ Customer check failed, assuming admin user:', error);
+      }
 
       // Fetch admin user data using RPC
       console.log('🔍 Fetching admin user data via RPC...');
@@ -244,6 +274,13 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const login = async (email: string, password: string) => {
     try {
       console.log('🔍 Starting admin login process for:', email);
+
+      // Clear any existing customer session first
+      if (sessionStorage.getItem('session_type') === 'customer') {
+        console.log('🧹 Clearing existing customer session...');
+        sessionStorage.removeItem('session_type');
+        await supabase.auth.signOut();
+      }
 
       console.log('🔐 Fetching admin user data...');
 
@@ -335,6 +372,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // All checks passed — login success
       const sessionToken = `admin-session-${user.tau_id}-${Date.now()}`;
       sessionStorage.setItem('admin_session_token', sessionToken);
+      sessionStorage.setItem('session_type', 'admin');
 
       const adminUser: AdminUser = {
         id: user.tau_id,
@@ -368,6 +406,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const logout = async () => {
     sessionStorage.removeItem('admin_session_token');
+    sessionStorage.removeItem('session_type');
     setAdmin(null);
 
     // Sign out from Supabase Auth
