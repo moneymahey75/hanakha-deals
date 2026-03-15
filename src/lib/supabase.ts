@@ -747,7 +747,6 @@ export const getTreeStatisticsWithRedis = async (userId: string) => {
   }
 };
 
-// Function to check if a sponsorship number exists
 export const checkSponsorshipNumberExists = async (sponsorshipNumber: string) => {
   try {
     const { data, error } = await supabase
@@ -755,12 +754,12 @@ export const checkSponsorshipNumberExists = async (sponsorshipNumber: string) =>
           p_sponsorship_number: sponsorshipNumber
         });
 
-
-    if ((error && error.code !== 'PGRST116') || !data || data.length === 0) { // PGRST116 = no rows returned
-      throw error;
+    if (error) {
+      console.error('RPC Error checking sponsorship number:', error);
+      return false;
     }
 
-    return !!data;
+    return data && data.length > 0;
   } catch (error) {
     console.error('Failed to check sponsorship number:', error);
     return false;
