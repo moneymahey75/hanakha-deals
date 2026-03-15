@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, supabaseBatch, sessionManager, addUserToMLMTree } from '../lib/supabase';
-import { OTPService } from '../services/otpService';
+import { OTPService, verifyOTPAPI } from '../services/otpService';
 import { useNotification } from '../components/ui/NotificationProvider';
 
 interface User {

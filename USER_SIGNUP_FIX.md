@@ -255,12 +255,71 @@ All these functions are carefully designed to:
 - Only expose minimal, non-sensitive data
 - Follow security best practices
 
+## Second Issue: Duplicate Key Error on register_customer
+
+After fixing the wallet trigger, a second issue appeared:
+
+```
+Request URL: https://[supabase-url]/rest/v1/rpc/register_customer
+Status: 409 Conflict
+Response: {
+  "code": "23505",
+  "details": "Key (tu_id)=(8fe02943-f11a-4448-b4cc-89d1131962ee) already exists.",
+  "message": "duplicate key value violates unique constraint \"tbl_users_pkey\""
+}
+```
+
+### Root Cause
+
+The registration workflow has two steps that both try to create the user record:
+
+1. **Auth Signup:** Creates `auth.users` record → Trigger creates `tbl_users` record
+2. **Profile Creation:** Frontend calls `register_customer()` → Tries to INSERT into `tbl_users` again
+
+This causes a duplicate key violation.
+
+### Solution
+
+Updated both `register_customer()` and `register_company()` functions to use **UPSERT** (INSERT ... ON CONFLICT DO UPDATE):
+
+**File:** `supabase/migrations/fix_register_customer_duplicate_key.sql`
+
+```sql
+-- Upsert user record (may already exist from auth trigger)
+INSERT INTO tbl_users (tu_id, tu_email, tu_user_type)
+VALUES (p_user_id, p_email, 'customer')
+ON CONFLICT (tu_id) DO UPDATE
+SET
+  tu_email = EXCLUDED.tu_email,
+  tu_user_type = EXCLUDED.tu_user_type,
+  tu_updated_at = now();
+```
+
+### Additional Improvements
+
+1. **Changed Return Type:**
+   - Functions now return `jsonb` instead of `void`
+   - Returns success status and useful info (user_id, sponsor_id)
+   - Better for error handling and debugging
+
+2. **Sponsor Validation:**
+   - `register_customer` now validates sponsorship number
+   - Returns sponsor_id in response
+   - Updates both profile and user table with referrer_id
+
+3. **Idempotent Design:**
+   - Functions can now be called multiple times safely
+   - Existing records are updated, not rejected
+   - Makes registration more robust
+
 ## Summary
 
 The user signup error has been resolved by:
 
 - ✅ Adding SECURITY DEFINER to create_user_wallet() function
 - ✅ Allowing wallet creation during signup trigger
+- ✅ Making register_customer/register_company idempotent with UPSERT
+- ✅ Handling the trigger → RPC call workflow properly
 - ✅ Following security best practices (SET search_path)
 - ✅ Maintaining proper RLS policies for normal operations
 - ✅ Ensuring complete user creation process works smoothly
@@ -277,17 +336,63 @@ The user signup error has been resolved by:
    - This can cause unexpected failures during automated operations
    - Always test complete workflows including triggers
 
-3. **Security Considerations:**
+3. **Multi-Step Registration Workflows Need Idempotence:**
+   - Triggers and RPC functions may both try to create records
+   - Use UPSERT to make functions idempotent
+   - This prevents duplicate key errors and allows retries
+
+4. **Security Considerations:**
    - SECURITY DEFINER is safe when:
      - Function scope is limited
      - Input is validated or comes from trusted source
      - Function cannot be called directly by users
    - Always use SET search_path = public with SECURITY DEFINER
 
+## Complete Registration Flow
+
+### After All Fixes:
+
+```
+1. User submits registration form
+   ↓
+2. Frontend calls supabase.auth.signUp()
+   ↓
+3. Supabase Auth creates record in auth.users
+   ↓
+4. trigger_sync_auth_user fires
+   ↓
+5. sync_auth_user_to_tbl_users() executes (SECURITY DEFINER)
+   - Inserts into tbl_users (or updates if exists)
+   ↓
+6. trigger_create_user_wallet fires
+   ↓
+7. create_user_wallet() executes (SECURITY DEFINER) ✅
+   - Bypasses RLS
+   - Inserts default wallet into tbl_wallets
+   ↓
+8. Auth signup returns success
+   ↓
+9. Frontend calls register_customer RPC ✅
+   ↓
+10. register_customer() executes (SECURITY DEFINER)
+    - UPSERTS tbl_users (updates existing record) ✅
+    - INSERTS/UPDATES tbl_user_profiles
+    - Validates and sets sponsor relationship
+    - Returns success with user info
+   ↓
+11. User fully registered with:
+    - auth.users record ✅
+    - tbl_users record ✅
+    - tbl_user_profiles record ✅
+    - tbl_wallets record ✅
+    - MLM tree placement ✅
+```
+
 ## Files Changed
 
-1. `supabase/migrations/fix_user_wallet_creation_trigger.sql` - Migration fixing the trigger function
-2. `USER_SIGNUP_FIX.md` - This documentation
+1. `supabase/migrations/fix_user_wallet_creation_trigger.sql` - Fixed wallet creation trigger
+2. `supabase/migrations/fix_register_customer_duplicate_key.sql` - Fixed register functions
+3. `USER_SIGNUP_FIX.md` - This documentation
 
 ## Related Documentation
 
