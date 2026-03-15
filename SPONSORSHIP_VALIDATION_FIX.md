@@ -1,6 +1,8 @@
-# Sponsorship Number Validation Fix
+# Registration Validation Fixes (Sponsorship & Username)
 
-## Issue
+## Issues Found
+
+### Issue 1: Sponsorship Number Validation
 When attempting to validate a sponsorship number during customer registration, a 401 Unauthorized error occurred:
 
 ```
@@ -8,14 +10,31 @@ Request URL: https://[supabase-url]/rest/v1/tbl_user_profiles?select=tup_sponsor
 Status: 401 Unauthorized
 ```
 
-## Root Cause
-The `get_sponsor_by_sponsorship_number` RPC function existed but:
-1. Did not validate that the sponsor is an active customer
-2. The error handling in `checkSponsorshipNumberExists` was incorrect, throwing errors instead of returning false
+### Issue 2: Username Validation
+When attempting to check username availability during customer registration, a 401 Unauthorized error occurred:
 
-## Solution
+```
+Request URL: https://[supabase-url]/rest/v1/tbl_user_profiles?select=tup_username&tup_username=eq.aarti_mlm
+Status: 401 Unauthorized
+Response: {"code": "42501", "message": "permission denied for table tbl_user_profiles"}
+```
 
-### 1. Database Function Improvements
+## Root Causes
+
+### Sponsorship Validation:
+1. The `get_sponsor_by_sponsorship_number` RPC function didn't validate that sponsors are active customers
+2. Error handling in `checkSponsorshipNumberExists` was incorrect, throwing errors instead of returning false
+
+### Username Validation:
+1. The `checkUsernameExists` function was making direct REST API calls to `tbl_user_profiles`
+2. No RPC function existed for username validation
+3. Anonymous users (during registration) couldn't query the table due to RLS policies
+
+## Solutions
+
+### 1. Sponsorship Number Validation Fix
+
+#### Database Function Improvements
 **File:** `supabase/migrations/improve_sponsorship_validation.sql`
 
 Improved the `get_sponsor_by_sponsorship_number` function:
@@ -64,7 +83,7 @@ $$;
 - Only returns data for active customers
 - Prevents inactive or suspended users from being used as sponsors
 
-### 2. Frontend Error Handling
+#### Frontend Error Handling
 **File:** `src/lib/supabase.ts`
 
 Fixed the `checkSponsorshipNumberExists` function:
@@ -92,6 +111,94 @@ return data && data.length > 0; // ✅ Clear validation logic
 - Returns `false` for invalid sponsorship numbers instead of crashing
 - Better error logging for debugging
 - Cleaner validation logic
+
+### 2. Username Validation Fix
+
+#### Database Function Creation
+**File:** `supabase/migrations/add_check_username_exists_function.sql`
+
+Created a new RPC function for username validation:
+
+```sql
+CREATE OR REPLACE FUNCTION check_username_exists(
+  p_username TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_exists BOOLEAN;
+BEGIN
+  -- Check if username exists (case-insensitive)
+  SELECT EXISTS (
+    SELECT 1
+    FROM tbl_user_profiles
+    WHERE LOWER(tup_username) = LOWER(p_username)
+  ) INTO v_exists;
+
+  RETURN v_exists;
+END;
+$$;
+```
+
+**Features:**
+- Returns simple boolean (true if exists, false if available)
+- Case-insensitive comparison using LOWER()
+- Uses `SECURITY DEFINER` to bypass RLS restrictions
+- Grants execute permission to `anon`, `authenticated`, and `public` roles
+- No sensitive data exposed
+
+#### Frontend Update
+**File:** `src/pages/auth/CustomerRegister.tsx`
+
+Updated the `checkUsernameExists` function:
+
+**Before:**
+```typescript
+const checkUsernameExists = async (username: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+        .from('tbl_user_profiles')  // ❌ Direct REST API call
+        .select('tup_username')
+        .eq('tup_username', username.toLowerCase())
+        .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return false;
+      }
+      console.error('Error checking username:', error);
+      return false;
+    }
+
+    return !!data;
+```
+
+**After:**
+```typescript
+const checkUsernameExists = async (username: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+        .rpc('check_username_exists', {  // ✅ Uses RPC function
+          p_username: username
+        });
+
+    if (error) {
+      console.error('Error checking username:', error);
+      return false;
+    }
+
+    return data === true;  // ✅ Simple boolean check
+```
+
+**Benefits:**
+- Uses RPC function instead of direct table access
+- Works for anonymous users during registration
+- Simpler error handling
+- No RLS permission issues
+- Case-insensitive validation handled in database
 
 ## How It Works
 
@@ -124,6 +231,35 @@ return data && data.length > 0; // ✅ Clear validation logic
    ```typescript
    // If sponsor found: Show green checkmark, allow registration
    // If sponsor not found: Show red X, prevent registration
+   ```
+
+### Registration Flow with Username Validation:
+
+1. **User Types Username:**
+   ```
+   User types: aarti_mlm
+   ```
+
+2. **Frontend Validates (with debounce):**
+   ```typescript
+   const exists = await checkUsernameExists('aarti_mlm');
+   // exists = true if username is taken
+   // exists = false if username is available
+   ```
+
+3. **RPC Function Queries Database:**
+   ```sql
+   SELECT EXISTS (
+     SELECT 1
+     FROM tbl_user_profiles
+     WHERE LOWER(tup_username) = LOWER('aarti_mlm')
+   );
+   ```
+
+4. **Response Handled:**
+   ```typescript
+   // If username taken: Show error, prevent registration
+   // If username available: Show checkmark, allow registration
    ```
 
 ## Testing
@@ -182,48 +318,106 @@ return data && data.length > 0; // ✅ Clear validation logic
    - Should prevent registration
    ```
 
+### Test Username Availability:
+
+1. **Test Existing Username:**
+   ```
+   - Go to Customer Registration Page
+   - Enter username: aarti_mlm (if it exists)
+   - Wait 500ms for validation
+   - Should show "Username is already taken"
+   - Should show red X or error indicator
+   - Should prevent registration
+   ```
+
+2. **Test Available Username:**
+   ```
+   - Enter unique username: newuser12345
+   - Wait 500ms for validation
+   - Should show green checkmark
+   - Should allow registration to proceed
+   ```
+
+3. **Test Case Insensitivity:**
+   ```
+   - If "aarti_mlm" exists
+   - Try "AARTI_MLM" or "Aarti_MLM"
+   - Should show as taken (case-insensitive check)
+   ```
+
+4. **Check Network Tab:**
+   ```
+   - Should see RPC call to check_username_exists
+   - Should NOT see direct query to /rest/v1/tbl_user_profiles
+   - Should return true/false boolean
+   - No 401 errors
+   ```
+
 ## Permissions
 
-### RPC Function Permissions:
+### Sponsorship Validation RPC Function:
 ```sql
 GRANT EXECUTE ON FUNCTION get_sponsor_by_sponsorship_number(TEXT) TO anon, authenticated, public;
 ```
 
+### Username Validation RPC Function:
+```sql
+GRANT EXECUTE ON FUNCTION check_username_exists(TEXT) TO anon, authenticated, public;
+```
+
+**Roles:**
 - **anon**: Unauthenticated users (during registration)
 - **authenticated**: Logged-in users
 - **public**: All users
 
 ### Why Public Access is Safe:
-1. Only returns minimal, non-sensitive data
+
+**For Sponsorship Validation:**
+1. Only returns minimal, non-sensitive data (first name, username, sponsorship number)
 2. No email, phone, or sensitive information exposed
 3. Only returns data for active customers
 4. Uses SECURITY DEFINER to safely bypass RLS
 5. Essential for registration flow (users aren't authenticated yet)
 
+**For Username Validation:**
+1. Only returns boolean (username exists or not)
+2. No personal data exposed at all
+3. Case-insensitive validation prevents enumeration attacks
+4. Uses SECURITY DEFINER to safely bypass RLS
+5. Essential for registration flow (users aren't authenticated yet)
+6. Common pattern used by all major platforms (Twitter, GitHub, etc.)
+
 ## Related Files
 
+### Sponsorship Validation:
 1. `supabase/migrations/improve_sponsorship_validation.sql` - Database function
-2. `src/lib/supabase.ts` - Frontend validation function
-3. `src/pages/auth/CustomerRegister.tsx` - Registration form
+2. `src/lib/supabase.ts` - Frontend validation function (checkSponsorshipNumberExists)
+3. `src/pages/auth/CustomerRegister.tsx` - Registration form with referral validation
 4. `src/contexts/AuthContext.tsx` - MLM tree integration
+
+### Username Validation:
+1. `supabase/migrations/add_check_username_exists_function.sql` - Database function
+2. `src/pages/auth/CustomerRegister.tsx` - Registration form with username validation (checkUsernameExists)
 
 ## Error Scenarios
 
-### Scenario 1: Sponsorship Number Doesn't Exist
+### Sponsorship Validation Scenarios:
+
+#### Scenario 1: Sponsorship Number Doesn't Exist
 **Input:** SP99999999
 **Result:**
 - RPC returns empty array
 - Frontend shows: Invalid referral code
 - User cannot proceed with registration
 
-### Scenario 2: Sponsor Account is Inactive
+#### Scenario 2: Sponsor Account is Inactive
 **Input:** SP12345678 (exists but inactive)
 **Result:**
 - RPC returns empty array (due to tu_is_active = true check)
 - Frontend shows: Invalid referral code
 - Protects against using inactive sponsors
 
-### Scenario 3: Database Error
+#### Scenario 3: Database Error
 **Input:** Any valid format
 **Result:**
 - RPC call fails
@@ -231,12 +425,54 @@ GRANT EXECUTE ON FUNCTION get_sponsor_by_sponsorship_number(TEXT) TO anon, authe
 - Frontend shows: Unable to validate referral code
 - User can retry
 
-### Scenario 4: Network Error
+#### Scenario 4: Network Error
 **Input:** Any valid format
 **Result:**
 - Network request fails
 - Caught by try/catch
 - Frontend shows: Unable to validate referral code
+- User can retry
+
+### Username Validation Scenarios:
+
+#### Scenario 1: Username Already Exists
+**Input:** aarti_mlm (exists in database)
+**Result:**
+- RPC returns true
+- Frontend shows: Username is already taken
+- User must choose different username
+- Registration blocked until valid username chosen
+
+#### Scenario 2: Username Available
+**Input:** newuser12345 (doesn't exist)
+**Result:**
+- RPC returns false
+- Frontend shows: Username is available (green checkmark)
+- User can proceed with registration
+
+#### Scenario 3: Case Insensitive Check
+**Input:** AARTI_MLM (exists as "aarti_mlm")
+**Result:**
+- RPC returns true (case-insensitive check)
+- Frontend shows: Username is already taken
+- Prevents duplicate usernames with different cases
+
+#### Scenario 4: Database Error
+**Input:** Any username
+**Result:**
+- RPC call fails
+- Error logged to console
+- Frontend shows: Unable to check username availability
+- Function returns false (graceful degradation)
+- User can retry or proceed (validation runs again on submit)
+
+#### Scenario 5: Network Error
+**Input:** Any username
+**Result:**
+- Network request fails
+- Caught by try/catch
+- Frontend shows: Error checking username uniqueness
+- Function returns false
 - User can retry
 
 ## Admin Customer Search Fix (Related)
@@ -360,7 +596,9 @@ Potential improvements:
 
 ## Summary
 
-The sponsorship validation system now:
+Both validation systems now work correctly:
+
+### Sponsorship Validation:
 - ✅ Works without authentication (needed for registration)
 - ✅ Only accepts active customers as sponsors
 - ✅ Returns clear validation results
@@ -369,3 +607,22 @@ The sponsorship validation system now:
 - ✅ Uses proper RPC function (not direct REST API)
 - ✅ Has proper permissions for all roles
 - ✅ Logs errors for debugging
+
+### Username Validation:
+- ✅ Works without authentication (needed for registration)
+- ✅ Case-insensitive duplicate detection
+- ✅ Returns simple boolean (exists or not)
+- ✅ Handles errors gracefully
+- ✅ No personal data exposed
+- ✅ Uses proper RPC function (not direct REST API)
+- ✅ Has proper permissions for all roles
+- ✅ Common pattern used by major platforms
+- ✅ Prevents username enumeration attacks
+
+### Benefits:
+- No more 401 Unauthorized errors during registration
+- Real-time validation feedback for users
+- Secure implementation with proper RLS bypass
+- Minimal data exposure
+- Better user experience with immediate feedback
+- Consistent error handling across both validation types

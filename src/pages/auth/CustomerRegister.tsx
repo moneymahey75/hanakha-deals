@@ -61,26 +61,19 @@ interface PasswordValidation {
   };
 }
 
-// Function to check if username already exists in tbl_user_profiles
 const checkUsernameExists = async (username: string): Promise<boolean> => {
   try {
     const { data, error } = await supabase
-        .from('tbl_user_profiles')
-        .select('tup_username')
-        .eq('tup_username', username.toLowerCase())
-        .single();
+        .rpc('check_username_exists', {
+          p_username: username
+        });
 
     if (error) {
-      // If no record found, it's not a duplicate
-      if (error.code === 'PGRST116') {
-        return false;
-      }
       console.error('Error checking username:', error);
       return false;
     }
 
-    // If data exists, username is taken
-    return !!data;
+    return data === true;
   } catch (error) {
     console.error('Error checking username uniqueness:', error);
     return false;
