@@ -346,18 +346,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isEmail = emailOrUsername.includes('@');
       let actualEmail = emailOrUsername;
 
-      // If username provided, get the email from user_profiles
+      // If username provided, get the email from user_profiles using RPC
       if (!isEmail) {
         const { data: profileData, error: profileError } = await supabase
-            .from('tbl_user_profiles')
-            .select('tup_user_id, tbl_users!inner(tu_email)')
-            .eq('tup_username', emailOrUsername)
-            .single();
+            .rpc('get_email_by_username', { p_username: emailOrUsername });
 
-        if (profileError || !profileData) {
+        if (profileError || !profileData || profileData.length === 0) {
           throw new Error('Username not found');
         }
-        actualEmail = profileData.tbl_users.tu_email;
+        actualEmail = profileData[0].email;
       }
 
       // Authenticate with Supabase
