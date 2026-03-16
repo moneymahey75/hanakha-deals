@@ -94,8 +94,9 @@ After these changes:
 6. ✅ Build passes without errors
 
 ## Migration Files
-- `20260316XXXXXX_add_otp_rpc_functions.sql` - Core OTP operations
-- `20260316XXXXXX_add_otp_delete_rpc_functions.sql` - Delete operations
+- `20260316191342_add_otp_rpc_functions.sql` - Core OTP operations (create, invalidate, verify)
+- `20260316191429_add_otp_delete_rpc_functions.sql` - Delete operations
+- `20260316XXXXXX_fix_otp_rpc_functions_schema.sql` - Fixed schema errors (removed non-existent tov_updated_at column)
 
 ## Related Issues Fixed
 - Registration OTP verification
