@@ -247,15 +247,13 @@ export class OTPService {
     try {
       console.log(`Sending new ${otpType} OTP to: ${contactInfo}`);
 
-      // Try to invalidate existing OTPs, but don't fail if it times out
+      // Try to invalidate existing OTPs using RPC, but don't fail if it times out
       try {
         await this.withTimeout(
-            supabaseBatch
-                .from('tbl_otp_verifications')
-                .update({ tov_is_verified: true })
-                .eq('tov_user_id', userId)
-                .eq('tov_otp_type', otpType)
-                .eq('tov_is_verified', false),
+            supabaseBatch.rpc('invalidate_user_otps', {
+              p_user_id: userId,
+              p_otp_type: otpType
+            }),
             3000,
             'Database cleanup'
         );
@@ -265,28 +263,24 @@ export class OTPService {
         // Continue with OTP creation even if cleanup fails
       }
 
-      // Insert new OTP record (commented out for now due to DB issues)
-      // const { data: otpRecord, error: otpError } = await this.withTimeout(
-      //     supabaseBatch
-      //         .from('tbl_otp_verifications')
-      //         .insert({
-      //           tov_user_id: userId,
-      //           tov_otp_code: otpCode,
-      //           tov_otp_type: otpType,
-      //           tov_contact_info: contactInfo,
-      //           tov_expires_at: expiresAt.toISOString(),
-      //           tov_is_verified: false,
-      //           tov_attempts: 0
-      //         })
-      //         .select()
-      //         .single(),
-      //     8000,
-      //     'Database insert'
-      // );
+      // Insert new OTP record using RPC
+      const { data: otpResult, error: otpError } = await this.withTimeout(
+          supabaseBatch.rpc('create_otp_record', {
+            p_user_id: userId,
+            p_otp_code: otpCode,
+            p_otp_type: otpType,
+            p_contact_info: contactInfo,
+            p_expires_at: expiresAt.toISOString()
+          }),
+          8000,
+          'Database insert'
+      );
 
-      // if (otpError) {
-      //   throw new Error(`Failed to store OTP: ${otpError.message}`);
-      // }
+      if (otpError || !otpResult?.success) {
+        throw new Error(`Failed to store OTP: ${otpError?.message || 'Unknown error'}`);
+      }
+
+      console.log('OTP record created:', otpResult.otp_id);
 
       // Send OTP based on type with timeout
       let sendResult = false;
@@ -525,11 +519,10 @@ export class OTPService {
   // Delete specific OTP record after successful verification
   private async deleteOTPRecord(otpRecordId: string): Promise<void> {
     try {
-      const { error } = await this.withTimeout(
-        supabaseBatch
-          .from('tbl_otp_verifications')
-          .delete()
-          .eq('tov_id', otpRecordId),
+      const { data, error } = await this.withTimeout(
+        supabaseBatch.rpc('delete_otp_record', {
+          p_otp_id: otpRecordId
+        }),
         5000,
         'OTP record deletion'
       );
@@ -537,7 +530,7 @@ export class OTPService {
       if (error) {
         console.error('Failed to delete OTP record:', error);
       } else {
-        console.log('OTP record deleted successfully:', otpRecordId);
+        console.log('OTP record deleted successfully:', data);
       }
     } catch (error) {
       console.error('Error deleting OTP record:', error);
@@ -547,12 +540,11 @@ export class OTPService {
   // Cleanup all OTP records for a user/type (for additional safety)
   private async cleanupOTPRecords(userId: string, otpType: 'email' | 'mobile'): Promise<void> {
     try {
-      const { error } = await this.withTimeout(
-        supabaseBatch
-          .from('tbl_otp_verifications')
-          .delete()
-          .eq('tov_user_id', userId)
-          .eq('tov_otp_type', otpType),
+      const { data, error } = await this.withTimeout(
+        supabaseBatch.rpc('delete_user_otps', {
+          p_user_id: userId,
+          p_otp_type: otpType
+        }),
         5000,
         'OTP records cleanup'
       );
@@ -560,7 +552,7 @@ export class OTPService {
       if (error) {
         console.error('Failed to cleanup OTP records:', error);
       } else {
-        console.log(`Cleaned up all ${otpType} OTP records for user:`, userId);
+        console.log(`Cleaned up ${data?.deleted || 0} ${otpType} OTP records for user:`, userId);
       }
     } catch (error) {
       console.error('Error cleaning up OTP records:', error);
@@ -734,13 +726,9 @@ export class OTPService {
   async cleanupExpiredOTPs(): Promise<{ deleted: number; error?: string }> {
     try {
       console.log('Starting cleanup of expired OTP records...');
-      
+
       const { data, error } = await this.withTimeout(
-        supabaseBatch
-          .from('tbl_otp_verifications')
-          .delete()
-          .lt('tov_expires_at', new Date().toISOString())
-          .select('count'),
+        supabaseBatch.rpc('delete_expired_otps'),
         10000,
         'Expired OTP cleanup'
       );
@@ -750,9 +738,9 @@ export class OTPService {
         return { deleted: 0, error: error.message };
       }
 
-      const deletedCount = Array.isArray(data) ? data.length : 0;
+      const deletedCount = data?.deleted || 0;
       console.log(`Cleanup completed: ${deletedCount} expired OTP records deleted`);
-      
+
       return { deleted: deletedCount };
     } catch (error: any) {
       console.error('Error during expired OTP cleanup:', error);
@@ -764,13 +752,12 @@ export class OTPService {
   async cleanupUserOTPs(userId: string): Promise<{ deleted: number; error?: string }> {
     try {
       console.log('Cleaning up all OTP records for user:', userId);
-      
+
       const { data, error } = await this.withTimeout(
-        supabaseBatch
-          .from('tbl_otp_verifications')
-          .delete()
-          .eq('tov_user_id', userId)
-          .select('count'),
+        supabaseBatch.rpc('delete_user_otps', {
+          p_user_id: userId,
+          p_otp_type: null  // Delete all types
+        }),
         10000,
         'User OTP cleanup'
       );
@@ -780,9 +767,9 @@ export class OTPService {
         return { deleted: 0, error: error.message };
       }
 
-      const deletedCount = Array.isArray(data) ? data.length : 0;
+      const deletedCount = data?.deleted || 0;
       console.log(`User OTP cleanup completed: ${deletedCount} records deleted for user ${userId}`);
-      
+
       return { deleted: deletedCount };
     } catch (error: any) {
       console.error('Error during user OTP cleanup:', error);
