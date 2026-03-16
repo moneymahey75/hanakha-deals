@@ -63,19 +63,21 @@ interface PasswordValidation {
 
 const checkUsernameExists = async (username: string): Promise<boolean> => {
   try {
+    console.log('🔍 Checking username availability via RPC:', username);
     const { data, error } = await supabase
         .rpc('check_username_exists', {
           p_username: username
         });
 
     if (error) {
-      console.error('Error checking username:', error);
+      console.error('❌ Error checking username via RPC:', error);
       return false;
     }
 
+    console.log('✅ Username check result:', data);
     return data === true;
   } catch (error) {
-    console.error('Error checking username uniqueness:', error);
+    console.error('❌ Error checking username uniqueness:', error);
     return false;
   }
 };
