@@ -1,5 +1,6 @@
 // Session utility functions for enhanced session management
 import { sessionManager } from '../lib/supabase';
+import { adminSessionManager } from '../lib/adminSupabase';
 
 export interface SessionInfo {
   isValid: boolean;
@@ -61,7 +62,7 @@ export const sessionUtils = {
   // Clear all session data (both Supabase and admin)
   clearAllSessions: () => {
     sessionManager.clearAllSessions();
-    sessionStorage.removeItem('admin_session_token');
+    adminSessionManager.removeSession();
   },
 
   // Check if current page is a login page
@@ -84,37 +85,9 @@ export const sessionUtils = {
     return publicPages.includes(window.location.pathname);
   },
 
-  // Validate admin session token format and expiration
+  // Validate admin session using new session manager
   validateAdminSession: (): boolean => {
-    const adminToken = sessionStorage.getItem('admin_session_token');
-
-    if (!adminToken || adminToken === 'null' || adminToken === 'undefined') {
-      return false;
-    }
-
-    // Check token format: "admin-session-{id}-{timestamp}"
-    const match = adminToken.match(/^admin-session-(.+)-(\d+)$/);
-    if (!match) {
-      sessionStorage.removeItem('admin_session_token');
-      return false;
-    }
-
-    const timestamp = parseInt(match[2]);
-    const sessionAge = Date.now() - timestamp;
-    const maxSessionAge = 8 * 60 * 60 * 1000; // 8 hours
-
-    if (sessionAge > maxSessionAge) {
-      console.log('❌ Admin session expired');
-      sessionStorage.removeItem('admin_session_token');
-      return false;
-    }
-
-    // FIX: Update timestamp on successful validation to extend the session timer (Keep-Alive)
-    const adminId = match[1];
-    const newToken = `admin-session-${adminId}-${Date.now()}`;
-    sessionStorage.setItem('admin_session_token', newToken);
-
-    return true;
+    return adminSessionManager.hasValidSession();
   },
 
   // Session event listeners for tab/window events
@@ -191,23 +164,8 @@ export const sessionUtils = {
           }
         }
 
-        // Handle admin session cleared in another tab (admin uses sessionStorage)
-        if (e.key === 'admin_session_token' && e.newValue === null) {
-          if (sessionUtils.isInAdminArea() && !sessionUtils.isOnLoginPage()) {
-            console.log('🔄 Admin session cleared in another tab, redirecting...');
-            if (window.location.pathname !== '/backpanel/login') {
-              window.location.href = '/backpanel/login';
-            }
-          }
-        }
-
-        // Handle admin session changed in another tab (admin uses sessionStorage)
-        if (e.key === 'admin_session_token' && e.newValue && e.newValue !== e.oldValue) {
-          if (sessionUtils.isInAdminArea() && !sessionUtils.isOnLoginPage()) {
-            console.log('🔄 Admin session changed in another tab, reloading...');
-            window.location.reload();
-          }
-        }
+        // Note: Admin sessions use sessionStorage which doesn't trigger storage events
+        // Each tab has its own independent admin session
       } catch (error) {
         console.error('❌ Error in storage event handler:', error);
       }
@@ -216,13 +174,11 @@ export const sessionUtils = {
     // Handle page unload - extend admin session if active
     window.addEventListener('beforeunload', () => {
       // Update admin session timestamp to prevent premature expiration
-      const adminToken = sessionStorage.getItem('admin_session_token');
-      if (adminToken && sessionUtils.validateAdminSession()) {
-        const match = adminToken.match(/^admin-session-(.+)-(\d+)$/);
-        if (match) {
-          const adminId = match[1];
-          const newToken = `admin-session-${adminId}-${Date.now()}`;
-          sessionStorage.setItem('admin_session_token', newToken);
+      if (adminSessionManager.hasValidSession()) {
+        const session = adminSessionManager.getSession();
+        if (session) {
+          // Refresh session timestamp
+          adminSessionManager.saveSession(session);
         }
       }
     });

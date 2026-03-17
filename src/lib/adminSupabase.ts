@@ -4,13 +4,13 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key'
 
 // Create a separate Supabase client for admin operations
-// This client will NOT use Supabase Auth, only custom token-based auth
+// This client uses custom headers to identify admin requests
 export const adminSupabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
     detectSessionInUrl: false,
-    storage: undefined // Don't use any storage
+    storage: undefined
   },
   global: {
     headers: {
@@ -21,6 +21,34 @@ export const adminSupabase = createClient(supabaseUrl, supabaseAnonKey, {
     schema: 'public'
   }
 })
+
+// Helper to add admin session header to requests
+export const getAdminSupabaseWithAuth = () => {
+  const sessionData = adminSessionManager.getSession();
+
+  if (!sessionData) {
+    return adminSupabase;
+  }
+
+  // Create a new client with admin session header
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+      storage: undefined
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'mlm-platform-admin',
+        'X-Admin-Session': sessionData.adminId
+      }
+    },
+    db: {
+      schema: 'public'
+    }
+  });
+}
 
 // Admin session manager - completely separate from customer sessions
 export const adminSessionManager = {
