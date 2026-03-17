@@ -240,7 +240,29 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         createdAt: adminData.admin_created_at || ''
       };
 
-      // Save admin session (NO Supabase Auth)
+      // Check if admin has auth.users record
+      if (adminData.admin_auth_uid) {
+        console.log('🔐 Admin has Supabase Auth record, signing in...');
+
+        try {
+          const { data: authData, error: authError } = await adminSupabase.auth.signInWithPassword({
+            email: email.trim(),
+            password: password
+          });
+
+          if (authError) {
+            console.warn('⚠️ Supabase Auth sign-in failed:', authError.message);
+          } else {
+            console.log('✅ Signed in to Supabase Auth successfully');
+          }
+        } catch (authError) {
+          console.warn('⚠️ Supabase Auth sign-in error:', authError);
+        }
+      } else {
+        console.log('ℹ️ Admin does not have Supabase Auth record (legacy admin)');
+      }
+
+      // Save admin session
       adminSessionManager.saveSession(adminUser);
       setAdmin(adminUser);
 
@@ -253,7 +275,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Failed to update last login time:', updateError);
       }
 
-      console.log('✅ Admin login successful, no Supabase Auth used');
+      console.log('✅ Admin login successful');
       notification.showSuccess('Welcome Back!', 'You have successfully logged in.');
     } catch (error: any) {
       console.error('❌ Admin login failed:', error);
@@ -265,7 +287,15 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const logout = async () => {
     console.log('🔐 Admin logout initiated');
 
-    // Clear admin session (NO Supabase Auth signout)
+    // Sign out from Supabase Auth if authenticated
+    try {
+      await adminSupabase.auth.signOut();
+      console.log('✅ Signed out from Supabase Auth');
+    } catch (error) {
+      console.warn('⚠️ Supabase Auth sign-out error (may not have been signed in):', error);
+    }
+
+    // Clear admin session
     adminSessionManager.removeSession();
     setAdmin(null);
 

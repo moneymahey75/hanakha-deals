@@ -4,13 +4,13 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key'
 
 // Create a separate Supabase client for admin operations
-// This client uses custom headers to identify admin requests
+// This client persists auth sessions to allow RPC calls to work
 export const adminSupabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: false,
-    persistSession: false,
+    autoRefreshToken: true,
+    persistSession: true,
     detectSessionInUrl: false,
-    storage: undefined
+    storageKey: 'admin-auth-token'
   },
   global: {
     headers: {

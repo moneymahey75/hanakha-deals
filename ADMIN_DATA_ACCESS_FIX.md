@@ -113,17 +113,61 @@ Using RPC functions with `SECURITY DEFINER`:
 - No sensitive data exposed in function signatures
 - Admin authentication still required at application level
 
+## Additional Fix: Admin Authentication
+
+### Problem
+After implementing RPC functions, admins were getting "Not authenticated" errors when calling RPC functions.
+
+### Root Cause
+The admin authentication system was custom (not using Supabase Auth), but RPC functions require an authenticated Supabase session to work properly.
+
+### Solution
+
+**1. Updated Admin Login Flow** (`src/contexts/AdminAuthContext.tsx`):
+- When admin logs in with email/password, the system now also signs them into Supabase Auth
+- This provides the authenticated session needed for RPC calls
+- Logout also signs out from Supabase Auth
+
+**2. Fixed adminSupabase Client** (`src/lib/adminSupabase.ts`):
+- Changed from `persistSession: false` to `persistSession: true`
+- Added `autoRefreshToken: true` to maintain session
+- Uses separate storage key `admin-auth-token` to avoid conflicts with customer sessions
+
+**3. Ensured All Admins Have Auth Records** (Migration: `ensure_admin_auth_linkage_complete.sql`):
+- Automatically creates `auth.users` records for admins without them
+- Links existing admins to their auth.users via `tau_auth_uid`
+- All admins can now authenticate with Supabase Auth
+
+### Data Flow After Fix
+
+**Before:**
+```
+Admin Login → Custom Auth → No Supabase Session → RPC Call → ❌ "Not authenticated"
+```
+
+**After:**
+```
+Admin Login → Custom Auth ✓ + Supabase Auth Sign-in ✓ → RPC Call → ✅ SUCCESS
+```
+
 ## Files Modified
 
-1. **Migration**: `supabase/migrations/*_fix_admin_rpc_functions_correct_tables.sql`
+1. **Migrations**:
+   - `supabase/migrations/*_fix_admin_rpc_functions_correct_tables.sql`
+   - `supabase/migrations/*_ensure_admin_auth_linkage_complete.sql`
 2. **Frontend Components**:
    - `src/components/admin/CouponManagement.tsx`
    - `src/components/admin/DailyTaskManagement.tsx`
    - `src/components/admin/CompanyManagement.tsx`
-3. **Documentation**: `ADMIN_DATA_ACCESS_FIX.md`, `OTP_MISMATCH_FIX.md`
+3. **Authentication**:
+   - `src/contexts/AdminAuthContext.tsx`
+   - `src/lib/adminSupabase.ts`
+4. **Documentation**: `ADMIN_DATA_ACCESS_FIX.md`
 
 ## Related Issues
 
 - This fix resolves the `permission denied for table tbl_users` error
+- This fix resolves the "Not authenticated" error for admin RPC calls
 - All admin panel data loading now works correctly
 - Admin CRUD operations use secure RPC functions
+- Admins are now properly authenticated with Supabase Auth
