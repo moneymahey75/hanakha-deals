@@ -108,18 +108,30 @@ const CouponManagement: React.FC = () => {
 
       if (error) throw error;
 
+      // ✅ Fixed: all Coupon interface fields are now correctly mapped from RPC response
       const formattedCoupons = (data || []).map((row: any) => ({
         tc_id: row.tc_id,
+        tc_created_by: row.tc_created_by ?? null,
         tc_company_id: row.tc_company_id,
-        tc_title: row.tc_title,
+        tc_title: row.tc_title ?? '',
         tc_description: row.tc_description,
-        tc_discount_percentage: row.tc_discount_percentage,
-        tc_discount_amount: row.tc_discount_amount,
+        tc_coupon_code: row.tc_coupon_code ?? '',
+        tc_discount_type: row.tc_discount_type ?? 'percentage',
+        tc_discount_value: row.tc_discount_value ?? 0,
+        tc_image_url: row.tc_image_url,
+        tc_terms_conditions: row.tc_terms_conditions,
+        tc_valid_from: row.tc_valid_from ?? '',
+        tc_valid_until: row.tc_valid_until ?? '',
+        tc_usage_limit: row.tc_usage_limit ?? 0,
+        tc_used_count: row.tc_used_count ?? 0,
+        tc_share_reward_amount: row.tc_share_reward_amount ?? 0,
         tc_status: row.tc_status,
-        tc_is_active: row.tc_is_active,
-        tc_launch_now: row.tc_launch_now,
+        tc_is_active: row.tc_is_active ?? false,
+        tc_launch_now: row.tc_launch_now ?? false,
         tc_launch_date: row.tc_launch_date,
+        tc_website_url: row.tc_website_url,
         tc_created_at: row.tc_created_at,
+        tc_updated_at: row.tc_updated_at,
         company_info: row.company_data ? {
           name: row.company_data.tc_company_name,
           email: row.company_data.tc_official_email
@@ -134,7 +146,6 @@ const CouponManagement: React.FC = () => {
     }
   };
 
-  // ✅ Called from CouponDetails after a successful save to update the list immediately
   const handleCouponUpdated = (updatedCoupon: Coupon) => {
     setCoupons(prev =>
         prev.map(c => c.tc_id === updatedCoupon.tc_id ? updatedCoupon : c)
@@ -303,13 +314,14 @@ const CouponManagement: React.FC = () => {
     });
   };
 
+  // ✅ Fixed: null guards on all string fields before calling .toLowerCase()
   const filteredCoupons = showDailyTasks
       ? getDailyTasksCoupons()
       : coupons.filter(coupon => {
         const matchesSearch =
-            coupon.tc_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            coupon.tc_coupon_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            coupon.company_info?.name.toLowerCase().includes(searchTerm.toLowerCase());
+            (coupon.tc_title ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (coupon.tc_coupon_code ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (coupon.company_info?.name ?? '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'all' || coupon.tc_status === statusFilter;
         const matchesCompany =
             companyFilter === 'all' ||
@@ -323,7 +335,7 @@ const CouponManagement: React.FC = () => {
     const pending = coupons.filter(c => c.tc_status === 'pending').length;
     const approved = coupons.filter(c => c.tc_status === 'approved').length;
     const active = coupons.filter(c => c.tc_is_active).length;
-    const totalShares = coupons.reduce((sum, c) => sum + c.tc_used_count, 0);
+    const totalShares = coupons.reduce((sum, c) => sum + (c.tc_used_count ?? 0), 0);
     const scheduled = coupons.filter(c => c.tc_launch_date && !c.tc_launch_now).length;
     const launched = coupons.filter(c => c.tc_launch_now).length;
     return { total, pending, approved, active, totalShares, scheduled, launched };
@@ -505,7 +517,10 @@ const CouponManagement: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{coupon.tc_used_count} / {coupon.tc_usage_limit}</div>
                     <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                      <div className="bg-orange-600 h-2 rounded-full" style={{ width: `${(coupon.tc_used_count / coupon.tc_usage_limit) * 100}%` }}></div>
+                      <div
+                          className="bg-orange-600 h-2 rounded-full"
+                          style={{ width: `${coupon.tc_usage_limit > 0 ? Math.min((coupon.tc_used_count / coupon.tc_usage_limit) * 100, 100) : 0}%` }}
+                      ></div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -546,10 +561,14 @@ const CouponManagement: React.FC = () => {
                       </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_valid_from).toLocaleDateString()}</div>
+                    {coupon.tc_valid_from ? (
+                        <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_valid_from).toLocaleDateString()}</div>
+                    ) : <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_valid_until).toLocaleDateString()}</div>
+                    {coupon.tc_valid_until ? (
+                        <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_valid_until).toLocaleDateString()}</div>
+                    ) : <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
@@ -706,14 +725,13 @@ const CouponDetails: React.FC<{
   coupon: Coupon;
   onBack: () => void;
   onUpdate: () => void;
-  onCouponUpdated: (updated: Coupon) => void; // ✅ new prop
+  onCouponUpdated: (updated: Coupon) => void;
   editMode: boolean;
   setEditMode: (mode: boolean) => void;
   companies: Company[];
   onUpdateCoupon: (couponId: string, updates: Partial<Coupon>) => Promise<boolean>;
 }> = ({ coupon: initialCoupon, onBack, onUpdate, onCouponUpdated, editMode, setEditMode, companies, onUpdateCoupon }) => {
 
-  // ✅ Local coupon state — drives all display in this view
   const [coupon, setCoupon] = useState<Coupon>(initialCoupon);
   const [editedCoupon, setEditedCoupon] = useState<Coupon>(initialCoupon);
   const [saving, setSaving] = useState(false);
@@ -745,7 +763,6 @@ const CouponDetails: React.FC<{
       const success = await onUpdateCoupon(coupon.tc_id, updates);
 
       if (success) {
-        // ✅ Resolve company_info from companies list if company changed
         const matchedCompany = companies.find(c => c.tc_id === editedCoupon.tc_company_id);
         const updatedCoupon: Coupon = {
           ...coupon,
@@ -755,10 +772,10 @@ const CouponDetails: React.FC<{
               : editedCoupon.tc_company_id ? coupon.company_info : undefined
         };
 
-        setCoupon(updatedCoupon);         // ✅ Detail view updates instantly
-        onCouponUpdated(updatedCoupon);   // ✅ List row updates instantly
+        setCoupon(updatedCoupon);
+        onCouponUpdated(updatedCoupon);
         setEditMode(false);
-        onUpdate();                       // ✅ Background refresh for consistency
+        onUpdate();
       }
     } catch (error) {
       console.error('Failed to save coupon:', error);
@@ -787,7 +804,6 @@ const CouponDetails: React.FC<{
                 <span>Back to Coupons</span>
               </button>
               <div>
-                {/* ✅ Header uses local coupon state */}
                 <h3 className="text-lg font-semibold text-gray-900">{editMode ? 'Edit Coupon' : coupon.tc_title}</h3>
                 <p className="text-gray-600">{editMode ? 'Update coupon details' : 'Coupon Details & Management'}</p>
               </div>
@@ -892,13 +908,13 @@ const CouponDetails: React.FC<{
                     <span className="text-gray-600">Valid From:</span>
                     {editMode ? (
                         <input type="date" value={formatDateForInput(editedCoupon.tc_valid_from)} onChange={(e) => setEditedCoupon({...editedCoupon, tc_valid_from: e.target.value})} className="border border-gray-300 rounded px-2 py-1" />
-                    ) : <span>{new Date(coupon.tc_valid_from).toLocaleDateString()}</span>}
+                    ) : <span>{coupon.tc_valid_from ? new Date(coupon.tc_valid_from).toLocaleDateString() : '—'}</span>}
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Valid Until:</span>
                     {editMode ? (
                         <input type="date" value={formatDateForInput(editedCoupon.tc_valid_until)} onChange={(e) => setEditedCoupon({...editedCoupon, tc_valid_until: e.target.value})} className="border border-gray-300 rounded px-2 py-1" />
-                    ) : <span>{new Date(coupon.tc_valid_until).toLocaleDateString()}</span>}
+                    ) : <span>{coupon.tc_valid_until ? new Date(coupon.tc_valid_until).toLocaleDateString() : '—'}</span>}
                   </div>
                   {(coupon.tc_launch_date || editMode) && (
                       <div className="flex justify-between">

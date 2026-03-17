@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, supabaseBatch, sessionManager, addUserToMLMTree } from '../lib/supabase';
+import { adminSessionManager } from '../lib/adminSupabase';
 import { OTPService, verifyOTPAPI } from '../services/otpService';
 import { useNotification } from '../components/ui/NotificationProvider';
 
@@ -48,6 +49,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isInitialized, setIsInitialized] = useState(false);
   const [otpService] = useState(() => OTPService.getInstance());
   const notification = useNotification();
+  const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    let timeoutId: number | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(new Error(`${label} timed out after ${ms}ms`));
+      }, ms);
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    }
+  };
 
   useEffect(() => {
     // Initialize session from sessionStorage
@@ -335,8 +349,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🧹 Clearing existing session data...');
       sessionStorage.removeItem('session_type');
       sessionStorage.removeItem('admin_session_token');
+      adminSessionManager.removeSession();
       sessionManager.removeSession();
-      await supabase.auth.signOut();
+      console.log('🚪 Signing out any existing Supabase session...');
+      try {
+        await withTimeout(supabase.auth.signOut(), 10000, 'Supabase sign-out');
+        console.log('✅ Supabase sign-out completed');
+      } catch (signOutError) {
+        console.warn('⚠️ Supabase sign-out failed or timed out, continuing:', signOutError);
+      }
       setUser(null);
 
       // Small delay to ensure cleanup is complete
@@ -357,11 +378,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         actualEmail = profileData[0].email;
       }
 
-      // Authenticate with Supabase
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: actualEmail,
-        password: password
-      });
+      // Authenticate with Supabase (with timeout)
+      console.log('🔐 Signing in with Supabase...');
+      const { data: authData, error: authError } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: actualEmail,
+          password: password
+        }),
+        15000,
+        'Supabase sign-in'
+      );
+      console.log('🔐 Supabase sign-in response received');
 
       if (authError) {
         throw new Error(authError.message);
@@ -377,26 +404,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Mark session type as customer
       sessionStorage.setItem('session_type', 'customer');
+      console.log('🧾 session_type set to customer');
 
-      // Log login activity
-      try {
-        await supabase
-            .from('tbl_user_activity_logs')
-            .insert({
-              tual_user_id: authData.user.id,
-              tual_activity_type: 'login',
-              tual_ip_address: 'unknown',
-              tual_user_agent: navigator.userAgent,
-              tual_login_time: new Date().toISOString()
-            });
-      } catch (logError) {
-        console.warn('Failed to log login activity:', logError);
-      }
+      // Set a minimal user immediately to avoid login hanging on slow DB calls
+      const minimalUser: User = {
+        id: authData.user.id,
+        email: authData.user.email || actualEmail,
+        userType: (userType as User['userType']) || 'customer',
+        isVerified: false,
+        hasActiveSubscription: false,
+        mobileVerified: false
+      };
+      setUser(minimalUser);
 
-      // Fetch user data explicitly
-      await fetchUserData(authData.user.id);
+      // Fire-and-forget: log activity and fetch full profile
+      void (async () => {
+        try {
+          console.log('📝 Logging login activity...');
+          await withTimeout(
+            supabase
+              .from('tbl_user_activity_logs')
+              .insert({
+                tual_user_id: authData.user.id,
+                tual_activity_type: 'login',
+                tual_ip_address: 'unknown',
+                tual_user_agent: navigator.userAgent,
+                tual_login_time: new Date().toISOString()
+              }),
+            8000,
+            'Login activity insert'
+          );
+          console.log('✅ Login activity logged');
+        } catch (logError) {
+          console.warn('Failed to log login activity:', logError);
+        }
+      })();
+
+      void (async () => {
+        try {
+          console.log('🔍 Fetching user profile after login...');
+          await withTimeout(fetchUserData(authData.user.id), 15000, 'Fetch user data');
+          console.log('✅ User profile loaded');
+        } catch (fetchError) {
+          console.warn('Failed to fetch user data after login:', fetchError);
+        }
+      })();
 
       notification.showSuccess('Login Successful!', 'Welcome back!');
+      console.log('🎉 Login flow completed successfully');
 
     } catch (error: any) {
       console.error('❌ Login error:', error);
@@ -691,11 +746,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔍 Checking verification status for user:', userId);
 
       // Use authenticated supabase client
-      const { data: userData, error: userError } = await supabase
-        .from('tbl_users')
-        .select('tu_email_verified, tu_mobile_verified, tu_is_verified')
-        .eq('tu_id', userId)
-        .maybeSingle();
+      const { data: userData, error: userError } = await withTimeout(
+        supabase
+          .from('tbl_users')
+          .select('tu_email_verified, tu_mobile_verified, tu_is_verified')
+          .eq('tu_id', userId)
+          .maybeSingle(),
+        8000,
+        'Fetch user verification'
+      );
 
       if (userError) {
         console.warn('Could not fetch user verification status:', userError);
@@ -703,14 +762,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Get system settings with authenticated client
-      const { data: settingsData } = await supabase
-        .from('tbl_system_settings')
-        .select('tss_setting_key, tss_setting_value')
-        .in('tss_setting_key', [
-          'email_verification_required',
-          'mobile_verification_required',
-          'either_verification_required'
-        ]);
+      const { data: settingsData } = await withTimeout(
+        supabase
+          .from('tbl_system_settings')
+          .select('tss_setting_key, tss_setting_value')
+          .in('tss_setting_key', [
+            'email_verification_required',
+            'mobile_verification_required',
+            'either_verification_required'
+          ]),
+        8000,
+        'Fetch verification settings'
+      );
 
       const settings = settingsData?.reduce((acc: any, setting: any) => {
         try {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
+import { adminSessionManager } from '../../lib/adminSupabase';
 
 interface AdminProtectedRouteProps {
   children: React.ReactNode;
@@ -17,6 +18,10 @@ const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
   const { admin, loading, hasPermission } = useAdminAuth();
 
   if (loading) {
+    console.log('⏳ AdminProtectedRoute loading', {
+      has_admin_session: adminSessionManager.hasValidSession(),
+      admin_present: !!admin
+    });
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
@@ -28,20 +33,30 @@ const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
   }
 
   // Check if admin session exists in sessionStorage
-  const adminSessionToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_session_token') : null;
+  const hasAdminSession = adminSessionManager.hasValidSession();
 
   // Redirect if no valid session
   if (!admin) {
-    console.log('🔒 No admin found, checking session token:', !!adminSessionToken);
+    console.log('🔒 No admin found, checking session:', {
+      hasAdminSession,
+      path: typeof window !== 'undefined' ? window.location.pathname : 'unknown'
+    });
 
-    // If no session token or invalid token, redirect to login
-    if (!adminSessionToken || adminSessionToken === 'null' || adminSessionToken === 'undefined') {
+    // If no session, redirect to login
+    if (!hasAdminSession) {
       console.log('🔒 No valid admin session, redirecting to login');
       return <Navigate to="/backpanel/login" replace />;
     }
 
-    // If we have a session token but no admin, show loading
-    return <Navigate to="/backpanel/login" replace />;
+    // If session exists but admin state not ready, show loading
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Restoring admin session...</p>
+          </div>
+        </div>
+    );
   }
 
   if (requiredPermission && !hasPermission(requiredPermission.module as any, requiredPermission.action)) {

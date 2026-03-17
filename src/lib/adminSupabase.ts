@@ -55,14 +55,27 @@ export const adminSessionManager = {
   saveSession: (adminData: any) => {
     if (typeof window !== 'undefined') {
       try {
-        console.log('💾 Saving admin session to sessionStorage:', adminData.id);
+        const adminId =
+          adminData?.adminId ||
+          adminData?.id ||
+          adminData?.admin_id ||
+          adminData?.tau_id;
+
+        if (!adminId) {
+          console.error('❌ Refusing to save admin session: missing adminId', {
+            keys: adminData ? Object.keys(adminData) : []
+          });
+          return;
+        }
+
+        console.log('💾 Saving admin session to sessionStorage:', adminId);
 
         const sessionData = {
-          adminId: adminData.id,
-          email: adminData.email,
-          fullName: adminData.fullName,
-          role: adminData.role,
-          permissions: adminData.permissions,
+          adminId,
+          email: adminData.email || adminData.tau_email || adminData.admin_email,
+          fullName: adminData.fullName || adminData.tau_full_name || adminData.admin_full_name,
+          role: adminData.role || adminData.tau_role || adminData.admin_role,
+          permissions: adminData.permissions || adminData.tau_permissions || adminData.admin_permissions,
           timestamp: Date.now()
         };
 
@@ -81,17 +94,29 @@ export const adminSessionManager = {
       try {
         const sessionData = sessionStorage.getItem('admin_session_data');
         if (!sessionData) {
+          console.log('ℹ️ No admin_session_data in sessionStorage');
           return null;
         }
 
         const session = JSON.parse(sessionData);
+        // Backward/legacy compatibility: normalize adminId if possible
+        if (!session.adminId) {
+          session.adminId =
+            session.id ||
+            session.admin_id ||
+            session.tau_id ||
+            session.adminId;
+        }
 
         // Check if session is expired (8 hours)
         const sessionAge = Date.now() - session.timestamp;
         const maxSessionAge = 8 * 60 * 60 * 1000;
 
         if (sessionAge > maxSessionAge) {
-          console.log('⏰ Admin session expired');
+          console.log('⏰ Admin session expired', {
+            sessionAgeMs: sessionAge,
+            maxSessionAgeMs: maxSessionAge
+          });
           adminSessionManager.removeSession();
           return null;
         }

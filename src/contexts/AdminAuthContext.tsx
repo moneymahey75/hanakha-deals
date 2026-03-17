@@ -77,9 +77,24 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const notification = useNotification();
 
   useEffect(() => {
-    // Check session type first - only initialize if it's an admin session
-    const sessionType = sessionStorage.getItem('session_type');
+    if (typeof window !== 'undefined') {
+      console.log('🧭 AdminAuthContext mount:', {
+        path: window.location.pathname,
+        session_type: sessionStorage.getItem('session_type'),
+        has_admin_session_data: !!sessionStorage.getItem('admin_session_data')
+      });
+    }
+    // Check for admin session first - it should take precedence in admin area
+    const adminSession = adminSessionManager.getSession();
 
+    if (adminSession) {
+      console.log('✅ Found valid admin session, validating...');
+      validateSession(adminSession);
+      return;
+    }
+
+    // Check session type only if no admin session exists
+    const sessionType = sessionStorage.getItem('session_type');
     console.log('🔍 AdminAuthContext initializing, session type:', sessionType);
 
     // If there's a customer session active, don't initialize admin
@@ -89,20 +104,16 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    // Check for admin session in sessionStorage
-    const adminSession = adminSessionManager.getSession();
-
-    if (adminSession) {
-      console.log('✅ Found valid admin session, validating...');
-      validateSession(adminSession);
-    } else {
-      console.log('ℹ️ No admin session found');
-      setLoading(false);
-    }
+    console.log('ℹ️ No admin session found');
+    setLoading(false);
   }, []);
 
   const validateSession = async (sessionData: any) => {
     console.log('🔍 validateSession called for admin:', sessionData.adminId);
+    console.log('🧾 validateSession payload:', {
+      has_adminId: !!sessionData?.adminId,
+      timestamp: sessionData?.timestamp
+    });
 
     const timeoutId = setTimeout(() => {
       console.error('⏰ Session validation timeout');
@@ -169,6 +180,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       };
 
       // Renew session
+      console.log('🔄 Renewing admin session timestamp');
       adminSessionManager.saveSession(adminUser);
 
       console.log('✅ Session validated successfully for:', adminUser.email);

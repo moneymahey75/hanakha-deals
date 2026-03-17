@@ -217,7 +217,7 @@ const Navbar: React.FC = () => {
                   </div>
                   <div className="text-sm">
                     <div className="font-medium text-gray-900">
-                      {user.firstName || user.companyName || 'Admin'}
+                      {user.firstName || user.companyName || user.email || (user.userType === 'company' ? 'Company' : 'Customer')}
                     </div>
                     <div className="text-xs text-gray-500 capitalize">{user.userType}</div>
                   </div>

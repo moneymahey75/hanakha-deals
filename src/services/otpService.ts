@@ -569,17 +569,31 @@ export class OTPService {
     }
 
     try {
-      const { error } = await this.withTimeout(
-          supabaseBatch
-              .from('tbl_users')
-              .update(updateData)
-              .eq('tu_id', userId),
-          8000,
-          'User status update'
+      // Prefer authenticated client so RLS allows user to update their own record
+      const { error: authUpdateError } = await this.withTimeout(
+        supabase
+          .from('tbl_users')
+          .update(updateData)
+          .eq('tu_id', userId),
+        8000,
+        'User status update (auth)'
       );
 
-      if (error) {
-        throw new Error(`Failed to update user verification: ${error.message}`);
+      if (authUpdateError) {
+        console.warn('Auth update failed, retrying with batch client:', authUpdateError.message);
+
+        const { error: batchError } = await this.withTimeout(
+          supabaseBatch
+            .from('tbl_users')
+            .update(updateData)
+            .eq('tu_id', userId),
+          8000,
+          'User status update (batch)'
+        );
+
+        if (batchError) {
+          throw new Error(`Failed to update user verification: ${batchError.message}`);
+        }
       }
     } catch (error) {
       console.warn('Failed to update user verification status in database:', error);
