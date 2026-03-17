@@ -69,7 +69,10 @@ Deno.serve(async (req: Request) => {
       .select(`
         *,
         user:tp_user_id(tu_id, tu_email, tu_parent_sponsorship_number),
-        plan:tp_subscription_plan_id(tsp_price, tsp_type)
+        subscription:tp_subscription_id(
+          tus_id,
+          plan:tus_plan_id(tsp_price, tsp_type)
+        )
       `)
       .eq('tp_id', paymentId)
       .single();
@@ -94,7 +97,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (payment.plan.tsp_type !== 'registration') {
+    if (payment.subscription?.plan?.tsp_type !== 'registration') {
       return new Response(
         JSON.stringify({ success: false, error: 'Only registration payments can process referral commissions' }),
         {
@@ -128,7 +131,7 @@ Deno.serve(async (req: Request) => {
     const { error: updateSubscriptionError } = await supabase
       .from('tbl_user_subscriptions')
       .update({ tus_status: 'active' })
-      .eq('tus_payment_id', paymentId);
+      .eq('tus_id', payment.tp_subscription_id);
 
     if (updateSubscriptionError) {
       throw updateSubscriptionError;

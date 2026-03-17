@@ -101,35 +101,34 @@ const RegistrationPayment: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const { data: payment, error: paymentError } = await supabase
-        .from('tbl_payments')
-        .insert({
-          tp_user_id: user?.tu_id,
-          tp_subscription_plan_id: plan.tsp_id,
-          tp_amount: plan.tsp_price,
-          tp_payment_method: selectedWallet,
-          tp_payment_status: 'pending',
-          tp_transaction_hash: transactionHash || null,
-          tp_payment_date: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (paymentError) throw paymentError;
-
-      const { error: subscriptionError } = await supabase
+      // First create the subscription
+      const { data: subscription, error: subscriptionError } = await supabase
         .from('tbl_user_subscriptions')
         .insert({
           tus_user_id: user?.tu_id,
           tus_plan_id: plan.tsp_id,
           tus_status: 'pending',
           tus_start_date: new Date().toISOString(),
-          tus_end_date: new Date(Date.now() + plan.tsp_duration_days * 24 * 60 * 60 * 1000).toISOString(),
-          tus_payment_id: payment.tp_id,
           tus_payment_amount: plan.tsp_price
-        });
+        })
+        .select()
+        .single();
 
       if (subscriptionError) throw subscriptionError;
+
+      // Then create the payment linked to the subscription
+      const { error: paymentError } = await supabase
+        .from('tbl_payments')
+        .insert({
+          tp_user_id: user?.tu_id,
+          tp_subscription_id: subscription.tus_id,
+          tp_amount: plan.tsp_price,
+          tp_payment_method: selectedWallet,
+          tp_payment_status: 'pending',
+          tp_transaction_id: transactionHash || null
+        });
+
+      if (paymentError) throw paymentError;
 
       notification.showSuccess(
         'Payment Submitted',

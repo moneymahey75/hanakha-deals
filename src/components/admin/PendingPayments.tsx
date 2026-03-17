@@ -19,15 +19,17 @@ interface Payment {
   tp_payment_method: string;
   tp_payment_status: string;
   tp_transaction_hash: string | null;
-  tp_payment_date: string;
-  user: {
+  tp_payment_date?: string;
+  tp_created_at?: string;
+  user?: {
     tu_email: string;
-    tu_first_name: string;
-    tu_last_name: string;
   };
-  plan: {
-    tsp_name: string;
-    tsp_type: string;
+  subscription?: {
+    tus_id: string;
+    plan?: {
+      tsp_name: string;
+      tsp_type: string;
+    };
   };
 }
 
@@ -48,11 +50,14 @@ const PendingPayments: React.FC = () => {
         .from('tbl_payments')
         .select(`
           *,
-          user:tp_user_id(tu_email, tu_first_name, tu_last_name),
-          plan:tp_subscription_plan_id(tsp_name, tsp_type)
+          user:tp_user_id(tu_email),
+          subscription:tp_subscription_id(
+            tus_id,
+            plan:tus_plan_id(tsp_name, tsp_type)
+          )
         `)
         .eq('tp_payment_status', 'pending')
-        .order('tp_payment_date', { ascending: false });
+        .order('tp_created_at', { ascending: false });
 
       if (error) throw error;
       setPayments(data || []);
@@ -194,15 +199,15 @@ const PendingPayments: React.FC = () => {
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {payment.user.tu_first_name} {payment.user.tu_last_name}
+                            {payment.user?.tu_email || 'N/A'}
                           </div>
-                          <div className="text-sm text-gray-500">{payment.user.tu_email}</div>
+                          <div className="text-sm text-gray-500">User Payment</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{payment.plan.tsp_name}</div>
-                      <div className="text-sm text-gray-500 capitalize">{payment.plan.tsp_type}</div>
+                      <div className="text-sm text-gray-900">{payment.subscription?.plan?.tsp_name || 'N/A'}</div>
+                      <div className="text-sm text-gray-500 capitalize">{payment.subscription?.plan?.tsp_type || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
