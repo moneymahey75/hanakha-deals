@@ -609,7 +609,8 @@ export class OTPService {
         body: JSON.stringify({
           user_id: userId,
           contact_info: email,
-          otp_type: 'email'
+          otp_type: 'email',
+          otp_code: otp
         }),
         signal: controller.signal
       });
@@ -664,7 +665,8 @@ export class OTPService {
         body: JSON.stringify({
           user_id: userId,
           contact_info: mobile,
-          otp_type: 'mobile'
+          otp_type: 'mobile',
+          otp_code: otp
         }),
         signal: controller.signal
       });

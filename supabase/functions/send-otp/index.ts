@@ -28,11 +28,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { user_id, contact_info, otp_type } = body;
+    const { user_id, contact_info, otp_type, otp_code } = body;
 
-    if (!user_id || !contact_info || !otp_type) {
+    if (!user_id || !contact_info || !otp_type || !otp_code) {
       return new Response(JSON.stringify({
-        error: 'user_id, contact_info, and otp_type are required'
+        error: 'user_id, contact_info, otp_type, and otp_code are required'
       }), {
         status: 400,
         headers: {
@@ -78,9 +78,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const otp_code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires_at = new Date(Date.now() + 10 * 60 * 1000);
+    // Validate OTP format
+    if (!/^\d{6}$/.test(otp_code)) {
+      return new Response(JSON.stringify({
+        error: 'Invalid OTP format. Must be 6 digits'
+      }), {
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      });
+    }
 
+    const expires_at = new Date(Date.now() + 10 * 60 * 1000);
     const siteName = 'ShopClick';
 
     let sendResult;
