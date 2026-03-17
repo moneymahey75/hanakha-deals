@@ -115,12 +115,13 @@ const CompanyManagement: React.FC = () => {
 
   const handleApproveCompany = async (companyId: string) => {
     try {
-      const { error } = await supabase
-          .from('tbl_companies')
-          .update({ tc_verification_status: 'verified' })
-          .eq('tc_id', companyId);
+      const { data, error } = await supabase.rpc('admin_update_company', {
+        p_company_id: companyId,
+        p_verification_status: 'verified'
+      });
 
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed');
 
       notification.showSuccess('Company Approved', 'Company has been verified and approved');
       loadCompanies();
@@ -133,12 +134,13 @@ const CompanyManagement: React.FC = () => {
     if (!confirm('Are you sure you want to reject this company registration?')) return;
 
     try {
-      const { error } = await supabase
-          .from('tbl_companies')
-          .update({ tc_verification_status: 'rejected' })
-          .eq('tc_id', companyId);
+      const { data, error } = await supabase.rpc('admin_update_company', {
+        p_company_id: companyId,
+        p_verification_status: 'rejected'
+      });
 
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed');
 
       notification.showSuccess('Company Rejected', 'Company registration has been rejected');
       loadCompanies();

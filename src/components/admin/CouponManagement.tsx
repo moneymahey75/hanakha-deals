@@ -99,18 +99,30 @@ const CouponManagement: React.FC = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-          .from('tbl_coupons')
-          .select(`*, tbl_companies(tc_company_name, tc_official_email)`)
-          .order('tc_created_at', { ascending: false });
+      const { data, error } = await supabase.rpc('admin_get_coupons', {
+        p_search_term: null,
+        p_status_filter: 'all',
+        p_offset: 0,
+        p_limit: 1000
+      });
 
       if (error) throw error;
 
-      const formattedCoupons = (data || []).map(coupon => ({
-        ...coupon,
-        company_info: coupon.tbl_companies ? {
-          name: coupon.tbl_companies.tc_company_name,
-          email: coupon.tbl_companies.tc_official_email
+      const formattedCoupons = (data || []).map((row: any) => ({
+        tc_id: row.tc_id,
+        tc_company_id: row.tc_company_id,
+        tc_title: row.tc_title,
+        tc_description: row.tc_description,
+        tc_discount_percentage: row.tc_discount_percentage,
+        tc_discount_amount: row.tc_discount_amount,
+        tc_status: row.tc_status,
+        tc_is_active: row.tc_is_active,
+        tc_launch_now: row.tc_launch_now,
+        tc_launch_date: row.tc_launch_date,
+        tc_created_at: row.tc_created_at,
+        company_info: row.company_data ? {
+          name: row.company_data.tc_company_name,
+          email: row.company_data.tc_official_email
         } : undefined
       }));
 
@@ -201,8 +213,12 @@ const CouponManagement: React.FC = () => {
 
   const handleApproveCoupon = async (couponId: string) => {
     try {
-      const { error } = await supabase.from('tbl_coupons').update({ tc_status: 'approved' }).eq('tc_id', couponId);
+      const { data, error } = await supabase.rpc('admin_update_coupon', {
+        p_coupon_id: couponId,
+        p_status: 'approved'
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Approved', 'Coupon has been approved and is now active');
       loadCoupons();
     } catch { notification.showError('Approval Failed', 'Failed to approve coupon'); }
@@ -210,8 +226,12 @@ const CouponManagement: React.FC = () => {
 
   const handleDeclineCoupon = async (couponId: string) => {
     try {
-      const { error } = await supabase.from('tbl_coupons').update({ tc_status: 'declined' }).eq('tc_id', couponId);
+      const { data, error } = await supabase.rpc('admin_update_coupon', {
+        p_coupon_id: couponId,
+        p_status: 'declined'
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Declined', 'Coupon has been declined');
       loadCoupons();
     } catch { notification.showError('Decline Failed', 'Failed to decline coupon'); }
@@ -220,8 +240,13 @@ const CouponManagement: React.FC = () => {
   const handleCancelCoupon = async (couponId: string) => {
     if (!confirm('Are you sure you want to cancel this coupon?')) return;
     try {
-      const { error } = await supabase.from('tbl_coupons').update({ tc_status: 'cancelled', tc_is_active: false }).eq('tc_id', couponId);
+      const { data, error } = await supabase.rpc('admin_update_coupon', {
+        p_coupon_id: couponId,
+        p_status: 'cancelled',
+        p_is_active: false
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Cancelled', 'Coupon has been cancelled');
       loadCoupons();
     } catch { notification.showError('Cancellation Failed', 'Failed to cancel coupon'); }
@@ -230,8 +255,11 @@ const CouponManagement: React.FC = () => {
   const handleDeleteCoupon = async (couponId: string) => {
     if (!confirm('Are you sure you want to delete this coupon? This action cannot be undone.')) return;
     try {
-      const { error } = await supabase.from('tbl_coupons').delete().eq('tc_id', couponId);
+      const { data, error } = await supabase.rpc('admin_delete_coupon', {
+        p_coupon_id: couponId
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Deleted', 'Coupon has been deleted successfully');
       loadCoupons();
     } catch { notification.showError('Deletion Failed', 'Failed to delete coupon'); }

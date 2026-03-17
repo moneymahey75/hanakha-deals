@@ -75,29 +75,29 @@ const DailyTaskManagement: React.FC = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-          .from('tbl_daily_tasks')
-          .select(`
-          *,
-          tbl_coupons(tc_title, tc_coupon_code)
-        `)
-          .eq('tdt_task_date', selectedDate)
-          .order('tdt_created_at', { ascending: false });
+      const { data, error } = await supabase.rpc('admin_get_daily_tasks', {
+        p_offset: 0,
+        p_limit: 1000
+      });
 
       if (error) {
+        console.error('Load tasks error:', error);
         throw error;
       }
 
-      const formattedTasks = (data || []).map(task => ({
-        ...task,
-        coupon_info: task.tbl_coupons ? {
-          title: task.tbl_coupons.tc_title,
-          coupon_code: task.tbl_coupons.tc_coupon_code
-        } : undefined
-      }));
+      const formattedTasks = (data || [])
+        .filter((task: any) => task.tdt_task_date === selectedDate)
+        .map((task: any) => ({
+          ...task,
+          coupon_info: task.coupon_data ? {
+            title: task.coupon_data.tc_title,
+            coupon_code: task.coupon_data.tc_coupon_code
+          } : undefined
+        }));
 
       setTasks(formattedTasks);
     } catch (error) {
+      console.error('Load tasks failed:', error);
       notification.showError('Load Failed', 'Failed to load daily tasks');
     } finally {
       setLoading(false);
@@ -120,22 +120,21 @@ const DailyTaskManagement: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-          .from('tbl_daily_tasks')
-          .insert({
-            tdt_created_by: adminId,
-            tdt_task_type: newTask.task_type,
-            tdt_title: newTask.title,
-            tdt_description: newTask.description,
-            tdt_content_url: newTask.content_url,
-            tdt_coupon_id: newTask.coupon_id || null,
-            tdt_reward_amount: newTask.reward_amount,
-            tdt_task_date: newTask.task_date,
-            tdt_expires_at: new Date(newTask.expires_at).toISOString(),
-            tdt_is_active: newTask.is_active
-          });
+      const { data, error } = await supabase.rpc('admin_create_daily_task', {
+        p_created_by: adminId,
+        p_task_type: newTask.task_type,
+        p_title: newTask.title,
+        p_description: newTask.description,
+        p_content_url: newTask.content_url,
+        p_coupon_id: newTask.coupon_id || null,
+        p_reward_amount: newTask.reward_amount,
+        p_task_date: newTask.task_date,
+        p_expires_at: new Date(newTask.expires_at).toISOString(),
+        p_is_active: newTask.is_active
+      });
 
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || 'Failed to create daily task');
 
       notification.showSuccess('Task Created', 'Daily task has been created successfully');
       setShowCreateModal(false);
