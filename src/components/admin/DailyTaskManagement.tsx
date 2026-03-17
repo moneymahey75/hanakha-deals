@@ -1,25 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { adminSupabase as supabase } from '../../lib/adminSupabase';
 import { useNotification } from '../ui/NotificationProvider';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
-import {
-  Calendar,
-  Plus,
-  Search,
-  Eye,
-  Trash2,
-  Gift,
-  Video,
-  Share2,
-  Save,
-  X,
-  Link as LinkIcon,
-  Target,
-  Users,
-  Award,
-  CalendarClock,
-  Edit
-} from 'lucide-react';
+import { Calendar, Plus, Search, Eye, Trash2, Gift, Video, Share2, Save, X, Link as LinkIcon, Target, Users, Award, CalendarClock, CreditCard as Edit } from 'lucide-react';
 
 interface DailyTask {
   tdt_id: string;

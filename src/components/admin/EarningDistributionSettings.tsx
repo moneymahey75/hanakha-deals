@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-import { Plus, Trash2, Save, AlertCircle, Edit2, X } from 'lucide-react';
+import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { Plus, Trash2, Save, AlertCircle, CreditCard as Edit2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface EarningDistributionRule {

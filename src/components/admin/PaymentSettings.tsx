@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
-import { supabase } from '../../lib/supabase';
+import { adminSupabase as supabase } from '../../lib/adminSupabase';
 import { Settings, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const PaymentSettings: React.FC = () => {

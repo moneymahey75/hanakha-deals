@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { adminSupabase as supabase } from '../../lib/adminSupabase';
 import { useNotification } from '../ui/NotificationProvider';
 import { useAuth } from '../../contexts/AuthContext';
 import {

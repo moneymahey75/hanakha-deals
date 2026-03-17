@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { adminSupabase as supabase } from '../../lib/adminSupabase';
 import { useNotification } from '../ui/NotificationProvider';
 import { Gift, Plus, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Calendar, DollarSign, Image, FileText, Save, X, ArrowLeft, Upload, Tag, Percent, Users, TrendingUp, Rocket, Play } from 'lucide-react';
 import {useAdminAuth} from "../../contexts/AdminAuthContext.tsx";
