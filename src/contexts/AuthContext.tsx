@@ -224,41 +224,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let subscriptionData = null;
 
       try {
-        // Use the authenticated supabase client instead of batch client
-        const { data: combinedData, error: combinedError } = await supabase
+        // Fetch user and profile data (always needed)
+        const { data: userWithProfile, error: userError } = await supabase
             .from('tbl_users')
             .select(`
-            *,
-            tbl_user_profiles(*),
-            tbl_user_subscriptions!inner(
-              tus_status,
-              tus_end_date
-            )
-          `)
+              *,
+              tbl_user_profiles(*)
+            `)
             .eq('tu_id', userId)
-            .eq('tbl_user_subscriptions.tus_status', 'active')
-            .gte('tbl_user_subscriptions.tus_end_date', new Date().toISOString())
             .maybeSingle();
 
-        if (combinedError) {
-          console.log('⚠️ Combined query failed, falling back to individual queries:', combinedError.message);
-
-          // Fallback to individual queries
-          const { data: userDataArray, error: userError } = await supabase
-              .from('tbl_users')
-              .select('*')
-              .eq('tu_id', userId);
-
-          if (userError) {
-            console.log('⚠️ RLS blocking users table access:', userError.message);
-          } else if (userDataArray && userDataArray.length > 0) {
-            userData = userDataArray[0];
-          }
-        } else if (combinedData) {
-          userData = combinedData;
-          profileData = combinedData.tbl_user_profiles?.[0];
-          //companyData = combinedData.tbl_companies?.[0];
-          subscriptionData = combinedData.tbl_user_subscriptions?.[0];
+        if (userError) {
+          console.log('⚠️ Error fetching user data:', userError.message);
+        } else if (userWithProfile) {
+          userData = userWithProfile;
+          profileData = userWithProfile.tbl_user_profiles?.[0];
+          console.log('✅ User and profile data loaded:', {
+            hasUser: !!userData,
+            hasProfile: !!profileData,
+            firstName: profileData?.tup_first_name,
+            lastName: profileData?.tup_last_name
+          });
         }
       } catch (rlsError) {
         console.warn('RLS blocking users table:', rlsError);
@@ -310,24 +296,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Get current session to get email
       const { data: { session } } = await supabase.auth.getSession();
 
+      // Ensure we have at least minimal user data
+      if (!userData && !profileData) {
+        console.error('❌ No user or profile data found for userId:', userId);
+        throw new Error('User data not found');
+      }
+
       const user: User = {
         id: userId,
         email: session?.user?.email || userData?.tu_email || 'unknown@example.com',
-        firstName: profileData?.tup_first_name,
-        lastName: profileData?.tup_last_name,
-        //companyName: companyData?.tc_company_name,
+        firstName: profileData?.tup_first_name || '',
+        lastName: profileData?.tup_last_name || '',
         userType: userData?.tu_user_type || 'customer',
-        sponsorshipNumber: profileData?.tup_sponsorship_number,
+        sponsorshipNumber: profileData?.tup_sponsorship_number || '',
         parentId: profileData?.tup_parent_account,
         isVerified: userData?.tu_is_verified || false,
-        hasActiveSubscription: !!subscriptionData, // Check if user has active subscription
+        hasActiveSubscription: !!subscriptionData,
         mobileVerified: userData?.tu_mobile_verified || false
       };
 
       console.log('✅ User data compiled:', {
-        ...user,
-        hasActiveSubscription: !!subscriptionData,
-        subscriptionFound: !!subscriptionData
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        userType: user.userType,
+        hasProfile: !!profileData,
+        hasActiveSubscription: !!subscriptionData
       });
 
       // Mark session as customer type when user data is loaded
