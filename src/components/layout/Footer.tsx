@@ -61,7 +61,6 @@ const Footer: React.FC = () => {
               {[
                 { to: "/join-customer", label: "Join as Customer" },
                 { to: "/join-company", label: "Join as Company" },
-                { to: "/subscription-plans", label: "Pricing Plans" },
                 { to: "/about", label: "About Us" }
               ].map((link, index) => (
                 <li key={index}>

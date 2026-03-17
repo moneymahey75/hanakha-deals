@@ -148,7 +148,7 @@ const WalletList: React.FC<WalletListProps> = ({ userId }) => {
                 <h4 className="text-lg font-medium text-gray-900 mb-2">No wallets connected</h4>
                 <p className="text-gray-500 mb-4">Connect your wallet to start using our services</p>
                 <button
-                    onClick={() => window.location.href = '/subscription-plans'}
+                    onClick={() => window.location.href = '/registration-payment'}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
                 >
                     Connect Wallet

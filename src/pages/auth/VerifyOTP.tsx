@@ -308,7 +308,7 @@ const VerifyOTP: React.FC = () => {
           await fetchUserData(user.id);
         }
         notification.showSuccess('Account Verified', 'Your account has been fully verified!');
-        navigate('/subscription-plans', { state: { requiresSubscription: true } });
+        navigate('/registration-payment', { state: { requiresSubscription: true } });
       } else {
         // Reset for next verification
         setOtp(['', '', '', '', '', '']);

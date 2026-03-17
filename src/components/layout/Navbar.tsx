@@ -202,12 +202,6 @@ const Navbar: React.FC = () => {
                   </div>
                 </div>
 
-                <Link
-                  to="/subscription-plans"
-                  className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 font-medium"
-                >
-                  <span>Pricing</span>
-                </Link>
               </>
             ) : (
               <div className="flex items-center space-x-3">
@@ -355,21 +349,6 @@ const Navbar: React.FC = () => {
                   </Link>
                 </div>
 
-                <div className="border-t border-gray-100 pt-3 mt-3">
-                  <Link
-                    to="/subscription-plans"
-                    className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
-                      <CreditCard className="h-4 w-4 text-indigo-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium">Pricing Plans</div>
-                      <div className="text-xs text-gray-500">View subscription options</div>
-                    </div>
-                  </Link>
-                </div>
               </>
             ) : (
               <div className="border-t border-gray-100 pt-3 mt-3">

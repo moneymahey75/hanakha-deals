@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
-import { DollarSign, CheckCircle, ArrowRight, Wallet, Shield, Clock } from 'lucide-react';
+import { DollarSign, CheckCircle, ArrowRight, Wallet, Shield, Clock, CreditCard, Zap } from 'lucide-react';
 
 interface RegistrationPlan {
   tsp_id: string;
@@ -180,6 +180,18 @@ const RegistrationPayment: React.FC = () => {
           <p className="text-gray-600">Complete your payment to activate your account</p>
         </div>
 
+        {/* USDT Payment Info */}
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl p-6 max-w-3xl mx-auto mb-10">
+          <div className="flex items-center justify-center space-x-3 mb-3">
+            <CreditCard className="h-6 w-6" />
+            <h3 className="text-xl font-bold">Secure USDT Payments</h3>
+            <Shield className="h-6 w-6" />
+          </div>
+          <p className="text-green-100 text-center">
+            All payments are processed in USDT (BEP-20) on BNB Smart Chain for fast, secure, and transparent transactions.
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
@@ -328,6 +340,140 @@ const RegistrationPayment: React.FC = () => {
                 By proceeding, you agree to our terms and conditions
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Why Choose USDT Section */}
+        <div className="mt-16 bg-white rounded-3xl shadow-xl p-8 border border-gray-200">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center space-x-2 bg-green-100 rounded-full px-6 py-3 mb-6">
+              <Shield className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-semibold text-green-600">USDT Advantages</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">
+              Why We Use <span className="text-green-600">USDT</span> Payments?
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Experience the benefits of cryptocurrency payments with USDT on BNB Smart Chain.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              {
+                icon: Zap,
+                title: 'Instant Transactions',
+                description: 'Payments are processed instantly on the blockchain with immediate confirmation.',
+                bgColor: 'bg-yellow-50',
+                iconColor: 'text-yellow-600'
+              },
+              {
+                icon: Shield,
+                title: 'Maximum Security',
+                description: 'Blockchain technology ensures your payments are secure and tamper-proof.',
+                bgColor: 'bg-green-50',
+                iconColor: 'text-green-600'
+              },
+              {
+                icon: DollarSign,
+                title: 'Low Fees',
+                description: 'Minimal transaction fees compared to traditional payment methods.',
+                bgColor: 'bg-blue-50',
+                iconColor: 'text-blue-600'
+              },
+              {
+                icon: CheckCircle,
+                title: 'Transparent',
+                description: 'Every transaction is recorded on the blockchain for complete transparency.',
+                bgColor: 'bg-purple-50',
+                iconColor: 'text-purple-600'
+              }
+            ].map((benefit, index) => (
+              <div key={index} className="text-center group">
+                <div className={`${benefit.bgColor} w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform`}>
+                  <benefit.icon className={`h-8 w-8 ${benefit.iconColor}`} />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-3">{benefit.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{benefit.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Payment Process */}
+        <div className="mt-16 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold mb-4">Simple Payment Process</h2>
+            <p className="text-xl text-indigo-100">
+              Get started in just 3 easy steps
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                step: '1',
+                title: 'Select Your Wallet',
+                description: 'Choose your preferred wallet to make the registration payment.',
+                icon: Wallet
+              },
+              {
+                step: '2',
+                title: 'Send USDT',
+                description: 'Send the exact USDT amount to the provided wallet address.',
+                icon: CreditCard
+              },
+              {
+                step: '3',
+                title: 'Submit Details',
+                description: 'Provide your transaction hash and submit for confirmation.',
+                icon: CheckCircle
+              }
+            ].map((step, index) => (
+              <div key={index} className="text-center">
+                <div className="bg-white/20 backdrop-blur-sm w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 relative">
+                  <step.icon className="h-8 w-8 text-white" />
+                  <div className="absolute -top-2 -right-2 bg-yellow-400 text-gray-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold">
+                    {step.step}
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold mb-3">{step.title}</h3>
+                <p className="text-indigo-100 leading-relaxed">{step.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FAQ Section */}
+        <div className="mt-16 bg-white rounded-3xl shadow-xl p-8 border border-gray-200">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {[
+              {
+                question: "What is USDT?",
+                answer: "USDT (Tether) is a stable cryptocurrency pegged to the US Dollar, providing price stability for payments."
+              },
+              {
+                question: "Why BNB Smart Chain?",
+                answer: "BNB Smart Chain offers fast transactions with low fees, making it perfect for registration payments."
+              },
+              {
+                question: "Is my payment secure?",
+                answer: "Yes! All payments are processed through audited smart contracts on the blockchain for maximum security."
+              },
+              {
+                question: "When will my account activate?",
+                answer: "Your account is activated after admin verification of your registration payment."
+              }
+            ].map((faq, index) => (
+              <div key={index} className="bg-gray-50 rounded-xl p-6">
+                <h4 className="font-bold text-gray-900 mb-3">{faq.question}</h4>
+                <p className="text-gray-600">{faq.answer}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

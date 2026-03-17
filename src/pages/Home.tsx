@@ -41,7 +41,7 @@ const Home: React.FC = () => {
       subtitle: 'Transparent & Secure Transactions',
       description: 'Experience the power of blockchain-based payments with complete transparency and security.',
       cta: 'Learn More',
-      ctaLink: '/subscription-plans'
+      ctaLink: '/customer/register'
     },
     {
       id: 3,
@@ -432,12 +432,12 @@ const Home: React.FC = () => {
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              to="/subscription-plans"
+              to="/customer/register"
               className="group border-2 border-white/30 text-white px-8 py-4 rounded-2xl font-semibold hover:bg-white hover:text-emerald-900 transition-all duration-300 flex items-center justify-center space-x-3 backdrop-blur-sm"
              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             >
               <CheckCircle className="h-5 w-5" />
-              <span>View Pricing Plans</span>
+              <span>Register Now</span>
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>

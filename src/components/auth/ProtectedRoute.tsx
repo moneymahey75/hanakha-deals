@@ -151,6 +151,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     const allowedWithoutSubscription = [
       '/payment',
       '/subscription-plans',
+      '/registration-payment',
       '/verify-otp'
     ];
 
@@ -162,7 +163,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       console.log('🔒 No active subscription, redirecting to subscription plans');
       return (
           <Navigate
-              to="/subscription-plans"
+              to={user.userType === 'customer' ? '/registration-payment' : '/subscription-plans'}
               replace
               state={{
                 from: location,

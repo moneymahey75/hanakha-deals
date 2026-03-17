@@ -128,10 +128,10 @@ const JoinAsCustomer: React.FC = () => {
                   <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
                 <Link
-                  to="/subscription-plans"
+                  to="/customer/register"
                   className="group border-2 border-white/30 text-white px-8 py-4 rounded-2xl font-semibold hover:bg-white hover:text-indigo-900 transition-all duration-300 flex items-center justify-center space-x-3 backdrop-blur-sm"
                 >
-                  <span>View Plans</span>
+                  <span>Register Now</span>
                   <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </div>
@@ -345,11 +345,11 @@ const JoinAsCustomer: React.FC = () => {
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              to="/subscription-plans"
+              to="/customer/register"
               className="group border-2 border-indigo-600 text-indigo-600 px-8 py-4 rounded-2xl font-semibold hover:bg-indigo-50 transition-all duration-300 flex items-center justify-center space-x-3"
             >
               <CheckCircle className="h-5 w-5" />
-              <span>View Pricing Plans</span>
+              <span>Register Now</span>
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>
