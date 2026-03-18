@@ -12,6 +12,12 @@ const PaymentSettings: React.FC = () => {
         investmentContractAddress: settings.investmentContractAddress,
         subscriptionWalletAddress: settings.subscriptionWalletAddress,
         investmentWalletAddress: settings.investmentWalletAddress,
+        adminPaymentWallet: settings.adminPaymentWallet,
+        paymentWalletsEnabled: settings.paymentWalletsEnabled || {
+            trust_wallet: true,
+            metamask: true,
+            safepal: true
+        }
     });
     const [saving, setSaving] = useState(false);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -24,6 +30,12 @@ const PaymentSettings: React.FC = () => {
             investmentContractAddress: settings.investmentContractAddress,
             subscriptionWalletAddress: settings.subscriptionWalletAddress,
             investmentWalletAddress: settings.investmentWalletAddress,
+            adminPaymentWallet: settings.adminPaymentWallet,
+            paymentWalletsEnabled: settings.paymentWalletsEnabled || {
+                trust_wallet: true,
+                metamask: true,
+                safepal: true
+            }
         });
     }, [settings]);
 
@@ -40,7 +52,9 @@ const PaymentSettings: React.FC = () => {
                 { key: 'subscription_contract_address', value: JSON.stringify(formData.subscriptionContractAddress) },
                 { key: 'investment_contract_address', value: JSON.stringify(formData.investmentContractAddress) },
                 { key: 'subscription_wallet_address', value: JSON.stringify(formData.subscriptionWalletAddress) },
-                { key: 'investment_wallet_address', value: JSON.stringify(formData.investmentWalletAddress) }
+                { key: 'investment_wallet_address', value: JSON.stringify(formData.investmentWalletAddress) },
+                { key: 'admin_payment_wallet', value: JSON.stringify(formData.adminPaymentWallet || '') },
+                { key: 'payment_wallets_enabled', value: JSON.stringify(formData.paymentWalletsEnabled) }
             ];
 
             for (const update of updates) {
@@ -84,6 +98,16 @@ const PaymentSettings: React.FC = () => {
         setFormData(prev => ({
             ...prev,
             [e.target.name]: e.target.value
+        }));
+    };
+
+    const handleWalletToggle = (walletKey: 'trust_wallet' | 'metamask' | 'safepal') => {
+        setFormData(prev => ({
+            ...prev,
+            paymentWalletsEnabled: {
+                ...prev.paymentWalletsEnabled,
+                [walletKey]: !prev.paymentWalletsEnabled[walletKey]
+            }
         }));
     };
 
@@ -164,6 +188,62 @@ const PaymentSettings: React.FC = () => {
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Enter USDT address"
                         />
+                    </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-lg p-6">
+                    <div>
+                        <label htmlFor="adminPaymentWallet" className="block text-sm font-medium text-gray-700 mb-2">
+                            Registration USDT Receiving Address *
+                        </label>
+                        <input
+                            type="text"
+                            id="adminPaymentWallet"
+                            name="adminPaymentWallet"
+                            required
+                            value={formData.adminPaymentWallet}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Enter admin USDT address for registration payments"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            Users will send registration USDT payments directly to this address.
+                        </p>
+                    </div>
+
+                    <div className="mt-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Enabled Wallets for Registration Payments
+                        </label>
+                        <div className="flex flex-wrap gap-4">
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={formData.paymentWalletsEnabled.trust_wallet}
+                                    onChange={() => handleWalletToggle('trust_wallet')}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                />
+                                Trust Wallet
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={formData.paymentWalletsEnabled.metamask}
+                                    onChange={() => handleWalletToggle('metamask')}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                />
+                                MetaMask
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={formData.paymentWalletsEnabled.safepal}
+                                    onChange={() => handleWalletToggle('safepal')}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                />
+                                SafePal
+                            </label>
+                        </div>
                     </div>
                 </div>
 

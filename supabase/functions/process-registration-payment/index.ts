@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
       .from('tbl_payments')
       .select(`
         *,
-        user:tp_user_id(tu_id, tu_email, tu_parent_sponsorship_number),
+        user:tp_user_id(tu_id, tu_email),
         subscription:tp_subscription_id(
           tus_id,
           plan:tus_plan_id(tsp_price, tsp_type)
@@ -107,17 +107,61 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: settings, error: settingsError } = await supabase
-      .from('tbl_system_settings')
-      .select('tss_setting_key, tss_setting_value')
-      .eq('tss_setting_key', 'direct_referral_commission')
+    const paymentAmount = Number(payment.tp_amount ?? payment.subscription?.plan?.tsp_price ?? 0);
+    let commissionAmount = 0;
+    let commissionPercentage: number | null = null;
+    let directAccountNumber: number | null = null;
+    let sponsorUserId: string | null = null;
+    let sponsorSponsorshipNumber: string | null = null;
+
+    const { data: userProfile } = await supabase
+      .from('tbl_user_profiles')
+      .select('tup_parent_account, tup_sponsorship_number')
+      .eq('tup_user_id', payment.tp_user_id)
       .maybeSingle();
 
-    if (settingsError) {
-      throw settingsError;
-    }
+    const parentAccount = userProfile?.tup_parent_account?.trim();
 
-    const commissionAmount = settings?.tss_setting_value ? parseFloat(String(settings.tss_setting_value)) : 2;
+    if (parentAccount) {
+      const { data: sponsorProfile } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_user_id, tup_sponsorship_number')
+        .eq('tup_sponsorship_number', parentAccount)
+        .maybeSingle();
+
+      if (sponsorProfile) {
+        sponsorUserId = sponsorProfile.tup_user_id;
+        sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
+
+        const { count } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_user_id', { count: 'exact', head: true })
+          .eq('tup_parent_account', sponsorSponsorshipNumber);
+
+        directAccountNumber = typeof count === 'number' ? count : null;
+
+        if (directAccountNumber) {
+          const { data: rule } = await supabase
+            .from('earning_distribution_settings')
+            .select('*')
+            .eq('is_active', true)
+            .lte('direct_account_range_start', directAccountNumber)
+            .gte('direct_account_range_end', directAccountNumber)
+            .order('direct_account_range_start', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
+            commissionPercentage = Number(rule.direct_referrer_percentage);
+            if (Number.isFinite(commissionPercentage)) {
+              commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
+            } else {
+              commissionPercentage = null;
+            }
+          }
+        }
+      }
+    }
 
     const { error: updatePaymentError } = await supabase
       .from('tbl_payments')
@@ -137,69 +181,61 @@ Deno.serve(async (req: Request) => {
       throw updateSubscriptionError;
     }
 
-    if (payment.user.tu_parent_sponsorship_number) {
-      const { data: sponsor, error: sponsorError } = await supabase
-        .from('tbl_users')
-        .select('tu_id')
-        .eq('tu_sponsorship_number', payment.user.tu_parent_sponsorship_number)
+    if (sponsorUserId && commissionAmount > 0) {
+      const { data: sponsorWallet, error: walletError } = await supabase
+        .from('tbl_user_wallets')
+        .select('tuw_id, tuw_balance')
+        .eq('tuw_user_id', sponsorUserId)
         .maybeSingle();
 
-      if (sponsor && !sponsorError) {
-        const { data: sponsorWallet, error: walletError } = await supabase
+      if (walletError) {
+        console.error('Failed to get sponsor wallet:', walletError);
+      } else if (sponsorWallet) {
+        const newBalance = parseFloat(String(sponsorWallet.tuw_balance || 0)) + commissionAmount;
+
+        const { error: updateWalletError } = await supabase
           .from('tbl_user_wallets')
-          .select('tuw_id, tuw_balance')
-          .eq('tuw_user_id', sponsor.tu_id)
-          .maybeSingle();
+          .update({ tuw_balance: newBalance })
+          .eq('tuw_id', sponsorWallet.tuw_id);
 
-        if (walletError) {
-          console.error('Failed to get sponsor wallet:', walletError);
-        } else if (sponsorWallet) {
-          const newBalance = parseFloat(String(sponsorWallet.tuw_balance || 0)) + commissionAmount;
-
-          const { error: updateWalletError } = await supabase
-            .from('tbl_user_wallets')
-            .update({ tuw_balance: newBalance })
-            .eq('tuw_id', sponsorWallet.tuw_id);
-
-          if (updateWalletError) {
-            console.error('Failed to update sponsor wallet:', updateWalletError);
-          } else {
-            await supabase
-              .from('tbl_wallet_transactions')
-              .insert({
-                twt_wallet_id: sponsorWallet.tuw_id,
-                twt_transaction_type: 'credit',
-                twt_amount: commissionAmount,
-                twt_description: `Referral commission for ${payment.user.tu_email}`,
-                twt_status: 'completed',
-                twt_reference_type: 'registration_payment',
-                twt_reference_id: paymentId
-              });
-          }
+        if (updateWalletError) {
+          console.error('Failed to update sponsor wallet:', updateWalletError);
         } else {
-          const { data: newWallet, error: createWalletError } = await supabase
-            .from('tbl_user_wallets')
+          await supabase
+            .from('tbl_wallet_transactions')
             .insert({
-              tuw_user_id: sponsor.tu_id,
-              tuw_balance: commissionAmount,
-              tuw_currency: 'USD'
-            })
-            .select()
-            .single();
+              twt_wallet_id: sponsorWallet.tuw_id,
+              twt_transaction_type: 'credit',
+              twt_amount: commissionAmount,
+              twt_description: `Referral commission for ${payment.user.tu_email}`,
+              twt_status: 'completed',
+              twt_reference_type: 'registration_payment',
+              twt_reference_id: paymentId
+            });
+        }
+      } else {
+        const { data: newWallet, error: createWalletError } = await supabase
+          .from('tbl_user_wallets')
+          .insert({
+            tuw_user_id: sponsorUserId,
+            tuw_balance: commissionAmount,
+            tuw_currency: 'USD'
+          })
+          .select()
+          .single();
 
-          if (!createWalletError && newWallet) {
-            await supabase
-              .from('tbl_wallet_transactions')
-              .insert({
-                twt_wallet_id: newWallet.tuw_id,
-                twt_transaction_type: 'credit',
-                twt_amount: commissionAmount,
-                twt_description: `Referral commission for ${payment.user.tu_email}`,
-                twt_status: 'completed',
-                twt_reference_type: 'registration_payment',
-                twt_reference_id: paymentId
-              });
-          }
+        if (!createWalletError && newWallet) {
+          await supabase
+            .from('tbl_wallet_transactions')
+            .insert({
+              twt_wallet_id: newWallet.tuw_id,
+              twt_transaction_type: 'credit',
+              twt_amount: commissionAmount,
+              twt_description: `Referral commission for ${payment.user.tu_email}`,
+              twt_status: 'completed',
+              twt_reference_type: 'registration_payment',
+              twt_reference_id: paymentId
+            });
         }
       }
     }
@@ -215,6 +251,10 @@ Deno.serve(async (req: Request) => {
           user_email: payment.user.tu_email,
           amount: payment.tp_amount,
           commission_paid: commissionAmount,
+          commission_percentage: commissionPercentage,
+          direct_account_number: directAccountNumber,
+          sponsor_user_id: sponsorUserId,
+          sponsor_sponsorship_number: sponsorSponsorshipNumber,
           timestamp: new Date().toISOString(),
         },
       });
@@ -223,7 +263,9 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         message: 'Payment processed successfully',
-        commission_paid: commissionAmount
+        commission_paid: commissionAmount,
+        commission_percentage: commissionPercentage,
+        direct_account_number: directAccountNumber
       }),
       {
         headers: {

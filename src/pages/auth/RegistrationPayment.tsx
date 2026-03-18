@@ -99,6 +99,11 @@ const RegistrationPayment: React.FC = () => {
       return;
     }
 
+    if (!settings.admin_wallet) {
+      notification.showError('Error', 'Admin USDT address is not configured. Please contact support.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       // First create the subscription
@@ -188,7 +193,7 @@ const RegistrationPayment: React.FC = () => {
             <Shield className="h-6 w-6" />
           </div>
           <p className="text-green-100 text-center">
-            All payments are processed in USDT (BEP-20) on BNB Smart Chain for fast, secure, and transparent transactions.
+            All payments are sent directly from your wallet to the admin USDT address on BNB Smart Chain (BEP-20).
           </p>
         </div>
 
@@ -259,8 +264,8 @@ const RegistrationPayment: React.FC = () => {
                       <div className="text-sm text-amber-800">
                         <p className="font-medium mb-1">Important:</p>
                         <ul className="list-disc list-inside space-y-1">
-                          <li>Send exactly ${plan.tsp_price} USD equivalent in crypto</li>
-                          <li>Your account will be activated after admin verification</li>
+                          <li>Send exactly {plan.tsp_price} USDT (BEP-20)</li>
+                          <li>Your account will be activated after admin verification of your transaction</li>
                           <li>Save your transaction hash for reference</li>
                         </ul>
                       </div>
@@ -310,15 +315,15 @@ const RegistrationPayment: React.FC = () => {
                 </div>
                 <div className="flex items-start">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
-                  <span>$2 referral bonus to your sponsor</span>
+                  <span>Direct referrer commission applies if a Parent A/C was provided</span>
                 </div>
               </div>
 
               <button
                 onClick={handlePayment}
-                disabled={!selectedWallet || submitting}
+                disabled={!selectedWallet || submitting || !settings?.admin_wallet}
                 className={`w-full py-3 rounded-lg font-medium flex items-center justify-center space-x-2 ${
-                  selectedWallet && !submitting
+                  selectedWallet && !submitting && settings?.admin_wallet
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
@@ -462,7 +467,7 @@ const RegistrationPayment: React.FC = () => {
               },
               {
                 question: "Is my payment secure?",
-                answer: "Yes! All payments are processed through audited smart contracts on the blockchain for maximum security."
+                answer: "Yes. You send USDT directly from your wallet to the admin address on the blockchain."
               },
               {
                 question: "When will my account activate?",

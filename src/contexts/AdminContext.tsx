@@ -18,6 +18,12 @@ interface GeneralSettings {
   investmentContractAddress?: string;
   subscriptionWalletAddress?: string;
   investmentWalletAddress?: string;
+  adminPaymentWallet?: string;
+  paymentWalletsEnabled?: {
+    trust_wallet: boolean;
+    metamask: boolean;
+    safepal: boolean;
+  };
   // Username validation settings
   usernameMinLength: number;
   usernameMaxLength: number;
@@ -114,6 +120,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     investmentContractAddress: '',
     subscriptionWalletAddress: '',
     investmentWalletAddress: '',
+    adminPaymentWallet: '',
+    paymentWalletsEnabled: {
+      trust_wallet: true,
+      metamask: true,
+      safepal: true
+    },
     // Username validation default settings
     usernameMinLength: 8,
     usernameMaxLength: 30,
@@ -273,6 +285,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'investment_wallet_address':
                 loadedSettings.investmentWalletAddress = value;
+                break;
+              case 'admin_payment_wallet':
+                loadedSettings.adminPaymentWallet = value;
+                break;
+              case 'payment_wallets_enabled':
+                loadedSettings.paymentWalletsEnabled = value;
                 break;
 
                 // Username validation settings

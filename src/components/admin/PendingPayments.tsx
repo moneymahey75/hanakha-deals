@@ -94,9 +94,12 @@ const PendingPayments: React.FC = () => {
         throw new Error(result.error || 'Payment processing failed');
       }
 
+      const commissionPaid = typeof result.commission_paid === 'number' ? result.commission_paid : 0;
       notification.showSuccess(
         'Payment Approved',
-        `Payment processed and $${result.commission_paid} commission credited to referrer`
+        commissionPaid > 0
+          ? `Payment processed and $${commissionPaid} commission credited to referrer`
+          : 'Payment processed. No referral commission applied.'
       );
 
       loadPayments();
