@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { getAdminSupabaseWithAuth } from '../lib/adminSupabase';
 
 interface GeneralSettings {
   siteName: string;
@@ -207,7 +207,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
-      const fetchPromise = supabase
+      const adminClient = getAdminSupabaseWithAuth();
+      const fetchPromise = adminClient
           .from('tbl_system_settings')
           .select('tss_setting_key, tss_setting_value');
 
