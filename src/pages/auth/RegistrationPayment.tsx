@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -175,10 +175,28 @@ const RegistrationPayment: React.FC = () => {
     }
   };
 
+  const normalizedWalletsEnabled = useMemo(() => {
+    const raw = settings?.wallets_enabled as any;
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = null;
+      }
+    }
+
+    return {
+      trust_wallet: parsed?.trust_wallet ?? true,
+      metamask: parsed?.metamask ?? true,
+      safepal: parsed?.safepal ?? true
+    };
+  }, [settings]);
+
   const walletOptions = [
-    { id: 'trust_wallet' as const, name: 'Trust Wallet', icon: Wallet, enabled: settings?.wallets_enabled.trust_wallet },
-    { id: 'metamask' as const, name: 'MetaMask', icon: Wallet, enabled: settings?.wallets_enabled.metamask },
-    { id: 'safepal' as const, name: 'SafePal', icon: Wallet, enabled: settings?.wallets_enabled.safepal }
+    { id: 'trust_wallet' as const, name: 'Trust Wallet', icon: Wallet, enabled: normalizedWalletsEnabled.trust_wallet },
+    { id: 'metamask' as const, name: 'MetaMask', icon: Wallet, enabled: normalizedWalletsEnabled.metamask },
+    { id: 'safepal' as const, name: 'SafePal', icon: Wallet, enabled: normalizedWalletsEnabled.safepal }
   ];
 
   if (loading) {
