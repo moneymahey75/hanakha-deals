@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getAdminSupabaseWithAuth } from '../lib/adminSupabase';
 
 interface GeneralSettings {
@@ -198,7 +198,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ]);
 
   // Function to load settings from database
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -437,12 +437,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Load settings on component mount
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [loadSettings]);
 
   const updateSettings = (newSettings: Partial<GeneralSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
@@ -460,9 +460,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSubscriptionPlans(plans);
   };
 
-  const refreshSettings = async () => {
+  const refreshSettings = useCallback(async () => {
     await loadSettings();
-  };
+  }, [loadSettings]);
 
   const value = {
     settings,

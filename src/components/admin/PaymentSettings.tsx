@@ -39,6 +39,11 @@ const PaymentSettings: React.FC = () => {
         });
     }, [settings]);
 
+    // Ensure we fetch latest settings when the tab is opened
+    useEffect(() => {
+        refreshSettings();
+    }, [refreshSettings]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
