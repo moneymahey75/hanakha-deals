@@ -154,6 +154,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const [settings, setSettings] = useState<GeneralSettings>(defaultSettings);
+  const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
 
   const [smsGateway, setSMSGateway] = useState<SMSGateway>({
     provider: 'Twilio (via Supabase)',
@@ -218,8 +219,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]) as any;
 
       if (error) {
-        console.warn('Failed to load settings from database, using defaults:', error);
-        setSettings(defaultSettings);
+        console.warn('Failed to load settings from database:', error);
+        if (!hasLoadedSettings) {
+          setSettings(defaultSettings);
+        }
         return;
       }
 
@@ -427,13 +430,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
 
         setSettings(mergedSettings);
+        setHasLoadedSettings(true);
       } else {
-        console.log('No settings found in database, using defaults');
-        setSettings(defaultSettings);
+        console.log('No settings found in database');
+        if (!hasLoadedSettings) {
+          setSettings(defaultSettings);
+        }
       }
     } catch (error) {
-      console.warn('Database connection failed, using default settings:', error);
-      setSettings(defaultSettings);
+      console.warn('Database connection failed:', error);
+      if (!hasLoadedSettings) {
+        setSettings(defaultSettings);
+      }
     } finally {
       setLoading(false);
     }

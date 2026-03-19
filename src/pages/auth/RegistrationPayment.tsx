@@ -60,7 +60,6 @@ const RegistrationPayment: React.FC = () => {
       ]);
 
       if (planResult.error) throw planResult.error;
-      if (settingsResult.error) throw settingsResult.error;
       if (!planResult.data) {
         notification.showError('Error', 'No active registration plan found');
         navigate('/customer/dashboard');
@@ -68,6 +67,10 @@ const RegistrationPayment: React.FC = () => {
       }
 
       setPlan(planResult.data);
+
+      if (settingsResult.error) {
+        notification.showError('Settings Load Failed', settingsResult.error.message);
+      }
 
       if (settingsResult.data) {
         const parseSettingValue = (raw: any) => {
@@ -87,6 +90,16 @@ const RegistrationPayment: React.FC = () => {
         setSettings({
           admin_wallet: typeof adminWalletValue === 'string' ? adminWalletValue : String(adminWalletValue || ''),
           wallets_enabled: walletsEnabledValue && typeof walletsEnabledValue === 'object' ? walletsEnabledValue : {
+            trust_wallet: true,
+            metamask: true,
+            safepal: true
+          }
+        });
+      } else {
+        // Fallback to defaults so wallet options still render
+        setSettings({
+          admin_wallet: '',
+          wallets_enabled: {
             trust_wallet: true,
             metamask: true,
             safepal: true
