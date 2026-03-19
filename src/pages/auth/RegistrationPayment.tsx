@@ -135,7 +135,7 @@ const RegistrationPayment: React.FC = () => {
       const { data: subscription, error: subscriptionError } = await supabase
         .from('tbl_user_subscriptions')
         .insert({
-          tus_user_id: user?.tu_id,
+          tus_user_id: user?.id,
           tus_plan_id: plan.tsp_id,
           tus_status: 'pending',
           tus_start_date: new Date().toISOString(),
@@ -150,7 +150,7 @@ const RegistrationPayment: React.FC = () => {
       const { error: paymentError } = await supabase
         .from('tbl_payments')
         .insert({
-          tp_user_id: user?.tu_id,
+          tp_user_id: user?.id,
           tp_subscription_id: subscription.tus_id,
           tp_amount: plan.tsp_price,
           tp_payment_method: selectedWallet,
@@ -273,20 +273,27 @@ const RegistrationPayment: React.FC = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Payment Wallet</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {walletOptions.filter(w => w.enabled).map(wallet => (
-                  <button
-                    key={wallet.id}
-                    onClick={() => setSelectedWallet(wallet.id)}
-                    className={`p-4 border-2 rounded-lg transition-all ${
-                      selectedWallet === wallet.id
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-gray-200 hover:border-blue-300'
-                    }`}
-                  >
-                    <wallet.icon className="h-8 w-8 mx-auto mb-2 text-gray-700" />
-                    <p className="text-sm font-medium text-gray-900">{wallet.name}</p>
-                  </button>
-                ))}
+                {walletOptions.map(wallet => {
+                  const isEnabled = Boolean(wallet.enabled);
+                  return (
+                    <button
+                      key={wallet.id}
+                      onClick={() => {
+                        if (!isEnabled) return;
+                        setSelectedWallet(wallet.id);
+                      }}
+                      disabled={!isEnabled}
+                      className={`p-4 border-2 rounded-lg transition-all ${
+                        selectedWallet === wallet.id
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300'
+                      } ${!isEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <wallet.icon className="h-8 w-8 mx-auto mb-2 text-gray-700" />
+                      <p className="text-sm font-medium text-gray-900">{wallet.name}</p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
