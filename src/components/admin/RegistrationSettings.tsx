@@ -10,6 +10,7 @@ const RegistrationSettings: React.FC = () => {
         eitherVerificationRequired: false,
         testOtpEnabled: false,
         testOtpCode: '123456',
+        registrationPaymentAutoApprove: true,
         // Username validation settings
         usernameMinLength: 8,
         usernameMaxLength: 30,
@@ -56,6 +57,7 @@ const RegistrationSettings: React.FC = () => {
                     'either_verification_required',
                     'test_otp_enabled',
                     'test_otp_code',
+                    'registration_payment_auto_approve',
                     // Username settings
                     'username_min_length',
                     'username_max_length',
@@ -104,6 +106,7 @@ const RegistrationSettings: React.FC = () => {
                     eitherVerificationRequired: settingsMap.either_verification_required ?? false,
                     testOtpEnabled: settingsMap.test_otp_enabled ?? false,
                     testOtpCode: settingsMap.test_otp_code ?? '123456',
+                    registrationPaymentAutoApprove: settingsMap.registration_payment_auto_approve ?? true,
                     // Username settings with defaults
                     usernameMinLength: settingsMap.username_min_length ?? 8,
                     usernameMaxLength: settingsMap.username_max_length ?? 30,
@@ -147,6 +150,7 @@ const RegistrationSettings: React.FC = () => {
             eitherVerificationRequired: false,
             testOtpEnabled: false,
             testOtpCode: '123456',
+            registrationPaymentAutoApprove: true,
             usernameMinLength: 8,
             usernameMaxLength: 30,
             usernameAllowSpaces: false,
@@ -205,6 +209,11 @@ const RegistrationSettings: React.FC = () => {
                     tss_setting_key: 'test_otp_enabled',
                     tss_setting_value: JSON.stringify(formData.testOtpEnabled),
                     tss_description: 'Enable test OTP for development/testing purposes'
+                },
+                {
+                    tss_setting_key: 'registration_payment_auto_approve',
+                    tss_setting_value: JSON.stringify(formData.registrationPaymentAutoApprove),
+                    tss_description: 'Auto-approve registration payments and activate subscription immediately'
                 },
                 // Username settings
                 {
@@ -822,6 +831,42 @@ const RegistrationSettings: React.FC = () => {
                                         </p>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Registration Payment Approval */}
+                    <div className="border border-indigo-200 rounded-lg p-6 bg-indigo-50">
+                        <div className="flex items-start space-x-4">
+                            <div className="bg-indigo-100 p-2 rounded-lg mt-1">
+                                <CheckCircle className="h-5 w-5 text-indigo-600" />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-lg font-medium text-gray-900">Auto-Approve Registration Payments</h4>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            Activate the subscription immediately after payment submission
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            name="registrationPaymentAutoApprove"
+                                            checked={formData.registrationPaymentAutoApprove}
+                                            onChange={handleChange}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                </div>
+                                <div className="mt-3 text-sm text-gray-500">
+                                    {formData.registrationPaymentAutoApprove ? (
+                                        <span className="text-indigo-600">✓ Payments are auto-approved and subscriptions activate immediately</span>
+                                    ) : (
+                                        <span className="text-gray-500">Payments require admin approval before activation</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

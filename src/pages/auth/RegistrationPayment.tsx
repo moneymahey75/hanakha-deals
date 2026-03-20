@@ -10,6 +10,7 @@ interface RegistrationPlan {
   tsp_name: string;
   tsp_description: string;
   tsp_price: number;
+  tsp_duration_days?: number;
   tsp_features: any;
 }
 
@@ -20,6 +21,7 @@ interface PaymentSettings {
     metamask: boolean;
     safepal: boolean;
   };
+  registration_payment_auto_approve?: boolean;
 }
 
 const RegistrationPayment: React.FC = () => {
@@ -56,7 +58,7 @@ const RegistrationPayment: React.FC = () => {
         supabase
           .from('tbl_system_settings')
           .select('tss_setting_key, tss_setting_value')
-          .in('tss_setting_key', ['admin_payment_wallet', 'payment_wallets_enabled'])
+          .in('tss_setting_key', ['admin_payment_wallet', 'payment_wallets_enabled', 'registration_payment_auto_approve'])
       ]);
 
       if (planResult.error) throw planResult.error;
@@ -83,9 +85,11 @@ const RegistrationPayment: React.FC = () => {
 
         const adminWallet = settingsResult.data.find(s => s.tss_setting_key === 'admin_payment_wallet');
         const walletsEnabled = settingsResult.data.find(s => s.tss_setting_key === 'payment_wallets_enabled');
+        const autoApprove = settingsResult.data.find(s => s.tss_setting_key === 'registration_payment_auto_approve');
 
         const adminWalletValue = adminWallet ? parseSettingValue(adminWallet.tss_setting_value) : '';
         const walletsEnabledValue = walletsEnabled ? parseSettingValue(walletsEnabled.tss_setting_value) : null;
+        const autoApproveValue = autoApprove ? parseSettingValue(autoApprove.tss_setting_value) : true;
 
         setSettings({
           admin_wallet: typeof adminWalletValue === 'string' ? adminWalletValue : String(adminWalletValue || ''),
@@ -93,7 +97,8 @@ const RegistrationPayment: React.FC = () => {
             trust_wallet: true,
             metamask: true,
             safepal: true
-          }
+          },
+          registration_payment_auto_approve: Boolean(autoApproveValue)
         });
       } else {
         // Fallback to defaults so wallet options still render
@@ -103,7 +108,8 @@ const RegistrationPayment: React.FC = () => {
             trust_wallet: true,
             metamask: true,
             safepal: true
-          }
+          },
+          registration_payment_auto_approve: true
         });
       }
     } catch (error: any) {
@@ -132,13 +138,21 @@ const RegistrationPayment: React.FC = () => {
     setSubmitting(true);
     try {
       // First create the subscription
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      const durationDays = plan.tsp_duration_days ?? 30;
+      endDate.setDate(startDate.getDate() + durationDays);
+
+      const autoApprove = settings.registration_payment_auto_approve !== false;
+
       const { data: subscription, error: subscriptionError } = await supabase
         .from('tbl_user_subscriptions')
         .insert({
           tus_user_id: user?.id,
           tus_plan_id: plan.tsp_id,
-          tus_status: 'pending',
-          tus_start_date: new Date().toISOString(),
+          tus_status: autoApprove ? 'active' : 'pending',
+          tus_start_date: startDate.toISOString(),
+          tus_end_date: endDate.toISOString(),
           tus_payment_amount: plan.tsp_price
         })
         .select()
@@ -154,15 +168,17 @@ const RegistrationPayment: React.FC = () => {
           tp_subscription_id: subscription.tus_id,
           tp_amount: plan.tsp_price,
           tp_payment_method: selectedWallet,
-          tp_payment_status: 'pending',
+          tp_payment_status: autoApprove ? 'completed' : 'pending',
           tp_transaction_id: transactionHash || null
         });
 
       if (paymentError) throw paymentError;
 
       notification.showSuccess(
-        'Payment Submitted',
-        'Your registration payment is pending admin approval'
+        autoApprove ? 'Payment Successful' : 'Payment Submitted',
+        autoApprove
+          ? 'Your registration payment has been processed and your subscription is now active'
+          : 'Your registration payment is pending admin approval'
       );
 
       setTimeout(() => {
