@@ -1,0 +1,583 @@
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { ethers } from 'npm:ethers@6.10.0';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+};
+
+const TRANSFER_ABI = [
+  'event Transfer(address indexed from, address indexed to, uint256 value)'
+];
+
+const DEFAULT_MAINNET_RPC = 'https://bsc-dataseed1.binance.org/';
+const DEFAULT_TESTNET_RPC = 'https://data-seed-prebsc-1-s1.binance.org:8545/';
+
+const MIN_CONFIRMATIONS_DEFAULT = 1;
+
+const normalizeAddress = (address?: string | null) =>
+  (address || '').trim().toLowerCase();
+
+const parseSetting = (raw: any) => {
+  if (raw === null || raw === undefined) return raw;
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing auth token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !authData?.user) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid user session' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { txHash } = await req.json();
+
+    if (!txHash || typeof txHash !== 'string') {
+      return new Response(JSON.stringify({ success: false, error: 'Missing transaction hash' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid transaction hash format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const userId = authData.user.id;
+
+    const { data: settingsRows, error: settingsError } = await supabase
+      .from('tbl_system_settings')
+      .select('tss_setting_key, tss_setting_value')
+      .in('tss_setting_key', ['admin_payment_wallet', 'payment_mode', 'usdt_address']);
+
+    if (settingsError) {
+      throw settingsError;
+    }
+
+    const settingsMap: Record<string, any> = {};
+    for (const row of settingsRows || []) {
+      settingsMap[row.tss_setting_key] = parseSetting(row.tss_setting_value);
+    }
+
+    const adminWallet = String(settingsMap.admin_payment_wallet || '').trim();
+    const usdtAddress = String(settingsMap.usdt_address || '').trim();
+    const paymentMode = settingsMap.payment_mode;
+
+    if (!ethers.isAddress(adminWallet)) {
+      return new Response(JSON.stringify({ success: false, error: 'Admin payment wallet not configured' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!ethers.isAddress(usdtAddress)) {
+      return new Response(JSON.stringify({ success: false, error: 'USDT contract address not configured' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const isMainnet = paymentMode === true || paymentMode === '1' || paymentMode === 1 || paymentMode === 'true';
+    const rpcUrl = isMainnet
+      ? (Deno.env.get('BSC_MAINNET_RPC_URL') || DEFAULT_MAINNET_RPC)
+      : (Deno.env.get('BSC_TESTNET_RPC_URL') || DEFAULT_TESTNET_RPC);
+
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+    const tx = await provider.getTransaction(txHash);
+    if (!tx) {
+      return new Response(JSON.stringify({ success: false, error: 'Transaction not found on network' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const txFrom = normalizeAddress(tx.from);
+    const txTo = normalizeAddress(tx.to);
+    const expectedTokenAddress = normalizeAddress(usdtAddress);
+
+    if (txTo !== expectedTokenAddress) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Transaction does not target the USDT contract'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: registrationPlan, error: planError } = await supabase
+      .from('tbl_subscription_plans')
+      .select('*')
+      .eq('tsp_type', 'registration')
+      .eq('tsp_is_active', true)
+      .maybeSingle();
+
+    if (planError || !registrationPlan) {
+      return new Response(JSON.stringify({ success: false, error: 'No active registration plan found' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const expectedAmount = Number(registrationPlan.tsp_price || 0);
+    if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid registration plan amount' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: activeSubscription } = await supabase
+      .from('tbl_user_subscriptions')
+      .select('tus_id')
+      .eq('tus_user_id', userId)
+      .eq('tus_plan_id', registrationPlan.tsp_id)
+      .eq('tus_status', 'active')
+      .maybeSingle();
+
+    const { data: existingPayment } = await supabase
+      .from('tbl_payments')
+      .select('*')
+      .eq('tp_transaction_id', txHash)
+      .maybeSingle();
+
+    let paymentId = existingPayment?.tp_id ?? null;
+
+    if (existingPayment && existingPayment.tp_user_id !== userId) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Transaction hash already claimed by another user'
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (activeSubscription && !existingPayment) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Registration payment already completed for this account'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (existingPayment?.tp_payment_status === 'completed') {
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'success',
+        txHash,
+        amount: existingPayment.tp_amount ?? expectedAmount,
+        network: existingPayment.tp_network ?? (isMainnet ? 'BSC Mainnet' : 'BSC Testnet'),
+        confirmations: existingPayment.tp_confirmations ?? null
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: walletConnection } = await supabase
+      .from('tbl_user_wallet_connections')
+      .select('tuwc_wallet_address')
+      .eq('tuwc_user_id', userId)
+      .eq('tuwc_is_active', true)
+      .maybeSingle();
+
+    if (walletConnection?.tuwc_wallet_address) {
+      const normalized = normalizeAddress(walletConnection.tuwc_wallet_address);
+      if (normalized && normalized !== txFrom) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Wallet mismatch. Please pay from your connected wallet.'
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    if (!existingPayment) {
+      const { data: createdPayment } = await supabase
+        .from('tbl_payments')
+        .insert({
+          tp_user_id: userId,
+          tp_subscription_id: null,
+          tp_amount: expectedAmount,
+          tp_currency: 'USDT',
+          tp_payment_method: 'blockchain',
+          tp_payment_status: 'pending',
+          tp_transaction_id: txHash,
+          tp_wallet_address: txFrom,
+          tp_to_address: normalizeAddress(adminWallet),
+          tp_expected_amount: expectedAmount,
+          tp_network: isMainnet ? 'BSC Mainnet' : 'BSC Testnet',
+          tp_chain_id: isMainnet ? 56 : 97
+        })
+        .select('tp_id')
+        .single();
+
+      paymentId = createdPayment?.tp_id ?? null;
+    }
+
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'pending',
+        message: 'Transaction pending confirmation'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (receipt.status !== 1) {
+      await supabase
+        .from('tbl_payments')
+        .update({
+          tp_payment_status: 'failed',
+          tp_error_message: 'Transaction failed on-chain',
+          tp_block_number: receipt.blockNumber
+        })
+        .eq('tp_transaction_id', txHash)
+        .eq('tp_user_id', userId);
+
+      return new Response(JSON.stringify({
+        success: false,
+        status: 'failed',
+        error: 'Transaction failed on-chain'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const latestBlock = await provider.getBlockNumber();
+    const confirmations = Math.max(0, latestBlock - receipt.blockNumber + 1);
+    const minConfirmations = Number(Deno.env.get('MIN_REG_PAYMENT_CONFIRMATIONS') || MIN_CONFIRMATIONS_DEFAULT);
+
+    if (confirmations < minConfirmations) {
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'pending',
+        message: `Waiting for confirmations (${confirmations}/${minConfirmations})`
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const iface = new ethers.Interface(TRANSFER_ABI);
+    const adminWalletNormalized = normalizeAddress(adminWallet);
+
+    let totalReceived = 0n;
+    let transferFound = false;
+
+    for (const log of receipt.logs) {
+      if (normalizeAddress(log.address) !== expectedTokenAddress) continue;
+      try {
+        const parsed = iface.parseLog(log);
+        if (!parsed) continue;
+        const from = normalizeAddress(parsed.args.from);
+        const to = normalizeAddress(parsed.args.to);
+        const value = parsed.args.value as bigint;
+
+        if (from === txFrom && to === adminWalletNormalized) {
+          transferFound = true;
+          totalReceived += value;
+        }
+      } catch {
+        // ignore non-matching logs
+      }
+    }
+
+    if (!transferFound) {
+      await supabase
+        .from('tbl_payments')
+        .update({
+          tp_payment_status: 'failed',
+          tp_error_message: 'No valid USDT transfer to admin wallet found',
+          tp_block_number: receipt.blockNumber
+        })
+        .eq('tp_transaction_id', txHash)
+        .eq('tp_user_id', userId);
+
+      return new Response(JSON.stringify({
+        success: false,
+        status: 'failed',
+        error: 'No valid USDT transfer found'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const usdtContract = new ethers.Contract(usdtAddress, [
+      'function decimals() view returns (uint8)'
+    ], provider);
+
+    const decimals = await usdtContract.decimals();
+    const expectedUnits = ethers.parseUnits(expectedAmount.toString(), decimals);
+
+    if (totalReceived < expectedUnits) {
+      await supabase
+        .from('tbl_payments')
+        .update({
+          tp_payment_status: 'failed',
+          tp_error_message: 'Received amount lower than expected',
+          tp_block_number: receipt.blockNumber,
+          tp_amount_received: Number(ethers.formatUnits(totalReceived, decimals))
+        })
+        .eq('tp_transaction_id', txHash)
+        .eq('tp_user_id', userId);
+
+      return new Response(JSON.stringify({
+        success: false,
+        status: 'failed',
+        error: 'Received amount lower than expected'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const durationDays = Number(registrationPlan.tsp_duration_days || 30);
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + durationDays);
+
+    const { data: existingSubscription } = await supabase
+      .from('tbl_user_subscriptions')
+      .select('tus_id, tus_status')
+      .eq('tus_user_id', userId)
+      .eq('tus_plan_id', registrationPlan.tsp_id)
+      .maybeSingle();
+
+    let subscriptionId = existingSubscription?.tus_id || null;
+
+    if (existingSubscription) {
+      await supabase
+        .from('tbl_user_subscriptions')
+        .update({
+          tus_status: 'active',
+          tus_start_date: startDate.toISOString(),
+          tus_end_date: endDate.toISOString(),
+          tus_payment_amount: expectedAmount
+        })
+        .eq('tus_id', existingSubscription.tus_id);
+    } else {
+      const { data: newSubscription } = await supabase
+        .from('tbl_user_subscriptions')
+        .insert({
+          tus_user_id: userId,
+          tus_plan_id: registrationPlan.tsp_id,
+          tus_status: 'active',
+          tus_start_date: startDate.toISOString(),
+          tus_end_date: endDate.toISOString(),
+          tus_payment_amount: expectedAmount
+        })
+        .select()
+        .single();
+
+      subscriptionId = newSubscription?.tus_id || null;
+    }
+
+    await supabase
+      .from('tbl_payments')
+      .update({
+        tp_subscription_id: subscriptionId,
+        tp_amount: expectedAmount,
+        tp_currency: 'USDT',
+        tp_payment_method: 'blockchain',
+        tp_payment_status: 'completed',
+        tp_transaction_id: txHash,
+        tp_wallet_address: txFrom,
+        tp_to_address: adminWalletNormalized,
+        tp_expected_amount: expectedAmount,
+        tp_amount_received: Number(ethers.formatUnits(totalReceived, decimals)),
+        tp_network: isMainnet ? 'BSC Mainnet' : 'BSC Testnet',
+        tp_chain_id: isMainnet ? 56 : 97,
+        tp_block_number: receipt.blockNumber,
+        tp_confirmations: confirmations,
+        tp_verified_at: new Date().toISOString(),
+        tp_gateway_response: {
+          blockchain: isMainnet ? 'BSC Mainnet' : 'BSC Testnet',
+          usdt_contract: usdtAddress,
+          admin_wallet: adminWallet,
+          transaction_hash: txHash,
+          wallet_address: txFrom,
+          block_number: receipt.blockNumber,
+          confirmations,
+          status: 'success'
+        }
+      })
+      .eq('tp_transaction_id', txHash)
+      .eq('tp_user_id', userId);
+
+    // Referral commission (reuse logic from admin approval flow)
+    const paymentAmount = expectedAmount;
+    let commissionAmount = 0;
+    let commissionPercentage: number | null = null;
+    let directAccountNumber: number | null = null;
+    let sponsorUserId: string | null = null;
+    let sponsorSponsorshipNumber: string | null = null;
+
+    const { data: userProfile } = await supabase
+      .from('tbl_user_profiles')
+      .select('tup_parent_account, tup_sponsorship_number')
+      .eq('tup_user_id', userId)
+      .maybeSingle();
+
+    const parentAccount = userProfile?.tup_parent_account?.trim();
+
+    if (parentAccount) {
+      const { data: sponsorProfile } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_user_id, tup_sponsorship_number')
+        .eq('tup_sponsorship_number', parentAccount)
+        .maybeSingle();
+
+      if (sponsorProfile) {
+        sponsorUserId = sponsorProfile.tup_user_id;
+        sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
+
+        const { count } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_user_id', { count: 'exact', head: true })
+          .eq('tup_parent_account', sponsorSponsorshipNumber);
+
+        directAccountNumber = typeof count === 'number' ? count : null;
+
+        if (directAccountNumber) {
+          const { data: rule } = await supabase
+            .from('earning_distribution_settings')
+            .select('*')
+            .eq('is_active', true)
+            .lte('direct_account_range_start', directAccountNumber)
+            .gte('direct_account_range_end', directAccountNumber)
+            .order('direct_account_range_start', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
+            commissionPercentage = Number(rule.direct_referrer_percentage);
+            if (Number.isFinite(commissionPercentage)) {
+              commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
+            } else {
+              commissionPercentage = null;
+            }
+          }
+        }
+      }
+    }
+
+    if (sponsorUserId && commissionAmount > 0) {
+      const { data: sponsorWallet } = await supabase
+        .from('tbl_user_wallets')
+        .select('tuw_id, tuw_balance')
+        .eq('tuw_user_id', sponsorUserId)
+        .maybeSingle();
+
+      if (sponsorWallet) {
+        const newBalance = parseFloat(String(sponsorWallet.tuw_balance || 0)) + commissionAmount;
+
+        const { error: updateWalletError } = await supabase
+          .from('tbl_user_wallets')
+          .update({ tuw_balance: newBalance })
+          .eq('tuw_id', sponsorWallet.tuw_id);
+
+        if (!updateWalletError) {
+          await supabase
+            .from('tbl_wallet_transactions')
+            .insert({
+              twt_wallet_id: sponsorWallet.tuw_id,
+              twt_transaction_type: 'credit',
+              twt_amount: commissionAmount,
+              twt_description: `Referral commission for ${authData.user.email}`,
+              twt_status: 'completed',
+              twt_reference_type: 'registration_payment',
+              twt_reference_id: paymentId
+            });
+        }
+      } else {
+        const { data: newWallet } = await supabase
+          .from('tbl_user_wallets')
+          .insert({
+            tuw_user_id: sponsorUserId,
+            tuw_balance: commissionAmount,
+            tuw_currency: 'USD'
+          })
+          .select()
+          .single();
+
+        if (newWallet) {
+          await supabase
+            .from('tbl_wallet_transactions')
+            .insert({
+              twt_wallet_id: newWallet.tuw_id,
+              twt_transaction_type: 'credit',
+              twt_amount: commissionAmount,
+              twt_description: `Referral commission for ${authData.user.email}`,
+              twt_status: 'completed',
+              twt_reference_type: 'registration_payment',
+              twt_reference_id: paymentId
+            });
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      status: 'success',
+      txHash,
+      amount: expectedAmount,
+      network: isMainnet ? 'BSC Mainnet' : 'BSC Testnet',
+      confirmations
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error: any) {
+    console.error('Error verifying registration payment:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message || 'Internal server error'
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});

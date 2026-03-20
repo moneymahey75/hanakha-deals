@@ -152,6 +152,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       '/payment',
       '/subscription-plans',
       '/registration-payment',
+      '/registration-payment-success',
       '/verify-otp'
     ];
 

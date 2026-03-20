@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdmin } from '../../contexts/AdminContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
-import { DollarSign, CheckCircle, ArrowRight, Wallet, Shield, Clock, CreditCard, Zap } from 'lucide-react';
+import { WalletService } from '../../services/walletService';
+import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../../types/wallet';
+import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
+import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink } from 'lucide-react';
 
 interface RegistrationPlan {
   tsp_id: string;
@@ -14,206 +18,345 @@ interface RegistrationPlan {
   tsp_features: any;
 }
 
-interface PaymentSettings {
-  admin_wallet: string;
-  wallets_enabled: {
-    trust_wallet: boolean;
-    metamask: boolean;
-    safepal: boolean;
-  };
-  registration_payment_auto_approve?: boolean;
-}
+const PAYMENT_POLL_INTERVAL = 5000;
+const PAYMENT_POLL_ATTEMPTS = 12;
 
 const RegistrationPayment: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useAuth();
+  const { user, fetchUserData } = useAuth();
+  const { settings } = useAdmin();
   const notification = useNotification();
-
   const [plan, setPlan] = useState<RegistrationPlan | null>(null);
-  const [settings, setSettings] = useState<PaymentSettings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedWallet, setSelectedWallet] = useState<'trust_wallet' | 'metamask' | 'safepal' | null>(null);
-  const [transactionHash, setTransactionHash] = useState('');
-  const [paymentProof, setPaymentProof] = useState<File | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+
+  const [walletService] = useState(() => WalletService.getInstance());
+  const [availableWallets, setAvailableWallets] = useState<WalletInfoType[]>([]);
+  const [walletState, setWalletState] = useState<WalletState>({
+    isConnected: false,
+    address: null,
+    chainId: null,
+    balance: '0',
+    usdtBalance: '0',
+    walletName: null,
+  });
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const [transaction, setTransaction] = useState<TransactionState>({
+    isProcessing: false,
+    hash: null,
+    status: 'idle',
+    error: null,
+    distributionSteps: [],
+  });
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       navigate('/customer/login');
       return;
     }
-    loadRegistrationData();
-  }, [user]);
 
-  const loadRegistrationData = async () => {
-    try {
-      const [planResult, settingsResult] = await Promise.all([
-        supabase
+    if (user.hasActiveSubscription) {
+      navigate('/customer/dashboard', { replace: true });
+      return;
+    }
+
+    const loadRegistrationData = async () => {
+      try {
+        const { data, error } = await supabase
           .from('tbl_subscription_plans')
           .select('*')
           .eq('tsp_type', 'registration')
           .eq('tsp_is_active', true)
-          .maybeSingle(),
-        supabase
-          .from('tbl_system_settings')
-          .select('tss_setting_key, tss_setting_value')
-          .in('tss_setting_key', ['admin_payment_wallet', 'payment_wallets_enabled', 'registration_payment_auto_approve'])
-      ]);
+          .maybeSingle();
 
-      if (planResult.error) throw planResult.error;
-      if (!planResult.data) {
-        notification.showError('Error', 'No active registration plan found');
-        navigate('/customer/dashboard');
-        return;
+        if (error) throw error;
+        if (!data) {
+          notification.showError('Error', 'No active registration plan found');
+          navigate('/customer/dashboard');
+          return;
+        }
+
+        setPlan(data);
+      } catch (error: any) {
+        notification.showError('Load Failed', error.message);
+      } finally {
+        setLoading(false);
       }
+    };
 
-      setPlan(planResult.data);
+    loadRegistrationData();
+  }, [user, navigate, notification]);
 
-      if (settingsResult.error) {
-        notification.showError('Settings Load Failed', settingsResult.error.message);
-      }
+  useEffect(() => {
+    if (!settings) return;
 
-      if (settingsResult.data) {
-        const parseSettingValue = (raw: any) => {
-          try {
-            return JSON.parse(raw);
-          } catch {
-            return raw;
-          }
-        };
+    walletService.setAdminSettings({
+      paymentMode: settings.paymentMode?.toString() || '0',
+      usdtAddress: settings.usdtAddress || '',
+      subscriptionContractAddress: settings.subscriptionContractAddress || '',
+      subscriptionWalletAddress: settings.subscriptionWalletAddress || ''
+    });
+  }, [settings, walletService]);
 
-        const adminWallet = settingsResult.data.find(s => s.tss_setting_key === 'admin_payment_wallet');
-        const walletsEnabled = settingsResult.data.find(s => s.tss_setting_key === 'payment_wallets_enabled');
-        const autoApprove = settingsResult.data.find(s => s.tss_setting_key === 'registration_payment_auto_approve');
+  useEffect(() => {
+    const wallets = walletService.detectWallets();
+    setAvailableWallets(wallets);
+  }, [walletService]);
 
-        const adminWalletValue = adminWallet ? parseSettingValue(adminWallet.tss_setting_value) : '';
-        const walletsEnabledValue = walletsEnabled ? parseSettingValue(walletsEnabled.tss_setting_value) : null;
-        const autoApproveValue = autoApprove ? parseSettingValue(autoApprove.tss_setting_value) : true;
+  const enabledWallets = useMemo(() => {
+    return settings?.paymentWalletsEnabled || {
+      trust_wallet: true,
+      metamask: true,
+      safepal: true
+    };
+  }, [settings]);
 
-        setSettings({
-          admin_wallet: typeof adminWalletValue === 'string' ? adminWalletValue : String(adminWalletValue || ''),
-          wallets_enabled: walletsEnabledValue && typeof walletsEnabledValue === 'object' ? walletsEnabledValue : {
-            trust_wallet: true,
-            metamask: true,
-            safepal: true
-          },
-          registration_payment_auto_approve: Boolean(autoApproveValue)
-        });
+  const filteredWallets = useMemo(() => {
+    return availableWallets.filter((wallet) => {
+      if (wallet.name === 'Trust Wallet') return enabledWallets.trust_wallet;
+      if (wallet.name === 'MetaMask') return enabledWallets.metamask;
+      if (wallet.name === 'SafePal') return enabledWallets.safepal;
+      return false;
+    });
+  }, [availableWallets, enabledWallets]);
+
+  const saveWalletConnection = async (address: string, walletName: string, walletType: string, chainId: number | null) => {
+    if (!user || !address) return;
+
+    try {
+      await supabase
+        .from('tbl_user_wallet_connections')
+        .update({
+          tuwc_is_active: false,
+          tuwc_updated_at: new Date().toISOString()
+        })
+        .eq('tuwc_user_id', user.id)
+        .eq('tuwc_is_active', true);
+
+      const { data: existingWallet } = await supabase
+        .from('tbl_user_wallet_connections')
+        .select('tuwc_id')
+        .eq('tuwc_user_id', user.id)
+        .eq('tuwc_wallet_address', address)
+        .single();
+
+      if (existingWallet) {
+        await supabase
+          .from('tbl_user_wallet_connections')
+          .update({
+            tuwc_is_active: true,
+            tuwc_last_connected_at: new Date().toISOString(),
+            tuwc_updated_at: new Date().toISOString()
+          })
+          .eq('tuwc_id', existingWallet.tuwc_id);
       } else {
-        // Fallback to defaults so wallet options still render
-        setSettings({
-          admin_wallet: '',
-          wallets_enabled: {
-            trust_wallet: true,
-            metamask: true,
-            safepal: true
-          },
-          registration_payment_auto_approve: true
-        });
+        await supabase
+          .from('tbl_user_wallet_connections')
+          .insert({
+            tuwc_user_id: user.id,
+            tuwc_wallet_address: address,
+            tuwc_wallet_name: walletName,
+            tuwc_wallet_type: walletType,
+            tuwc_chain_id: chainId,
+            tuwc_is_active: true,
+            tuwc_last_connected_at: new Date().toISOString()
+          });
       }
-    } catch (error: any) {
-      notification.showError('Load Failed', error.message);
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('Error saving wallet connection:', error);
     }
   };
 
-  const handlePayment = async () => {
-    if (!selectedWallet) {
-      notification.showError('Error', 'Please select a wallet');
-      return;
+  const handleWalletConnect = async (provider: any) => {
+    if (isConnecting) return;
+
+    setIsConnecting(true);
+    try {
+      if (!settings) {
+        throw new Error('Payment settings not configured');
+      }
+
+      const wallet = await walletService.connectWallet(provider);
+      setWalletState(wallet);
+
+      if (wallet.address) {
+        const walletType = provider.isMetaMask
+          ? 'metamask'
+          : provider.isTrust
+            ? 'trust'
+            : provider.isSafePal
+              ? 'safepal'
+              : 'web3';
+
+        await saveWalletConnection(
+          wallet.address,
+          wallet.walletName || 'Unknown Wallet',
+          walletType,
+          wallet.chainId
+        );
+      }
+
+      notification.showSuccess('Wallet Connected', `Connected to ${wallet.walletName}`);
+    } catch (error: any) {
+      notification.showError('Connection Failed', error.message || 'Unable to connect wallet');
+      setWalletState({
+        isConnected: false,
+        address: null,
+        chainId: null,
+        balance: '0',
+        usdtBalance: '0',
+        walletName: null,
+      });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleWalletDisconnect = () => {
+    walletService.disconnect();
+    setWalletState({
+      isConnected: false,
+      address: null,
+      chainId: null,
+      balance: '0',
+      usdtBalance: '0',
+      walletName: null,
+    });
+    setTransaction({
+      isProcessing: false,
+      hash: null,
+      status: 'idle',
+      error: null,
+      distributionSteps: [],
+    });
+    setStatusMessage(null);
+  };
+
+  const verifyPayment = async (txHash: string) => {
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+
+    if (!token) {
+      throw new Error('Missing user session');
     }
 
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-registration-payment`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ txHash })
+    });
+
+    return response.json();
+  };
+
+  const pollVerification = async (txHash: string) => {
+    for (let attempt = 0; attempt < PAYMENT_POLL_ATTEMPTS; attempt += 1) {
+      const result = await verifyPayment(txHash);
+
+      if (result.status === 'success') {
+        return result;
+      }
+
+      if (result.status === 'failed') {
+        throw new Error(result.error || 'Payment failed');
+      }
+
+      setStatusMessage(result.message || 'Waiting for confirmations...');
+      await new Promise(resolve => setTimeout(resolve, PAYMENT_POLL_INTERVAL));
+    }
+
+    throw new Error('Payment confirmation timed out. Please check again later.');
+  };
+
+  const handlePayment = async () => {
     if (!plan || !settings) {
       notification.showError('Error', 'Payment configuration not loaded');
       return;
     }
 
-    if (!settings.admin_wallet) {
-      notification.showError('Error', 'Admin USDT address is not configured. Please contact support.');
+    if (!settings.adminPaymentWallet) {
+      notification.showError('Error', 'Admin wallet not configured');
       return;
     }
 
-    setSubmitting(true);
+    if (!walletState.isConnected || !walletState.address) {
+      notification.showError('Wallet Required', 'Please connect your wallet');
+      return;
+    }
+
+    const usdtBalance = parseFloat(walletState.usdtBalance || '0');
+    if (usdtBalance < plan.tsp_price) {
+      notification.showError('Insufficient Balance', `You need ${plan.tsp_price} USDT to continue`);
+      return;
+    }
+
+    setTransaction({
+      isProcessing: true,
+      hash: null,
+      status: 'pending',
+      error: null,
+      distributionSteps: []
+    });
+    setStatusMessage('Awaiting wallet confirmation...');
+
     try {
-      // First create the subscription
-      const startDate = new Date();
-      const endDate = new Date(startDate);
-      const durationDays = plan.tsp_duration_days ?? 30;
-      endDate.setDate(startDate.getDate() + durationDays);
+      const { hash, steps } = await walletService.sendUSDTTransfer(settings.adminPaymentWallet, plan.tsp_price);
 
-      const autoApprove = settings.registration_payment_auto_approve !== false;
+      setTransaction({
+        isProcessing: true,
+        hash,
+        status: 'pending',
+        error: null,
+        distributionSteps: steps
+      });
+      setStatusMessage('Transaction submitted. Waiting for confirmations...');
 
-      const { data: subscription, error: subscriptionError } = await supabase
-        .from('tbl_user_subscriptions')
-        .insert({
-          tus_user_id: user?.id,
-          tus_plan_id: plan.tsp_id,
-          tus_status: autoApprove ? 'active' : 'pending',
-          tus_start_date: startDate.toISOString(),
-          tus_end_date: endDate.toISOString(),
-          tus_payment_amount: plan.tsp_price
-        })
-        .select()
-        .single();
+      const result = await pollVerification(hash);
 
-      if (subscriptionError) throw subscriptionError;
+      setTransaction({
+        isProcessing: false,
+        hash,
+        status: 'success',
+        error: null,
+        distributionSteps: steps
+      });
+      setStatusMessage('Payment confirmed!');
 
-      // Then create the payment linked to the subscription
-      const { error: paymentError } = await supabase
-        .from('tbl_payments')
-        .insert({
-          tp_user_id: user?.id,
-          tp_subscription_id: subscription.tus_id,
-          tp_amount: plan.tsp_price,
-          tp_payment_method: selectedWallet,
-          tp_payment_status: autoApprove ? 'completed' : 'pending',
-          tp_transaction_id: transactionHash || null
-        });
+      await fetchUserData(user!.id);
 
-      if (paymentError) throw paymentError;
-
-      notification.showSuccess(
-        autoApprove ? 'Payment Successful' : 'Payment Submitted',
-        autoApprove
-          ? 'Your registration payment has been processed and your subscription is now active'
-          : 'Your registration payment is pending admin approval'
-      );
-
-      setTimeout(() => {
-        navigate('/customer/dashboard');
-      }, 2000);
+      notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+      navigate('/registration-payment-success', {
+        state: {
+          txHash: hash,
+          amount: result.amount || plan.tsp_price,
+          network: result.network
+        }
+      });
     } catch (error: any) {
-      notification.showError('Payment Failed', error.message);
-    } finally {
-      setSubmitting(false);
+      setTransaction({
+        isProcessing: false,
+        hash: transaction.hash,
+        status: 'error',
+        error: error.message || 'Payment failed',
+        distributionSteps: transaction.distributionSteps
+      });
+      setStatusMessage(null);
+      notification.showError('Payment Failed', error.message || 'Payment failed');
     }
   };
 
-  const normalizedWalletsEnabled = useMemo(() => {
-    const raw = settings?.wallets_enabled as any;
-    let parsed = raw;
-    if (typeof raw === 'string') {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = null;
-      }
-    }
-
-    return {
-      trust_wallet: parsed?.trust_wallet ?? true,
-      metamask: parsed?.metamask ?? true,
-      safepal: parsed?.safepal ?? true
-    };
-  }, [settings]);
-
-  const walletOptions = [
-    { id: 'trust_wallet' as const, name: 'Trust Wallet', icon: Wallet, enabled: normalizedWalletsEnabled.trust_wallet },
-    { id: 'metamask' as const, name: 'MetaMask', icon: Wallet, enabled: normalizedWalletsEnabled.metamask },
-    { id: 'safepal' as const, name: 'SafePal', icon: Wallet, enabled: normalizedWalletsEnabled.safepal }
-  ];
+  const openTransaction = () => {
+    if (!transaction.hash) return;
+    const isMainnet = settings?.paymentMode === true || settings?.paymentMode === '1';
+    const explorerUrl = isMainnet
+      ? `https://bscscan.com/tx/${transaction.hash}`
+      : `https://testnet.bscscan.com/tx/${transaction.hash}`;
+    window.open(explorerUrl, '_blank', 'noopener,noreferrer');
+  };
 
   if (loading) {
     return (
@@ -235,44 +378,32 @@ const RegistrationPayment: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
             <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Registration Successful!</h1>
-          <p className="text-gray-600">Complete your payment to activate your account</p>
-        </div>
-
-        {/* USDT Payment Info */}
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl p-6 max-w-3xl mx-auto mb-10">
-          <div className="flex items-center justify-center space-x-3 mb-3">
-            <CreditCard className="h-6 w-6" />
-            <h3 className="text-xl font-bold">Secure USDT Payments</h3>
-            <Shield className="h-6 w-6" />
-          </div>
-          <p className="text-green-100 text-center">
-            All payments are sent directly from your wallet to the admin USDT address on BNB Smart Chain (BEP-20).
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Registration Payment</h1>
+          <p className="text-gray-600">Connect your wallet and pay the registration fee to activate your account.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white rounded-xl shadow-md p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Registration Plan</h2>
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">{plan.tsp_name}</h3>
                   <p className="text-gray-600 text-sm mt-1">{plan.tsp_description}</p>
                 </div>
                 <div className="text-right">
                   <div className="text-3xl font-bold text-blue-600">${plan.tsp_price}</div>
-                  <div className="text-sm text-gray-500">One-time fee</div>
+                  <div className="text-sm text-gray-500">USDT (BEP-20)</div>
                 </div>
               </div>
 
               {typeof plan.tsp_features === 'object' && Object.keys(plan.tsp_features).length > 0 && (
-                <div>
+                <div className="mt-6">
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Features Included:</h4>
                   <ul className="space-y-2">
                     {Object.keys(plan.tsp_features).map((key, idx) => (
@@ -286,123 +417,126 @@ const RegistrationPayment: React.FC = () => {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Payment Wallet</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {walletOptions.map(wallet => {
-                  const isEnabled = Boolean(wallet.enabled);
-                  return (
-                    <button
-                      key={wallet.id}
-                      onClick={() => {
-                        if (!isEnabled) return;
-                        setSelectedWallet(wallet.id);
-                      }}
-                      disabled={!isEnabled}
-                      className={`p-4 border-2 rounded-lg transition-all ${
-                        selectedWallet === wallet.id
-                          ? 'border-blue-600 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300'
-                      } ${!isEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <wallet.icon className="h-8 w-8 mx-auto mb-2 text-gray-700" />
-                      <p className="text-sm font-medium text-gray-900">{wallet.name}</p>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="bg-white rounded-xl shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Connect Wallet</h2>
+
+              {!walletState.isConnected ? (
+                <div className="space-y-4">
+                  {filteredWallets.length === 0 ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                      No compatible wallet detected. Please install MetaMask, Trust Wallet, or SafePal.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {filteredWallets.map((wallet) => (
+                        <button
+                          key={wallet.name}
+                          onClick={() => handleWalletConnect(wallet.provider)}
+                          disabled={isConnecting}
+                          className="p-4 border-2 rounded-lg transition-all border-gray-200 hover:border-blue-400 bg-white"
+                        >
+                          <div className="text-2xl mb-2">{wallet.icon}</div>
+                          <p className="text-sm font-medium text-gray-900">{wallet.name}</p>
+                          <p className="text-xs text-gray-500 mt-1">{isConnecting ? 'Connecting...' : 'Connect'}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <WalletInfoCard wallet={walletState} onDisconnect={handleWalletDisconnect} />
+              )}
             </div>
 
-            {selectedWallet && settings?.admin_wallet && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment Instructions</h2>
-                <div className="space-y-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Send payment to:</p>
-                    <div className="bg-white p-3 rounded border border-gray-200 font-mono text-sm break-all">
-                      {settings.admin_wallet}
-                    </div>
-                  </div>
+            {transaction.status !== 'idle' && (
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment Status</h2>
 
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <Clock className="h-5 w-5 text-amber-600 mt-0.5 mr-2" />
-                      <div className="text-sm text-amber-800">
-                        <p className="font-medium mb-1">Important:</p>
-                        <ul className="list-disc list-inside space-y-1">
-                          <li>Send exactly {plan.tsp_price} USDT (BEP-20)</li>
-                          <li>Your account will be activated after admin verification of your transaction</li>
-                          <li>Save your transaction hash for reference</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Transaction Hash (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={transactionHash}
-                      onChange={(e) => setTransactionHash(e.target.value)}
-                      placeholder="Enter transaction hash after payment"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                <div className="flex items-center space-x-3 mb-4">
+                  {transaction.status === 'pending' && <Loader className="h-5 w-5 text-yellow-500 animate-spin" />}
+                  {transaction.status === 'success' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  {transaction.status === 'error' && <XCircle className="h-5 w-5 text-red-500" />}
+                  <span className="text-sm font-medium text-gray-700">
+                    {transaction.status === 'pending' && 'Payment Pending'}
+                    {transaction.status === 'success' && 'Payment Confirmed'}
+                    {transaction.status === 'error' && 'Payment Failed'}
+                  </span>
                 </div>
+
+                {statusMessage && (
+                  <p className="text-sm text-gray-600 mb-4">{statusMessage}</p>
+                )}
+
+                {transaction.hash && (
+                  <div className="flex items-center space-x-2 text-sm">
+                    <code className="flex-1 px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono">
+                      {transaction.hash}
+                    </code>
+                    <button
+                      onClick={openTransaction}
+                      className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors border border-blue-200"
+                      title="View on explorer"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {transaction.error && (
+                  <p className="text-sm text-red-600 mt-4">{transaction.error}</p>
+                )}
               </div>
             )}
           </div>
 
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-md p-6 sticky top-8">
+            <div className="bg-white rounded-xl shadow-md p-6 sticky top-8">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h3>
 
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between text-gray-600">
+              <div className="space-y-3 mb-6 text-sm text-gray-600">
+                <div className="flex justify-between">
                   <span>Registration Fee</span>
                   <span className="font-medium">${plan.tsp_price}</span>
                 </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Processing Fee</span>
-                  <span className="font-medium">$0.00</span>
+                <div className="flex justify-between">
+                  <span>Network</span>
+                  <span className="font-medium">{settings?.paymentMode === true || settings?.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet'}</span>
                 </div>
-                <div className="border-t border-gray-200 pt-3 flex justify-between text-lg font-bold text-gray-900">
+                <div className="flex justify-between font-bold text-gray-900 border-t pt-3">
                   <span>Total</span>
-                  <span className="text-blue-600">${plan.tsp_price}</span>
+                  <span className="text-blue-600">{plan.tsp_price} USDT</span>
                 </div>
               </div>
 
-              <div className="space-y-3 mb-6 text-sm text-gray-600">
+              <div className="space-y-3 text-sm text-gray-600 mb-6">
                 <div className="flex items-start">
                   <Shield className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
-                  <span>Secure payment processing</span>
+                  <span>Payment sent directly to the admin wallet</span>
                 </div>
                 <div className="flex items-start">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
-                  <span>Direct referrer commission applies if a Parent A/C was provided</span>
+                  <CreditCard className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
+                  <span>USDT (BEP-20) only</span>
                 </div>
               </div>
 
               <button
                 onClick={handlePayment}
-                disabled={!selectedWallet || submitting || !settings?.admin_wallet}
+                disabled={!walletState.isConnected || transaction.isProcessing || !settings?.adminPaymentWallet}
                 className={`w-full py-3 rounded-lg font-medium flex items-center justify-center space-x-2 ${
-                  selectedWallet && !submitting && settings?.admin_wallet
+                  walletState.isConnected && !transaction.isProcessing && settings?.adminPaymentWallet
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                {submitting ? (
+                {transaction.isProcessing ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <Loader className="h-5 w-5 animate-spin" />
                     <span>Processing...</span>
                   </>
                 ) : (
                   <>
-                    <span>Submit Payment</span>
-                    <ArrowRight className="h-5 w-5" />
+                    <Wallet className="h-5 w-5" />
+                    <span>Pay Now</span>
                   </>
                 )}
               </button>
@@ -411,140 +545,6 @@ const RegistrationPayment: React.FC = () => {
                 By proceeding, you agree to our terms and conditions
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Why Choose USDT Section */}
-        <div className="mt-16 bg-white rounded-3xl shadow-xl p-8 border border-gray-200">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center space-x-2 bg-green-100 rounded-full px-6 py-3 mb-6">
-              <Shield className="h-5 w-5 text-green-600" />
-              <span className="text-sm font-semibold text-green-600">USDT Advantages</span>
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">
-              Why We Use <span className="text-green-600">USDT</span> Payments?
-            </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Experience the benefits of cryptocurrency payments with USDT on BNB Smart Chain.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              {
-                icon: Zap,
-                title: 'Instant Transactions',
-                description: 'Payments are processed instantly on the blockchain with immediate confirmation.',
-                bgColor: 'bg-yellow-50',
-                iconColor: 'text-yellow-600'
-              },
-              {
-                icon: Shield,
-                title: 'Maximum Security',
-                description: 'Blockchain technology ensures your payments are secure and tamper-proof.',
-                bgColor: 'bg-green-50',
-                iconColor: 'text-green-600'
-              },
-              {
-                icon: DollarSign,
-                title: 'Low Fees',
-                description: 'Minimal transaction fees compared to traditional payment methods.',
-                bgColor: 'bg-blue-50',
-                iconColor: 'text-blue-600'
-              },
-              {
-                icon: CheckCircle,
-                title: 'Transparent',
-                description: 'Every transaction is recorded on the blockchain for complete transparency.',
-                bgColor: 'bg-purple-50',
-                iconColor: 'text-purple-600'
-              }
-            ].map((benefit, index) => (
-              <div key={index} className="text-center group">
-                <div className={`${benefit.bgColor} w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform`}>
-                  <benefit.icon className={`h-8 w-8 ${benefit.iconColor}`} />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-3">{benefit.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{benefit.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Payment Process */}
-        <div className="mt-16 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold mb-4">Simple Payment Process</h2>
-            <p className="text-xl text-indigo-100">
-              Get started in just 3 easy steps
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                step: '1',
-                title: 'Select Your Wallet',
-                description: 'Choose your preferred wallet to make the registration payment.',
-                icon: Wallet
-              },
-              {
-                step: '2',
-                title: 'Send USDT',
-                description: 'Send the exact USDT amount to the provided wallet address.',
-                icon: CreditCard
-              },
-              {
-                step: '3',
-                title: 'Submit Details',
-                description: 'Provide your transaction hash and submit for confirmation.',
-                icon: CheckCircle
-              }
-            ].map((step, index) => (
-              <div key={index} className="text-center">
-                <div className="bg-white/20 backdrop-blur-sm w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 relative">
-                  <step.icon className="h-8 w-8 text-white" />
-                  <div className="absolute -top-2 -right-2 bg-yellow-400 text-gray-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold">
-                    {step.step}
-                  </div>
-                </div>
-                <h3 className="text-xl font-bold mb-3">{step.title}</h3>
-                <p className="text-indigo-100 leading-relaxed">{step.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* FAQ Section */}
-        <div className="mt-16 bg-white rounded-3xl shadow-xl p-8 border border-gray-200">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {[
-              {
-                question: "What is USDT?",
-                answer: "USDT (Tether) is a stable cryptocurrency pegged to the US Dollar, providing price stability for payments."
-              },
-              {
-                question: "Why BNB Smart Chain?",
-                answer: "BNB Smart Chain offers fast transactions with low fees, making it perfect for registration payments."
-              },
-              {
-                question: "Is my payment secure?",
-                answer: "Yes. You send USDT directly from your wallet to the admin address on the blockchain."
-              },
-              {
-                question: "When will my account activate?",
-                answer: "Your account is activated after admin verification of your registration payment."
-              }
-            ].map((faq, index) => (
-              <div key={index} className="bg-gray-50 rounded-xl p-6">
-                <h4 className="font-bold text-gray-900 mb-3">{faq.question}</h4>
-                <p className="text-gray-600">{faq.answer}</p>
-              </div>
-            ))}
           </div>
         </div>
       </div>

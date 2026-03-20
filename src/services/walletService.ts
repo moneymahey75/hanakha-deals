@@ -527,6 +527,63 @@ export class WalletService {
     }
   }
 
+  // Direct USDT transfer to admin wallet (registration payments)
+  async sendUSDTTransfer(toAddress: string, amount: number): Promise<{ hash: string; steps: string[] }> {
+    if (!this.signer || !this.provider) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (!this.adminSettings) {
+      throw new Error('Admin settings not configured');
+    }
+
+    if (!ethers.isAddress(toAddress)) {
+      throw new Error('Invalid recipient wallet address');
+    }
+
+    const steps: string[] = [];
+    const signerAddress = await this.signer.getAddress();
+
+    const usdtContractAddress = this.getUSDTContractAddress();
+    const usdtContract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.signer);
+
+    steps.push("=== USDT Transfer Started ===");
+    steps.push(`Network: ${this.adminSettings.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet'}`);
+    steps.push(`USDT Contract: ${usdtContractAddress}`);
+    steps.push(`From: ${signerAddress}`);
+    steps.push(`To: ${toAddress}`);
+
+    try {
+      // Step 1: Load token decimals
+      steps.push("\n1. Reading token decimals...");
+      const decimals = await usdtContract.decimals();
+
+      const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      steps.push(`Amount: ${amount} USDT`);
+
+      // Step 2: Check USDT balance
+      steps.push("\n2. Checking USDT balance...");
+      const balance = await usdtContract.balanceOf(signerAddress);
+      const formattedBalance = ethers.formatUnits(balance, decimals);
+      steps.push(`USDT Balance: ${formattedBalance} USDT`);
+
+      if (balance < amountUnits) {
+        throw new Error(`Insufficient USDT balance. Required ${amount}, available ${formattedBalance}`);
+      }
+
+      // Step 3: Send transfer
+      steps.push("\n3. Sending USDT transfer...");
+      const tx = await usdtContract.transfer(toAddress, amountUnits);
+      steps.push(`Transaction submitted: ${tx.hash}`);
+
+      return { hash: tx.hash, steps };
+    } catch (error: any) {
+      console.error('USDT transfer failed:', error);
+      steps.push(`\n❌ Error: ${error.message}`);
+      throw error;
+    }
+  }
+
   // Disconnect wallet
   disconnect(): void {
     console.log('Disconnecting wallet...');

@@ -13,6 +13,7 @@ import Home from './pages/Home';
 import CustomerLogin from './pages/auth/CustomerLogin';
 import CustomerRegister from './pages/auth/CustomerRegister';
 import RegistrationPayment from './pages/auth/RegistrationPayment';
+import RegistrationPaymentSuccess from './pages/auth/RegistrationPaymentSuccess';
 import CompanyLogin from './pages/auth/CompanyLogin';
 import CompanyRegister from './pages/auth/CompanyRegister';
 import CustomerDashboard from './pages/dashboard/CustomerDashboard';
@@ -92,6 +93,11 @@ function App() {
                             <Route path="/registration-payment" element={
                               <ProtectedRoute userType="customer">
                                 <RegistrationPayment />
+                              </ProtectedRoute>
+                            } />
+                            <Route path="/registration-payment-success" element={
+                              <ProtectedRoute userType="customer" requiresSubscription={false}>
+                                <RegistrationPaymentSuccess />
                               </ProtectedRoute>
                             } />
                             <Route path="/customer/dashboard" element={
