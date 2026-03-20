@@ -22,7 +22,7 @@ interface SubscriptionPlan {
     tsp_description: string;
     tsp_price: number;
     tsp_duration_days: number;
-    tsp_features: string[];
+    tsp_features: any;
 }
 
 interface Payment {
@@ -179,6 +179,22 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
         const diffTime = end.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         return diffDays > 0 ? diffDays : 0;
+    };
+
+    const normalizePlanFeatures = (raw: any): string[] => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw.map(String);
+        if (typeof raw === 'object') return Object.keys(raw).map(String);
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed.map(String);
+                if (parsed && typeof parsed === 'object') return Object.keys(parsed).map(String);
+            } catch {
+                return [raw];
+            }
+        }
+        return [];
     };
 
     if (loading) {
@@ -429,7 +445,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                 <div className="mt-6">
                                     <h4 className="font-medium text-gray-900 mb-3">Plan Features</h4>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {selectedPayment.subscription.plan.tsp_features.map((feature, index) => (
+                                        {normalizePlanFeatures(selectedPayment.subscription.plan.tsp_features).map((feature, index) => (
                                             <div key={index} className="flex items-center">
                                                 <CheckCircle className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
                                                 <span className="text-sm text-gray-600">{feature}</span>
