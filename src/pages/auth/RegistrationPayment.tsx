@@ -104,6 +104,15 @@ const RegistrationPayment: React.FC = () => {
     setAvailableWallets(wallets);
   }, [walletService]);
 
+  // Restore wallet state from service if the component re-mounts
+  useEffect(() => {
+    const currentWalletState = walletService.getCurrentWalletState();
+    if (currentWalletState.isConnected && !walletState.isConnected) {
+      setWalletState(currentWalletState);
+      console.log('Restored wallet state from WalletService:', currentWalletState.address);
+    }
+  }, [walletService, walletState.isConnected]);
+
   const enabledWallets = useMemo(() => {
     return settings?.paymentWalletsEnabled || {
       trust_wallet: true,
