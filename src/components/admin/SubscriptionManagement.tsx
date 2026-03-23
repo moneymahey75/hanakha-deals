@@ -10,6 +10,7 @@ interface SubscriptionPlan {
   tsp_price: number;
   tsp_duration_days: number;
   tsp_features: any;
+  tsp_parent_income?: number;
   tsp_is_active: boolean;
   tsp_type: 'registration' | 'upgrade';
   tsp_created_at: string;
@@ -30,6 +31,7 @@ const SubscriptionManagement: React.FC = () => {
     description: '',
     price: '',
     duration_days: '30',
+    parent_income: '0',
     features: [''],
     is_active: true
   });
@@ -65,6 +67,10 @@ const SubscriptionManagement: React.FC = () => {
         featuresObj[key] = true;
       });
 
+      const parentIncomeValue = activeTab === 'registration'
+        ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
+        : 0;
+
       const { error } = await supabase
         .from('tbl_subscription_plans')
         .insert({
@@ -73,6 +79,7 @@ const SubscriptionManagement: React.FC = () => {
           tsp_price: parseFloat(formData.price),
           tsp_duration_days: parseInt(formData.duration_days),
           tsp_features: featuresObj,
+          tsp_parent_income: parentIncomeValue,
           tsp_is_active: formData.is_active,
           tsp_type: activeTab
         });
@@ -99,6 +106,10 @@ const SubscriptionManagement: React.FC = () => {
         featuresObj[key] = true;
       });
 
+      const parentIncomeValue = activeTab === 'registration'
+        ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
+        : 0;
+
       const { error } = await supabase
         .from('tbl_subscription_plans')
         .update({
@@ -107,6 +118,7 @@ const SubscriptionManagement: React.FC = () => {
           tsp_price: parseFloat(formData.price),
           tsp_duration_days: parseInt(formData.duration_days),
           tsp_features: featuresObj,
+          tsp_parent_income: parentIncomeValue,
           tsp_is_active: formData.is_active
         })
         .eq('tsp_id', selectedPlan.tsp_id);
@@ -168,6 +180,7 @@ const SubscriptionManagement: React.FC = () => {
       description: plan.tsp_description || '',
       price: plan.tsp_price.toString(),
       duration_days: plan.tsp_duration_days.toString(),
+      parent_income: (plan.tsp_parent_income ?? 0).toString(),
       features: featuresArray.length > 0 ? featuresArray : [''],
       is_active: plan.tsp_is_active
     });
@@ -180,6 +193,7 @@ const SubscriptionManagement: React.FC = () => {
       description: '',
       price: '',
       duration_days: '30',
+      parent_income: '0',
       features: [''],
       is_active: true
     });
@@ -281,6 +295,12 @@ const SubscriptionManagement: React.FC = () => {
                   <DollarSign className="h-5 w-5 mr-2" />
                   <span className="text-2xl font-bold text-gray-900">${plan.tsp_price}</span>
                 </div>
+                {plan.tsp_type === 'registration' && (
+                  <div className="flex items-center text-gray-600">
+                    <UserPlus className="h-5 w-5 mr-2" />
+                    <span>Parent A/C Income: ${plan.tsp_parent_income ?? 0}</span>
+                  </div>
+                )}
                 <div className="flex items-center text-gray-600">
                   <Calendar className="h-5 w-5 mr-2" />
                   <span>{plan.tsp_duration_days} days</span>
@@ -382,6 +402,24 @@ const SubscriptionManagement: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {activeTab === 'registration' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent A/C Income (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.parent_income}
+                    onChange={(e) => setFormData({ ...formData, parent_income: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Fixed amount credited to the parent account on registration.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Features</label>

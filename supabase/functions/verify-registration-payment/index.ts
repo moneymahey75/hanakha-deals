@@ -163,6 +163,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const parentIncomeSetting = Number(registrationPlan.tsp_parent_income || 0);
+    const normalizedParentIncome = Number.isFinite(parentIncomeSetting) && parentIncomeSetting > 0
+      ? parentIncomeSetting
+      : 0;
+
     const { data: activeSubscription } = await supabase
       .from('tbl_user_subscriptions')
       .select('tus_id')
@@ -304,8 +309,31 @@ Deno.serve(async (req: Request) => {
     const iface = new ethers.Interface(TRANSFER_ABI);
     const adminWalletNormalized = normalizeAddress(adminWallet);
 
-    let totalReceived = 0n;
-    let transferFound = false;
+    const { data: userProfile } = await supabase
+      .from('tbl_user_profiles')
+      .select('tup_parent_account, tup_sponsorship_number')
+      .eq('tup_user_id', userId)
+      .maybeSingle();
+
+    const parentAccount = userProfile?.tup_parent_account?.trim();
+    const childSponsorshipNumber = userProfile?.tup_sponsorship_number?.trim();
+    let sponsorUserId: string | null = null;
+    let sponsorSponsorshipNumber: string | null = null;
+
+    if (parentAccount) {
+      const { data: sponsorProfile } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_user_id, tup_sponsorship_number')
+        .eq('tup_sponsorship_number', parentAccount)
+        .maybeSingle();
+
+      if (sponsorProfile) {
+        sponsorUserId = sponsorProfile.tup_user_id;
+        sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
+      }
+    }
+
+    let adminReceived = 0n;
 
     for (const log of receipt.logs) {
       if (normalizeAddress(log.address) !== expectedTokenAddress) continue;
@@ -316,34 +344,13 @@ Deno.serve(async (req: Request) => {
         const to = normalizeAddress(parsed.args.to);
         const value = parsed.args.value as bigint;
 
-        if (from === txFrom && to === adminWalletNormalized) {
-          transferFound = true;
-          totalReceived += value;
+        if (from !== txFrom) continue;
+        if (to === adminWalletNormalized) {
+          adminReceived += value;
         }
       } catch {
         // ignore non-matching logs
       }
-    }
-
-    if (!transferFound) {
-      await supabase
-        .from('tbl_payments')
-        .update({
-          tp_payment_status: 'failed',
-          tp_error_message: 'No valid USDT transfer to admin wallet found',
-          tp_block_number: receipt.blockNumber
-        })
-        .eq('tp_transaction_id', txHash)
-        .eq('tp_user_id', userId);
-
-      return new Response(JSON.stringify({
-        success: false,
-        status: 'failed',
-        error: 'No valid USDT transfer found'
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
     }
 
     const usdtContract = new ethers.Contract(usdtAddress, [
@@ -352,8 +359,9 @@ Deno.serve(async (req: Request) => {
 
     const decimals = await usdtContract.decimals();
     const expectedUnits = ethers.parseUnits(expectedAmount.toString(), decimals);
+    const totalReceived = adminReceived;
 
-    if (totalReceived < expectedUnits) {
+    if (adminReceived < expectedUnits) {
       await supabase
         .from('tbl_payments')
         .update({
@@ -416,6 +424,49 @@ Deno.serve(async (req: Request) => {
       subscriptionId = newSubscription?.tus_id || null;
     }
 
+    // Referral commission + Parent A/C income
+    const paymentAmount = expectedAmount;
+    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0
+      ? Math.min(normalizedParentIncome, expectedAmount)
+      : 0;
+    let adminNetAmount = expectedAmount;
+    let commissionAmount = 0;
+    let commissionPercentage: number | null = null;
+    let directAccountNumber: number | null = null;
+    if (sponsorUserId && sponsorSponsorshipNumber) {
+      const { count } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_user_id', { count: 'exact', head: true })
+        .eq('tup_parent_account', sponsorSponsorshipNumber);
+
+      directAccountNumber = typeof count === 'number' ? count : null;
+
+      if (directAccountNumber) {
+        const { data: rule } = await supabase
+          .from('earning_distribution_settings')
+          .select('*')
+          .eq('is_active', true)
+          .lte('direct_account_range_start', directAccountNumber)
+          .gte('direct_account_range_end', directAccountNumber)
+          .order('direct_account_range_start', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
+          commissionPercentage = Number(rule.direct_referrer_percentage);
+          if (Number.isFinite(commissionPercentage)) {
+            commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
+          } else {
+            commissionPercentage = null;
+          }
+        }
+      }
+    }
+
+    if (parentIncomeApplied > 0) {
+      adminNetAmount = Math.max(0, paymentAmount - parentIncomeApplied);
+    }
+
     await supabase
       .from('tbl_payments')
       .update({
@@ -442,113 +493,69 @@ Deno.serve(async (req: Request) => {
           wallet_address: txFrom,
           block_number: receipt.blockNumber,
           confirmations,
-          status: 'success'
+          status: 'success',
+          gross_amount: paymentAmount,
+          parent_income: parentIncomeApplied,
+          admin_income: adminNetAmount,
+          parent_account: parentAccount || null,
+          parent_user_id: sponsorUserId || null
         }
       })
       .eq('tp_transaction_id', txHash)
       .eq('tp_user_id', userId);
 
-    // Referral commission (reuse logic from admin approval flow)
-    const paymentAmount = expectedAmount;
-    let commissionAmount = 0;
-    let commissionPercentage: number | null = null;
-    let directAccountNumber: number | null = null;
-    let sponsorUserId: string | null = null;
-    let sponsorSponsorshipNumber: string | null = null;
+    if (sponsorUserId && (commissionAmount > 0 || parentIncomeApplied > 0)) {
+      const totalCredit = Number((commissionAmount + parentIncomeApplied).toFixed(2));
 
-    const { data: userProfile } = await supabase
-      .from('tbl_user_profiles')
-      .select('tup_parent_account, tup_sponsorship_number')
-      .eq('tup_user_id', userId)
-      .maybeSingle();
-
-    const parentAccount = userProfile?.tup_parent_account?.trim();
-
-    if (parentAccount) {
-      const { data: sponsorProfile } = await supabase
-        .from('tbl_user_profiles')
-        .select('tup_user_id, tup_sponsorship_number')
-        .eq('tup_sponsorship_number', parentAccount)
-        .maybeSingle();
-
-      if (sponsorProfile) {
-        sponsorUserId = sponsorProfile.tup_user_id;
-        sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
-
-        const { count } = await supabase
-          .from('tbl_user_profiles')
-          .select('tup_user_id', { count: 'exact', head: true })
-          .eq('tup_parent_account', sponsorSponsorshipNumber);
-
-        directAccountNumber = typeof count === 'number' ? count : null;
-
-        if (directAccountNumber) {
-          const { data: rule } = await supabase
-            .from('earning_distribution_settings')
-            .select('*')
-            .eq('is_active', true)
-            .lte('direct_account_range_start', directAccountNumber)
-            .gte('direct_account_range_end', directAccountNumber)
-            .order('direct_account_range_start', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-
-          if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
-            commissionPercentage = Number(rule.direct_referrer_percentage);
-            if (Number.isFinite(commissionPercentage)) {
-              commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
-            } else {
-              commissionPercentage = null;
-            }
-          }
-        }
-      }
-    }
-
-    if (sponsorUserId && commissionAmount > 0) {
       const { data: sponsorWallet } = await supabase
         .from('tbl_user_wallets')
         .select('tuw_id, tuw_balance')
         .eq('tuw_user_id', sponsorUserId)
         .maybeSingle();
 
-      if (sponsorWallet) {
-        const newBalance = parseFloat(String(sponsorWallet.tuw_balance || 0)) + commissionAmount;
+      let walletId = sponsorWallet?.tuw_id || null;
+      let baseBalance = parseFloat(String(sponsorWallet?.tuw_balance || 0));
 
-        const { error: updateWalletError } = await supabase
+      if (walletId) {
+        const newBalance = baseBalance + totalCredit;
+        await supabase
           .from('tbl_user_wallets')
           .update({ tuw_balance: newBalance })
-          .eq('tuw_id', sponsorWallet.tuw_id);
-
-        if (!updateWalletError) {
-          await supabase
-            .from('tbl_wallet_transactions')
-            .insert({
-              twt_wallet_id: sponsorWallet.tuw_id,
-              twt_transaction_type: 'credit',
-              twt_amount: commissionAmount,
-              twt_description: `Referral commission for ${authData.user.email}`,
-              twt_status: 'completed',
-              twt_reference_type: 'registration_payment',
-              twt_reference_id: paymentId
-            });
-        }
+          .eq('tuw_id', walletId);
       } else {
         const { data: newWallet } = await supabase
           .from('tbl_user_wallets')
           .insert({
             tuw_user_id: sponsorUserId,
-            tuw_balance: commissionAmount,
+            tuw_balance: totalCredit,
             tuw_currency: 'USD'
           })
           .select()
           .single();
 
-        if (newWallet) {
+        walletId = newWallet?.tuw_id || null;
+      }
+
+      if (walletId) {
+        if (parentIncomeApplied > 0) {
           await supabase
             .from('tbl_wallet_transactions')
             .insert({
-              twt_wallet_id: newWallet.tuw_id,
+              twt_wallet_id: walletId,
+              twt_transaction_type: 'credit',
+              twt_amount: parentIncomeApplied,
+              twt_description: `Registration commission from ${childSponsorshipNumber || 'unknown account'}`,
+              twt_status: 'completed',
+              twt_reference_type: 'registration_parent_income',
+              twt_reference_id: paymentId
+            });
+        }
+
+        if (commissionAmount > 0) {
+          await supabase
+            .from('tbl_wallet_transactions')
+            .insert({
+              twt_wallet_id: walletId,
               twt_transaction_type: 'credit',
               twt_amount: commissionAmount,
               twt_description: `Referral commission for ${authData.user.email}`,

@@ -296,6 +296,7 @@ export interface SubscriptionPlan {
   tsp_price: number
   tsp_duration_days: number
   tsp_features: string[]
+  tsp_parent_income?: number
   tsp_is_active: boolean
   tsp_created_at: string
   tsp_updated_at: string

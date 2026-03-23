@@ -29,14 +29,16 @@ interface Customer {
 }
 
 interface Transaction {
-    id: string;
-    amount: number;
-    currency: string;
-    payment_method: string;
-    payment_status: string;
-    created_at: string;
-    subscription_plan?: {
-        name: string;
+    tp_id: string;
+    tp_amount: number;
+    tp_currency: string;
+    tp_payment_method: string;
+    tp_payment_status: string;
+    tp_created_at: string;
+    tp_gateway_response?: any;
+    tbl_subscription_plans?: {
+        tsp_name?: string;
+        tsp_price?: number;
     };
 }
 
@@ -627,6 +629,7 @@ const CustomerDetails: React.FC<{
                     tp_payment_status,
                     tp_transaction_id,
                     tp_created_at,
+                    tp_gateway_response,
                     tbl_subscription_plans (
                         tsp_name,
                         tsp_price
@@ -963,7 +966,7 @@ const CustomerDetails: React.FC<{
                         ) : transactions.length > 0 ? (
                             <div className="space-y-4">
                                 {transactions.map((transaction) => (
-                                    <div key={transaction.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                                    <div key={transaction.tp_id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
                                         <div className="flex justify-between items-start">
                                             <div className="flex-1">
                                                 <div className="flex items-center space-x-3 mb-2">
@@ -972,35 +975,40 @@ const CustomerDetails: React.FC<{
                                                     </div>
                                                     <div>
                                                         <h5 className="font-medium text-gray-900">
-                                                            {transaction.subscription_plan?.name || 'Payment'}
+                                                            {transaction.tbl_subscription_plans?.tsp_name || 'Payment'}
                                                         </h5>
                                                         <p className="text-sm text-gray-500">
-                                                            {new Date(transaction.created_at).toLocaleDateString()} at {new Date(transaction.created_at).toLocaleTimeString()}
+                                                            {new Date(transaction.tp_created_at).toLocaleDateString()} at {new Date(transaction.tp_created_at).toLocaleTimeString()}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 mt-4">
                                                     <div>
                                                         <span className="text-xs font-medium text-gray-500">Payment Method</span>
-                                                        <p className="text-sm text-gray-900 capitalize">{transaction.payment_method}</p>
+                                                        <p className="text-sm text-gray-900 capitalize">{transaction.tp_payment_method}</p>
                                                     </div>
                                                     <div>
                                                         <span className="text-xs font-medium text-gray-500">Currency</span>
-                                                        <p className="text-sm text-gray-900">{transaction.currency}</p>
+                                                        <p className="text-sm text-gray-900">{transaction.tp_currency}</p>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="text-right ml-6">
-                                                <p className="text-2xl font-bold text-gray-900">${transaction.amount}</p>
+                                                <p className="text-2xl font-bold text-gray-900">${transaction.tp_amount}</p>
+                                                {transaction.tp_gateway_response?.parent_income !== undefined && (
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Parent: ${transaction.tp_gateway_response?.parent_income ?? 0} • Admin: ${transaction.tp_gateway_response?.admin_income ?? transaction.tp_amount}
+                                                    </p>
+                                                )}
                                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                                                    transaction.payment_status === 'completed' ? 'bg-green-100 text-green-800'
-                                                        : transaction.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800'
-                                                            : transaction.payment_status === 'failed' ? 'bg-red-100 text-red-800'
+                                                    transaction.tp_payment_status === 'completed' ? 'bg-green-100 text-green-800'
+                                                        : transaction.tp_payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800'
+                                                            : transaction.tp_payment_status === 'failed' ? 'bg-red-100 text-red-800'
                                                                 : 'bg-gray-100 text-gray-800'
                                                 }`}>
-                                                    {transaction.payment_status === 'completed' && <CheckCircle className="h-3 w-3 mr-1" />}
-                                                    {transaction.payment_status === 'failed' && <AlertCircle className="h-3 w-3 mr-1" />}
-                                                    {transaction.payment_status.charAt(0).toUpperCase() + transaction.payment_status.slice(1)}
+                                                    {transaction.tp_payment_status === 'completed' && <CheckCircle className="h-3 w-3 mr-1" />}
+                                                    {transaction.tp_payment_status === 'failed' && <AlertCircle className="h-3 w-3 mr-1" />}
+                                                    {transaction.tp_payment_status.charAt(0).toUpperCase() + transaction.tp_payment_status.slice(1)}
                                                 </span>
                                             </div>
                                         </div>

@@ -16,6 +16,7 @@ interface RegistrationPlan {
   tsp_price: number;
   tsp_duration_days?: number;
   tsp_features: any;
+  tsp_parent_income?: number;
 }
 
 const PAYMENT_POLL_INTERVAL = 5000;
