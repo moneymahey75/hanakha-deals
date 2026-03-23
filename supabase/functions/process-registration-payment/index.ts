@@ -140,6 +140,22 @@ Deno.serve(async (req: Request) => {
         sponsorUserId = sponsorProfile.tup_user_id;
         sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
 
+        const { data: sponsorUser } = await supabase
+          .from('tbl_users')
+          .select('tu_is_active, tu_is_verified')
+          .eq('tu_id', sponsorUserId)
+          .maybeSingle();
+
+        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_is_verified) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Parent A/C is not active or verified' }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
+          );
+        }
+
         const { count } = await supabase
           .from('tbl_user_profiles')
           .select('tup_user_id', { count: 'exact', head: true })
@@ -208,23 +224,23 @@ Deno.serve(async (req: Request) => {
       const totalCredit = Number((commissionAmount + parentIncomeApplied).toFixed(2));
 
       const { data: sponsorWallet, error: walletError } = await supabase
-        .from('tbl_user_wallets')
-        .select('tuw_id, tuw_balance')
-        .eq('tuw_user_id', sponsorUserId)
+        .from('tbl_wallets')
+        .select('tw_id, tw_balance')
+        .eq('tw_user_id', sponsorUserId)
         .maybeSingle();
 
       if (walletError) {
         console.error('Failed to get sponsor wallet:', walletError);
       } else {
-        let walletId = sponsorWallet?.tuw_id || null;
-        let baseBalance = parseFloat(String(sponsorWallet?.tuw_balance || 0));
+        let walletId = sponsorWallet?.tw_id || null;
+        let baseBalance = parseFloat(String(sponsorWallet?.tw_balance || 0));
 
         if (walletId) {
           const newBalance = baseBalance + totalCredit;
           const { error: updateWalletError } = await supabase
-            .from('tbl_user_wallets')
-            .update({ tuw_balance: newBalance })
-            .eq('tuw_id', walletId);
+            .from('tbl_wallets')
+            .update({ tw_balance: newBalance })
+            .eq('tw_id', walletId);
 
           if (updateWalletError) {
             console.error('Failed to update sponsor wallet:', updateWalletError);
@@ -232,17 +248,17 @@ Deno.serve(async (req: Request) => {
           }
         } else {
           const { data: newWallet, error: createWalletError } = await supabase
-            .from('tbl_user_wallets')
+            .from('tbl_wallets')
             .insert({
-              tuw_user_id: sponsorUserId,
-              tuw_balance: totalCredit,
-              tuw_currency: 'USD'
+              tw_user_id: sponsorUserId,
+              tw_balance: totalCredit,
+              tw_currency: 'USD'
             })
             .select()
             .single();
 
           if (!createWalletError && newWallet) {
-            walletId = newWallet.tuw_id;
+            walletId = newWallet.tw_id;
           } else {
             console.error('Failed to create sponsor wallet:', createWalletError);
             walletId = null;
@@ -255,6 +271,7 @@ Deno.serve(async (req: Request) => {
               .from('tbl_wallet_transactions')
               .insert({
                 twt_wallet_id: walletId,
+                twt_user_id: sponsorUserId,
                 twt_transaction_type: 'credit',
                 twt_amount: parentIncomeApplied,
                 twt_description: `Registration commission from ${childSponsorshipNumber || 'unknown account'}`,
@@ -269,9 +286,10 @@ Deno.serve(async (req: Request) => {
               .from('tbl_wallet_transactions')
               .insert({
                 twt_wallet_id: walletId,
+                twt_user_id: sponsorUserId,
                 twt_transaction_type: 'credit',
                 twt_amount: commissionAmount,
-                twt_description: `Referral commission for ${payment.user.tu_email}`,
+                twt_description: `Referral commission for ${childSponsorshipNumber || 'unknown account'}`,
                 twt_status: 'completed',
                 twt_reference_type: 'registration_payment',
                 twt_reference_id: paymentId

@@ -50,6 +50,7 @@ const RegistrationPayment: React.FC = () => {
     distributionSteps: [],
   });
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [parentAccountError, setParentAccountError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -88,6 +89,60 @@ const RegistrationPayment: React.FC = () => {
 
     loadRegistrationData();
   }, [user, navigate, notification]);
+
+  useEffect(() => {
+    const validateParentAccount = async () => {
+      if (!user?.id) return;
+
+      try {
+        const { data: profile } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_parent_account')
+          .eq('tup_user_id', user.id)
+          .maybeSingle();
+
+        const parentAccount = profile?.tup_parent_account?.trim();
+        if (!parentAccount) {
+          setParentAccountError(null);
+          return;
+        }
+
+        const { data: sponsorProfile } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_user_id')
+          .eq('tup_sponsorship_number', parentAccount)
+          .maybeSingle();
+
+        if (!sponsorProfile?.tup_user_id) {
+          setParentAccountError('Parent A/C not found. Please contact support.');
+          return;
+        }
+
+        const { data: sponsorUser } = await supabase
+          .from('tbl_users')
+          .select('tu_is_active, tu_is_verified')
+          .eq('tu_id', sponsorProfile.tup_user_id)
+          .maybeSingle();
+
+        if (!sponsorUser?.tu_is_active) {
+          setParentAccountError('Parent A/C must be active and verified to continue. Please contact support or choose a verified parent.');
+          return;
+        }
+
+        if (!sponsorUser?.tu_is_verified) {
+          setParentAccountError('Parent A/C must be active and verified to continue. Please contact support or choose a verified parent.');
+          return;
+        }
+
+        setParentAccountError(null);
+      } catch (error) {
+        console.error('Error validating parent account:', error);
+        setParentAccountError('Unable to verify Parent A/C. Please try again later.');
+      }
+    };
+
+    validateParentAccount();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!settings) return;
@@ -293,6 +348,11 @@ const RegistrationPayment: React.FC = () => {
       return;
     }
 
+    if (parentAccountError) {
+      notification.showError('Parent A/C Issue', parentAccountError);
+      return;
+    }
+
     if (!walletState.isConnected || !walletState.address) {
       notification.showError('Wallet Required', 'Please connect your wallet');
       return;
@@ -430,6 +490,12 @@ const RegistrationPayment: React.FC = () => {
             <div className="bg-white rounded-xl shadow-md p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Connect Wallet</h2>
 
+              {parentAccountError && (
+                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+                  {parentAccountError}
+                </div>
+              )}
+
               {!walletState.isConnected ? (
                 <div className="space-y-4">
                   {filteredWallets.length === 0 ? (
@@ -442,7 +508,7 @@ const RegistrationPayment: React.FC = () => {
                         <button
                           key={wallet.name}
                           onClick={() => handleWalletConnect(wallet.provider)}
-                          disabled={isConnecting}
+                          disabled={isConnecting || !!parentAccountError}
                           className="p-4 border-2 rounded-lg transition-all border-gray-200 hover:border-blue-400 bg-white"
                         >
                           <div className="text-2xl mb-2">{wallet.icon}</div>
@@ -531,9 +597,9 @@ const RegistrationPayment: React.FC = () => {
 
               <button
                 onClick={handlePayment}
-                disabled={!walletState.isConnected || transaction.isProcessing || !settings?.adminPaymentWallet}
+                disabled={!walletState.isConnected || transaction.isProcessing || !settings?.adminPaymentWallet || !!parentAccountError}
                 className={`w-full py-3 rounded-lg font-medium flex items-center justify-center space-x-2 ${
-                  walletState.isConnected && !transaction.isProcessing && settings?.adminPaymentWallet
+                  walletState.isConnected && !transaction.isProcessing && settings?.adminPaymentWallet && !parentAccountError
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
