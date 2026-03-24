@@ -606,7 +606,7 @@ const addUserWithUnlimitedDepth = async (
     sponsorshipNumber: string,
     sponsorSponsorshipNumber: string
 ) => {
-  const { data, error } = await supabase.rpc('add_user_to_mlm_tree', {
+  const { data, error } = await supabase.rpc('add_user_to_mlm_tree_v2', {
     p_user_id: userId,
     p_sponsorship_number: sponsorshipNumber,
     p_sponsor_sponsorship_number: sponsorSponsorshipNumber
@@ -628,7 +628,7 @@ export const addUserToMLMTree = async (
       sponsorSponsorshipNumber
     });
 
-    const { data, error } = await supabase.rpc('add_user_to_mlm_tree', {
+    const { data, error } = await supabase.rpc('add_user_to_mlm_tree_v2', {
       p_user_id: userId,
       p_sponsorship_number: sponsorshipNumber,
       p_sponsor_sponsorship_number: sponsorSponsorshipNumber

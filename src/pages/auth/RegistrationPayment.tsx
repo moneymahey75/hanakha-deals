@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import { WalletService } from '../../services/walletService';
+import { getSponsorStatusBySponsorshipNumber } from '../../lib/supabase';
 import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../../types/wallet';
 import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
 import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink } from 'lucide-react';
@@ -109,31 +110,19 @@ const RegistrationPayment: React.FC = () => {
           return;
         }
 
-        const { data: sponsorProfile } = await supabase
-          .from('tbl_user_profiles')
-          .select('tup_user_id')
-          .eq('tup_sponsorship_number', parentAccount)
-          .maybeSingle();
-
-        console.log('🔎 Sponsor profile lookup result:', sponsorProfile || null);
-        if (!sponsorProfile?.tup_user_id) {
+        const sponsorStatus = await getSponsorStatusBySponsorshipNumber(parentAccount);
+        console.log('🔎 Sponsor status lookup result:', sponsorStatus || null);
+        if (!sponsorStatus?.user_id) {
           setParentAccountError('Parent A/C not found. Please contact support.');
           return;
         }
 
-        const { data: sponsorUser } = await supabase
-          .from('tbl_users')
-          .select('tu_is_active, tu_registration_paid')
-          .eq('tu_id', sponsorProfile.tup_user_id)
-          .maybeSingle();
-
-        console.log('🔎 Sponsor user status:', sponsorUser || null);
-        if (!sponsorUser?.tu_is_active) {
+        if (!sponsorStatus.is_active) {
           setParentAccountError('Parent A/C must be active and registration-paid to continue. Please contact support or choose a verified parent.');
           return;
         }
 
-        if (!sponsorUser?.tu_registration_paid) {
+        if (!sponsorStatus.is_registration_paid) {
           setParentAccountError('Parent A/C must be active and registration-paid to continue. Please contact support or choose a verified parent.');
           return;
         }
