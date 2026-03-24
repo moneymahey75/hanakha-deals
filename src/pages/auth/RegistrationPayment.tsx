@@ -95,6 +95,7 @@ const RegistrationPayment: React.FC = () => {
       if (!user?.id) return;
 
       try {
+        console.log('🔎 Validating Parent A/C for user:', user.id);
         const { data: profile } = await supabase
           .from('tbl_user_profiles')
           .select('tup_parent_account')
@@ -102,6 +103,7 @@ const RegistrationPayment: React.FC = () => {
           .maybeSingle();
 
         const parentAccount = profile?.tup_parent_account?.trim();
+        console.log('🔎 Parent A/C (tup_parent_account):', parentAccount || '(empty)');
         if (!parentAccount) {
           setParentAccountError(null);
           return;
@@ -113,6 +115,7 @@ const RegistrationPayment: React.FC = () => {
           .eq('tup_sponsorship_number', parentAccount)
           .maybeSingle();
 
+        console.log('🔎 Sponsor profile lookup result:', sponsorProfile || null);
         if (!sponsorProfile?.tup_user_id) {
           setParentAccountError('Parent A/C not found. Please contact support.');
           return;
@@ -124,6 +127,7 @@ const RegistrationPayment: React.FC = () => {
           .eq('tu_id', sponsorProfile.tup_user_id)
           .maybeSingle();
 
+        console.log('🔎 Sponsor user status:', sponsorUser || null);
         if (!sponsorUser?.tu_is_active) {
           setParentAccountError('Parent A/C must be active and registration-paid to continue. Please contact support or choose a verified parent.');
           return;
@@ -134,6 +138,7 @@ const RegistrationPayment: React.FC = () => {
           return;
         }
 
+        console.log('✅ Parent A/C validation passed');
         setParentAccountError(null);
       } catch (error) {
         console.error('Error validating parent account:', error);
