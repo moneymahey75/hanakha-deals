@@ -120,17 +120,17 @@ const RegistrationPayment: React.FC = () => {
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
-          .select('tu_is_active, tu_is_verified')
+          .select('tu_is_active, tu_registration_paid')
           .eq('tu_id', sponsorProfile.tup_user_id)
           .maybeSingle();
 
         if (!sponsorUser?.tu_is_active) {
-          setParentAccountError('Parent A/C must be active and verified to continue. Please contact support or choose a verified parent.');
+          setParentAccountError('Parent A/C must be active and registration-paid to continue. Please contact support or choose a verified parent.');
           return;
         }
 
-        if (!sponsorUser?.tu_is_verified) {
-          setParentAccountError('Parent A/C must be active and verified to continue. Please contact support or choose a verified parent.');
+        if (!sponsorUser?.tu_registration_paid) {
+          setParentAccountError('Parent A/C must be active and registration-paid to continue. Please contact support or choose a verified parent.');
           return;
         }
 

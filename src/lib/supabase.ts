@@ -766,6 +766,37 @@ export const checkSponsorshipNumberExists = async (sponsorshipNumber: string) =>
     return false;
   }
 };
+
+export interface SponsorStatus {
+  user_id: string;
+  sponsorship_number: string;
+  first_name: string | null;
+  username: string | null;
+  is_active: boolean;
+  is_registration_paid: boolean;
+  email_verified: boolean;
+  mobile_verified: boolean;
+}
+
+export const getSponsorStatusBySponsorshipNumber = async (sponsorshipNumber: string): Promise<SponsorStatus | null> => {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_sponsor_status_by_sponsorship_number', {
+        p_sponsorship_number: sponsorshipNumber
+      });
+
+    if (error) {
+      console.error('RPC Error checking sponsor status:', error);
+      return null;
+    }
+
+    if (!data || data.length === 0) return null;
+    return data[0] as SponsorStatus;
+  } catch (error) {
+    console.error('Failed to check sponsor status:', error);
+    return null;
+  }
+};
 export const getSystemSettings = async () => {
   const { data, error } = await supabase
       .from('tbl_system_settings')

@@ -142,13 +142,13 @@ Deno.serve(async (req: Request) => {
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
-          .select('tu_is_active, tu_is_verified')
+          .select('tu_is_active, tu_registration_paid')
           .eq('tu_id', sponsorUserId)
           .maybeSingle();
 
-        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_is_verified) {
+        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid) {
           return new Response(
-            JSON.stringify({ success: false, error: 'Parent A/C is not active or verified' }),
+            JSON.stringify({ success: false, error: 'Parent A/C is not active or registration-paid' }),
             {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -219,6 +219,14 @@ Deno.serve(async (req: Request) => {
     if (updatePaymentError) {
       throw updatePaymentError;
     }
+
+    await supabase
+      .from('tbl_users')
+      .update({
+        tu_registration_paid: true,
+        tu_registration_paid_at: new Date().toISOString()
+      })
+      .eq('tu_id', payment.tp_user_id);
 
     if (sponsorUserId && (commissionAmount > 0 || parentIncomeApplied > 0)) {
       const totalCredit = Number((commissionAmount + parentIncomeApplied).toFixed(2));

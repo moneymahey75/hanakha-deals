@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
-import { checkSponsorshipNumberExists, supabase } from '../../lib/supabase';
+import { checkSponsorshipNumberExists, getSponsorStatusBySponsorshipNumber, supabase } from '../../lib/supabase';
 import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown, CheckCircle, XCircle, Info, Lock } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 
@@ -116,6 +116,7 @@ const CustomerRegister: React.FC = () => {
   // Referral validation state
   const [validatingReferral, setValidatingReferral] = useState(false);
   const [referralValid, setReferralValid] = useState<boolean | null>(null);
+  const [referralMessage, setReferralMessage] = useState<string | null>(null);
 
   // Username validation state
   const [usernameValidation, setUsernameValidation] = useState<UsernameValidation>({
@@ -251,19 +252,63 @@ const CustomerRegister: React.FC = () => {
   const validateReferralCode = useCallback(async (referralCode: string) => {
     if (!referralCode.trim()) {
       setReferralValid(null);
+      setReferralMessage(null);
       return;
     }
 
     setValidatingReferral(true);
     try {
-      const isValid = await checkSponsorshipNumberExists(referralCode);
-      setReferralValid(isValid);
+      const sponsor = await getSponsorStatusBySponsorshipNumber(referralCode);
+      if (!sponsor) {
+        setReferralValid(false);
+        setReferralMessage('Invalid referral code');
+        return;
+      }
+
+      if (!sponsor.is_active) {
+        setReferralValid(false);
+        setReferralMessage('Parent A/C must be active to continue.');
+        return;
+      }
+
+      if (!sponsor.is_registration_paid) {
+        setReferralValid(false);
+        setReferralMessage('Parent A/C must complete registration payment.');
+        return;
+      }
+
+      const requiresEither = settings.eitherVerificationRequired;
+      const requiresEmail = settings.emailVerificationRequired && !requiresEither;
+      const requiresMobile = settings.mobileVerificationRequired && !requiresEither;
+
+      if (requiresEither) {
+        if (!sponsor.email_verified && !sponsor.mobile_verified) {
+          setReferralValid(false);
+          setReferralMessage('Parent A/C must be verified (email or mobile).');
+          return;
+        }
+      } else {
+        if (requiresEmail && !sponsor.email_verified) {
+          setReferralValid(false);
+          setReferralMessage('Parent A/C must have verified email.');
+          return;
+        }
+        if (requiresMobile && !sponsor.mobile_verified) {
+          setReferralValid(false);
+          setReferralMessage('Parent A/C must have verified mobile.');
+          return;
+        }
+      }
+
+      setReferralValid(true);
+      setReferralMessage('Valid referral code ✓');
     } catch (error) {
       setReferralValid(false);
+      setReferralMessage('Unable to validate referral code. Please try again.');
     } finally {
       setValidatingReferral(false);
     }
-  }, []);
+  }, [settings.eitherVerificationRequired, settings.emailVerificationRequired, settings.mobileVerificationRequired]);
 
   // Username validation function
   const validateUsername = useCallback(async (username: string) => {
@@ -703,10 +748,40 @@ const CustomerRegister: React.FC = () => {
     // Validate referral code if provided
     if (formData.parentAccount) {
       try {
-        const isValidReferral = await checkSponsorshipNumberExists(formData.parentAccount);
-        if (!isValidReferral) {
+        const sponsor = await getSponsorStatusBySponsorshipNumber(formData.parentAccount);
+        if (!sponsor) {
           setError('Invalid referral code. Please check and try again.');
           return;
+        }
+
+        if (!sponsor.is_active) {
+          setError('Parent A/C must be active to continue.');
+          return;
+        }
+
+        if (!sponsor.is_registration_paid) {
+          setError('Parent A/C must complete registration payment.');
+          return;
+        }
+
+        const requiresEither = settings.eitherVerificationRequired;
+        const requiresEmail = settings.emailVerificationRequired && !requiresEither;
+        const requiresMobile = settings.mobileVerificationRequired && !requiresEither;
+
+        if (requiresEither) {
+          if (!sponsor.email_verified && !sponsor.mobile_verified) {
+            setError('Parent A/C must be verified (email or mobile).');
+            return;
+          }
+        } else {
+          if (requiresEmail && !sponsor.email_verified) {
+            setError('Parent A/C must have verified email.');
+            return;
+          }
+          if (requiresMobile && !sponsor.mobile_verified) {
+            setError('Parent A/C must have verified mobile.');
+            return;
+          }
         }
       } catch (referralError) {
         setError('Unable to validate referral code at this time. Please try again.' + referralError);
@@ -1088,10 +1163,10 @@ const CustomerRegister: React.FC = () => {
                     )}
                   </div>
                   {formData.parentAccount && referralValid === false && (
-                      <p className="text-xs text-red-600 mt-1">Invalid referral code</p>
+                      <p className="text-xs text-red-600 mt-1">{referralMessage || 'Invalid referral code'}</p>
                   )}
                   {formData.parentAccount && referralValid === true && (
-                      <p className="text-xs text-green-600 mt-1">Valid referral code ✓</p>
+                      <p className="text-xs text-green-600 mt-1">{referralMessage || 'Valid referral code ✓'}</p>
                   )}
                 </div>
 
