@@ -229,8 +229,6 @@ Deno.serve(async (req: Request) => {
       .eq('tu_id', payment.tp_user_id);
 
     if (sponsorUserId && (commissionAmount > 0 || parentIncomeApplied > 0)) {
-      const totalCredit = Number((commissionAmount + parentIncomeApplied).toFixed(2));
-
       const { data: sponsorWallet, error: walletError } = await supabase
         .from('tbl_wallets')
         .select('tw_id, tw_balance')
@@ -243,23 +241,12 @@ Deno.serve(async (req: Request) => {
         let walletId = sponsorWallet?.tw_id || null;
         let baseBalance = parseFloat(String(sponsorWallet?.tw_balance || 0));
 
-        if (walletId) {
-          const newBalance = baseBalance + totalCredit;
-          const { error: updateWalletError } = await supabase
-            .from('tbl_wallets')
-            .update({ tw_balance: newBalance })
-            .eq('tw_id', walletId);
-
-          if (updateWalletError) {
-            console.error('Failed to update sponsor wallet:', updateWalletError);
-            walletId = null;
-          }
-        } else {
+        if (!walletId) {
           const { data: newWallet, error: createWalletError } = await supabase
             .from('tbl_wallets')
             .insert({
               tw_user_id: sponsorUserId,
-              tw_balance: totalCredit,
+              tw_balance: 0,
               tw_currency: 'USD'
             })
             .select()
@@ -267,41 +254,85 @@ Deno.serve(async (req: Request) => {
 
           if (!createWalletError && newWallet) {
             walletId = newWallet.tw_id;
+            baseBalance = 0;
           } else {
             console.error('Failed to create sponsor wallet:', createWalletError);
             walletId = null;
           }
         }
 
+        const insertWalletTxIfMissing = async (
+          referenceType: 'registration_parent_income' | 'registration_payment',
+          amount: number,
+          description: string
+        ) => {
+          if (!walletId || amount <= 0) return 0;
+
+          const { count, error: countError } = await supabase
+            .from('tbl_wallet_transactions')
+            .select('twt_id', { count: 'exact', head: true })
+            .eq('twt_reference_id', paymentId)
+            .eq('twt_reference_type', referenceType);
+
+          if (countError) {
+            console.error('Failed to check existing wallet transaction:', countError);
+            return 0;
+          }
+
+          if (count && count > 0) {
+            return 0;
+          }
+
+          const { error: insertError } = await supabase
+            .from('tbl_wallet_transactions')
+            .insert({
+              twt_wallet_id: walletId,
+              twt_user_id: sponsorUserId,
+              twt_transaction_type: 'credit',
+              twt_amount: amount,
+              twt_description: description,
+              twt_status: 'completed',
+              twt_reference_type: referenceType,
+              twt_reference_id: paymentId
+            });
+
+          if (insertError) {
+            console.error('Failed to insert wallet transaction:', insertError);
+            return 0;
+          }
+
+          return amount;
+        };
+
         if (walletId) {
+          let totalInserted = 0;
+
           if (parentIncomeApplied > 0) {
-            await supabase
-              .from('tbl_wallet_transactions')
-              .insert({
-                twt_wallet_id: walletId,
-                twt_user_id: sponsorUserId,
-                twt_transaction_type: 'credit',
-                twt_amount: parentIncomeApplied,
-                twt_description: `Registration commission from ${childSponsorshipNumber || 'unknown account'}`,
-                twt_status: 'completed',
-                twt_reference_type: 'registration_parent_income',
-                twt_reference_id: paymentId
-              });
+            totalInserted += await insertWalletTxIfMissing(
+              'registration_parent_income',
+              parentIncomeApplied,
+              `Registration commission from ${childSponsorshipNumber || 'unknown account'}`
+            );
           }
 
           if (commissionAmount > 0) {
-            await supabase
-              .from('tbl_wallet_transactions')
-              .insert({
-                twt_wallet_id: walletId,
-                twt_user_id: sponsorUserId,
-                twt_transaction_type: 'credit',
-                twt_amount: commissionAmount,
-                twt_description: `Referral commission for ${childSponsorshipNumber || 'unknown account'}`,
-                twt_status: 'completed',
-                twt_reference_type: 'registration_payment',
-                twt_reference_id: paymentId
-              });
+            totalInserted += await insertWalletTxIfMissing(
+              'registration_payment',
+              commissionAmount,
+              `Referral commission for ${childSponsorshipNumber || 'unknown account'}`
+            );
+          }
+
+          if (totalInserted > 0) {
+            const newBalance = baseBalance + totalInserted;
+            const { error: updateWalletError } = await supabase
+              .from('tbl_wallets')
+              .update({ tw_balance: newBalance })
+              .eq('tw_id', walletId);
+
+            if (updateWalletError) {
+              console.error('Failed to update sponsor wallet:', updateWalletError);
+            }
           }
         }
       }
