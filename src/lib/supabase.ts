@@ -645,14 +645,26 @@ export const addUserToMLMTree = async (
       throw error;
     }
 
-    console.log('✅ User added to MLM tree successfully:', {
-      success: data?.success,
-      nodeId: data?.node_id,
-      parentId: data?.parent_id,
-      position: data?.position,
-      level: data?.level,
-      message: data?.message
-    });
+    if (!data?.success) {
+      console.warn('⚠️ MLM tree placement returned failure:', {
+        success: data?.success,
+        error: data?.error,
+        message: data?.message,
+        nodeId: data?.node_id,
+        parentId: data?.parent_id,
+        position: data?.position,
+        level: data?.level
+      });
+    } else {
+      console.log('✅ User added to MLM tree successfully:', {
+        success: data?.success,
+        nodeId: data?.node_id,
+        parentId: data?.parent_id,
+        position: data?.position,
+        level: data?.level,
+        message: data?.message
+      });
+    }
     return data;
   } catch (error) {
     console.error('❌ MLM tree placement error:', error);
