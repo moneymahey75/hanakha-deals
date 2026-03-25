@@ -430,63 +430,35 @@ const Payment: React.FC = () => {
 
       setTransaction(finalTransactionState);
 
-      // Calculate end date
-      const startDate = new Date();
-      const endDate = new Date();
-      endDate.setDate(startDate.getDate() + selectedPlan.tsp_duration_days);
-
-      // Create subscription record
-      const { data: subscriptionData, error: subscriptionError } = await supabase
-          .from('tbl_user_subscriptions')
-          .insert({
-            tus_user_id: user.id,
-            tus_plan_id: selectedPlan.tsp_id,
-            tus_status: 'active',
-            tus_start_date: startDate.toISOString(),
-            tus_end_date: endDate.toISOString(),
-            tus_payment_amount: selectedPlan.tsp_price
-          })
-          .select()
-          .single();
-
-      if (subscriptionError) {
-        console.error('❌ Subscription creation failed:', subscriptionError);
-        throw new Error(`Subscription creation failed: ${subscriptionError.message}`);
-      }
-
-      console.log('✅ Subscription created:', subscriptionData);
-
-      // Create payment record with dynamic contract address
+      // Create subscription + payment atomically via RPC
       const { data: paymentData, error: paymentError } = await supabase
-          .from('tbl_payments')
-          .insert({
-            tp_user_id: user.id,
-            tp_subscription_id: subscriptionData.tus_id,
-            tp_amount: selectedPlan.tsp_price,
-            tp_currency: 'USDT',
-            tp_payment_method: 'blockchain',
-            tp_payment_status: 'completed',
-            tp_transaction_id: hash,
-            tp_gateway_response: {
-              blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
-              contract_address: settings.subscriptionContractAddress,
-              usdt_contract: settings.usdtAddress,
-              subscription_wallet: settings.subscriptionWalletAddress,
-              transaction_hash: hash,
-              wallet_address: walletState.address,
-              processed_at: new Date().toISOString(),
-              status: 'success',
-              steps: steps
-            }
-          })
-          .select()
-          .single();
+        .rpc('create_registration_payment', {
+          p_user_id: user.id,
+          p_plan_id: selectedPlan.tsp_id,
+          p_amount: selectedPlan.tsp_price,
+          p_currency: 'USDT',
+          p_payment_method: 'blockchain',
+          p_payment_status: 'completed',
+          p_transaction_id: hash,
+          p_gateway_response: {
+            blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
+            contract_address: settings.subscriptionContractAddress,
+            usdt_contract: settings.usdtAddress,
+            subscription_wallet: settings.subscriptionWalletAddress,
+            transaction_hash: hash,
+            wallet_address: walletState.address,
+            processed_at: new Date().toISOString(),
+            status: 'success',
+            steps: steps
+          }
+        });
 
       if (paymentError) {
         console.error('Payment record creation failed:', paymentError);
-        throw new Error('Failed to create payment record');
+        throw new Error(paymentError.message || 'Failed to create payment record');
       }
 
+      subscriptionData = paymentData?.subscription_id || null;
       console.log('✅ Payment record created:', paymentData);
 
       // FIX: Store success flag and transaction state in session storage BEFORE fetching user data
@@ -524,7 +496,7 @@ const Payment: React.FC = () => {
             .from('tbl_payments')
             .insert({
               tp_user_id: user.id,
-              tp_subscription_id: subscriptionData?.tus_id || null,
+            tp_subscription_id: subscriptionData || null,
               tp_amount: selectedPlan.tsp_price,
               tp_currency: 'USDT',
               tp_payment_method: 'blockchain',

@@ -119,6 +119,7 @@ Deno.serve(async (req: Request) => {
     let directAccountNumber: number | null = null;
     let sponsorUserId: string | null = null;
     let sponsorSponsorshipNumber: string | null = null;
+    let isDefaultParent = false;
 
     const { data: userProfile } = await supabase
       .from('tbl_user_profiles')
@@ -132,13 +133,16 @@ Deno.serve(async (req: Request) => {
     if (parentAccount) {
       const { data: sponsorProfile } = await supabase
         .from('tbl_user_profiles')
-        .select('tup_user_id, tup_sponsorship_number')
+        .select('tup_user_id, tup_sponsorship_number, tup_username')
         .eq('tup_sponsorship_number', parentAccount)
         .maybeSingle();
 
       if (sponsorProfile) {
         sponsorUserId = sponsorProfile.tup_user_id;
         sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
+        isDefaultParent =
+          sponsorProfile.tup_sponsorship_number === 'SP5433235' &&
+          sponsorProfile.tup_username === 'default_parent';
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
@@ -156,30 +160,32 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        const { count } = await supabase
-          .from('tbl_user_profiles')
-          .select('tup_user_id', { count: 'exact', head: true })
-          .eq('tup_parent_account', sponsorSponsorshipNumber);
+        if (!isDefaultParent) {
+          const { count } = await supabase
+            .from('tbl_user_profiles')
+            .select('tup_user_id', { count: 'exact', head: true })
+            .eq('tup_parent_account', sponsorSponsorshipNumber);
 
-        directAccountNumber = typeof count === 'number' ? count : null;
+          directAccountNumber = typeof count === 'number' ? count : null;
 
-        if (directAccountNumber) {
-          const { data: rule } = await supabase
-            .from('earning_distribution_settings')
-            .select('*')
-            .eq('is_active', true)
-            .lte('direct_account_range_start', directAccountNumber)
-            .gte('direct_account_range_end', directAccountNumber)
-            .order('direct_account_range_start', { ascending: true })
-            .limit(1)
-            .maybeSingle();
+          if (directAccountNumber) {
+            const { data: rule } = await supabase
+              .from('earning_distribution_settings')
+              .select('*')
+              .eq('is_active', true)
+              .lte('direct_account_range_start', directAccountNumber)
+              .gte('direct_account_range_end', directAccountNumber)
+              .order('direct_account_range_start', { ascending: true })
+              .limit(1)
+              .maybeSingle();
 
-          if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
-            commissionPercentage = Number(rule.direct_referrer_percentage);
-            if (Number.isFinite(commissionPercentage)) {
-              commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
-            } else {
-              commissionPercentage = null;
+            if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
+              commissionPercentage = Number(rule.direct_referrer_percentage);
+              if (Number.isFinite(commissionPercentage)) {
+                commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
+              } else {
+                commissionPercentage = null;
+              }
             }
           }
         }
@@ -195,7 +201,7 @@ Deno.serve(async (req: Request) => {
       throw updateSubscriptionError;
     }
 
-    if (sponsorUserId && normalizedParentIncome > 0) {
+    if (!isDefaultParent && sponsorUserId && normalizedParentIncome > 0) {
       parentIncomeApplied = Math.min(normalizedParentIncome, paymentAmount);
       adminNetAmount = Math.max(0, paymentAmount - parentIncomeApplied);
     }

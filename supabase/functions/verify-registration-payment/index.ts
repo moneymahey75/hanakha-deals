@@ -319,17 +319,21 @@ Deno.serve(async (req: Request) => {
     const childSponsorshipNumber = userProfile?.tup_sponsorship_number?.trim();
     let sponsorUserId: string | null = null;
     let sponsorSponsorshipNumber: string | null = null;
+    let isDefaultParent = false;
 
     if (parentAccount) {
       const { data: sponsorProfile } = await supabase
         .from('tbl_user_profiles')
-        .select('tup_user_id, tup_sponsorship_number')
+        .select('tup_user_id, tup_sponsorship_number, tup_username')
         .eq('tup_sponsorship_number', parentAccount)
         .maybeSingle();
 
       if (sponsorProfile) {
         sponsorUserId = sponsorProfile.tup_user_id;
         sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
+        isDefaultParent =
+          sponsorProfile.tup_sponsorship_number === 'SP5433235' &&
+          sponsorProfile.tup_username === 'default_parent';
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
@@ -452,14 +456,14 @@ Deno.serve(async (req: Request) => {
 
     // Referral commission + Parent A/C income
     const paymentAmount = expectedAmount;
-    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0
+    const parentIncomeApplied = !isDefaultParent && sponsorUserId && normalizedParentIncome > 0
       ? Math.min(normalizedParentIncome, expectedAmount)
       : 0;
     let adminNetAmount = expectedAmount;
     let commissionAmount = 0;
     let commissionPercentage: number | null = null;
     let directAccountNumber: number | null = null;
-    if (sponsorUserId && sponsorSponsorshipNumber) {
+    if (sponsorUserId && sponsorSponsorshipNumber && !isDefaultParent) {
       const { count } = await supabase
         .from('tbl_user_profiles')
         .select('tup_user_id', { count: 'exact', head: true })
