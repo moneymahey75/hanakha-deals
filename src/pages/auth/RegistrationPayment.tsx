@@ -193,12 +193,16 @@ const RegistrationPayment: React.FC = () => {
         .eq('tuwc_user_id', user.id)
         .eq('tuwc_is_active', true);
 
-      const { data: existingWallet } = await supabase
+      const { data: existingWallet, error: existingWalletError } = await supabase
         .from('tbl_user_wallet_connections')
         .select('tuwc_id')
         .eq('tuwc_user_id', user.id)
         .eq('tuwc_wallet_address', address)
-        .single();
+        .maybeSingle();
+
+      if (existingWalletError) {
+        throw existingWalletError;
+      }
 
       if (existingWallet) {
         await supabase

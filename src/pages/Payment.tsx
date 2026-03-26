@@ -101,7 +101,7 @@ const Payment: React.FC = () => {
             .eq('tuwc_is_active', true)
             .order('tuwc_last_connected_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (data && !error) {
           setLastConnectedWallet(data);
@@ -210,12 +210,16 @@ const Payment: React.FC = () => {
           .eq('tuwc_is_active', true);
 
       // Check if this wallet already exists for the user
-      const { data: existingWallet } = await supabase
+      const { data: existingWallet, error: existingWalletError } = await supabase
           .from('tbl_user_wallet_connections')
           .select('tuwc_id')
           .eq('tuwc_user_id', user.id)
           .eq('tuwc_wallet_address', address)
-          .single();
+          .maybeSingle();
+
+      if (existingWalletError) {
+        throw existingWalletError;
+      }
 
       if (existingWallet) {
         // Update existing wallet to be active and update timestamp
