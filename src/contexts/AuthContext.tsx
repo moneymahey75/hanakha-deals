@@ -346,17 +346,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('admin_session_token');
       adminSessionManager.removeSession();
       sessionManager.removeSession();
-      console.log('🚪 Signing out any existing Supabase session...');
+      
+      // Check if there's actually an active Supabase session before signing out
+      console.log('🔍 Checking for active Supabase session...');
+      let hasActiveSession = false;
       try {
-        await withTimeout(supabase.auth.signOut(), 10000, 'Supabase sign-out');
-        console.log('✅ Supabase sign-out completed');
-      } catch (signOutError) {
-        console.warn('⚠️ Supabase sign-out failed or timed out, continuing:', signOutError);
+        const { data: { session: activeSession } } = await withTimeout(
+          supabase.auth.getSession(),
+          3000,
+          'Get session check'
+        );
+        hasActiveSession = !!activeSession;
+      } catch (getSessionError) {
+        console.warn('⚠️ Could not check active session:', getSessionError);
+        hasActiveSession = false;
+      }
+      
+      if (hasActiveSession) {
+        console.log('🚪 Active session found, signing out...');
+        try {
+          await withTimeout(supabase.auth.signOut(), 5000, 'Supabase sign-out');
+          console.log('✅ Supabase sign-out completed');
+        } catch (signOutError) {
+          console.warn('⚠️ Supabase sign-out failed or timed out, continuing with login anyway:', signOutError);
+        }
+      } else {
+        console.log('ℹ️ No active Supabase session found, skipping sign-out');
       }
       setUser(null);
 
-      // Small delay to ensure cleanup is complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Longer delay to ensure auth state is reset and ready for fresh login
+      console.log('⏳ Waiting for auth state to stabilize...');
+      await new Promise(resolve => setTimeout(resolve, 800));
 
       // Determine if input is email or username
       const isEmail = emailOrUsername.includes('@');
@@ -364,6 +385,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // If username provided, get the email from user_profiles using RPC
       if (!isEmail) {
+        console.log('🔎 Looking up email for username:', emailOrUsername);
         const { data: profileData, error: profileError } = await supabase
             .rpc('get_email_by_username', { p_username: emailOrUsername });
 
@@ -371,16 +393,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('Username not found');
         }
         actualEmail = profileData[0].email;
+        console.log('✅ Email resolved from username');
       }
 
-      // Authenticate with Supabase (with timeout)
+      // Authenticate with Supabase (with extended timeout for network issues)
       console.log('🔐 Signing in with Supabase...');
       const { data: authData, error: authError } = await withTimeout(
         supabase.auth.signInWithPassword({
           email: actualEmail,
           password: password
         }),
-        15000,
+        20000,
         'Supabase sign-in'
       );
       console.log('🔐 Supabase sign-in response received');

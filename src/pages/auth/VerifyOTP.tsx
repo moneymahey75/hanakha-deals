@@ -128,6 +128,17 @@ const VerifyOTP: React.FC = () => {
     initializeComponent();
   }, [location.state, user]);
 
+  // Monitor for logout - redirect if user gets logged out while on verify page
+  useEffect(() => {
+    if (componentInitialized.current && currentUserId && !user) {
+      console.log('User logged out during verification, redirecting to login');
+      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
+      navigate('/login', { 
+        state: { returnTo: '/verify-otp', message: 'Session expired. Please login again.' }
+      });
+    }
+  }, [user, currentUserId, notification, navigate]);
+
   // Update verification progress
   const updateVerificationProgress = useCallback((settings: VerificationSettings, completed: CompletedVerifications) => {
     let totalSteps = 0;
@@ -210,6 +221,16 @@ const VerifyOTP: React.FC = () => {
   }, [otp]);
 
   const handleSendOTP = useCallback(async () => {
+    // Check if user is still logged in
+    if (!user) {
+      console.log('User logged out, redirecting to login');
+      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
+      navigate('/login', { 
+        state: { returnTo: location.pathname, message: 'Please login to continue verification' }
+      });
+      return;
+    }
+
     if (!currentUserId || !contactInfo[otpType] || sendingInProgress.current) {
       console.log('Send OTP blocked:', {
         userId: !!currentUserId,
@@ -267,6 +288,16 @@ const VerifyOTP: React.FC = () => {
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check if user is still logged in
+    if (!user) {
+      console.log('User logged out, redirecting to login');
+      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
+      navigate('/login', { 
+        state: { returnTo: location.pathname, message: 'Please login to continue verification' }
+      });
+      return;
+    }
 
     if (isSubmitting) return;
 

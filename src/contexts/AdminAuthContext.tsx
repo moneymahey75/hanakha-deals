@@ -299,12 +299,27 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const logout = async () => {
     console.log('🔐 Admin logout initiated');
 
-    // Sign out from Supabase Auth if authenticated
+    // Helper function with timeout
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+      let timeoutId: number | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(`${label} timed out after ${ms}ms`));
+        }, ms);
+      });
+      try {
+        return await Promise.race([promise, timeoutPromise]);
+      } finally {
+        if (timeoutId) window.clearTimeout(timeoutId);
+      }
+    };
+
+    // Sign out from Supabase Auth if authenticated with timeout
     try {
-      await adminSupabase.auth.signOut();
+      await withTimeout(adminSupabase.auth.signOut(), 5000, 'Admin Supabase sign-out');
       console.log('✅ Signed out from Supabase Auth');
     } catch (error) {
-      console.warn('⚠️ Supabase Auth sign-out error (may not have been signed in):', error);
+      console.warn('⚠️ Supabase Auth sign-out error or timed out (acceptable during logout):', error);
     }
 
     // Clear admin session
