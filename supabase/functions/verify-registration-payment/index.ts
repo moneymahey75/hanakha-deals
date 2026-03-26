@@ -527,6 +527,10 @@ Deno.serve(async (req: Request) => {
           gross_amount: paymentAmount,
           parent_income: parentIncomeApplied,
           admin_income: adminNetAmount,
+          commission_amount: commissionAmount,
+          commission_percentage: commissionPercentage,
+          direct_account_number: directAccountNumber,
+          is_default_parent: isDefaultParent,
           parent_account: parentAccount || null,
           parent_user_id: sponsorUserId || null
         }
