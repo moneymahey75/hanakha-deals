@@ -290,7 +290,12 @@ const WalletDashboard: React.FC = () => {
   };
 
   const getTransactionIcon = (type: string, referenceType?: string) => {
-    if (referenceType === 'task_reward' || referenceType === 'coupon_share') return Gift;
+    if (
+      referenceType === 'task_reward' ||
+      referenceType === 'coupon_share' ||
+      referenceType === 'registration_parent_income' ||
+      referenceType === 'mlm_level_reward'
+    ) return Gift;
     if (referenceType === 'social_share') return Share2;
     return type === 'credit' ? ArrowUpRight : ArrowDownLeft;
   };

@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
 
     if (payment.subscription?.plan?.tsp_type !== 'registration') {
       return new Response(
-        JSON.stringify({ success: false, error: 'Only registration payments can process referral commissions' }),
+        JSON.stringify({ success: false, error: 'Only registration payments can process referral earnings' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -114,9 +114,6 @@ Deno.serve(async (req: Request) => {
       : 0;
     let parentIncomeApplied = 0;
     let adminNetAmount = paymentAmount;
-    let commissionAmount = 0;
-    let commissionPercentage: number | null = null;
-    let directAccountNumber: number | null = null;
     let sponsorUserId: string | null = null;
     let sponsorSponsorshipNumber: string | null = null;
     let isDefaultParent = false;
@@ -133,16 +130,14 @@ Deno.serve(async (req: Request) => {
     if (parentAccount) {
       const { data: sponsorProfile } = await supabase
         .from('tbl_user_profiles')
-        .select('tup_user_id, tup_sponsorship_number, tup_username')
+        .select('tup_user_id, tup_sponsorship_number, tup_username, tup_is_default_parent')
         .eq('tup_sponsorship_number', parentAccount)
         .maybeSingle();
 
       if (sponsorProfile) {
         sponsorUserId = sponsorProfile.tup_user_id;
         sponsorSponsorshipNumber = sponsorProfile.tup_sponsorship_number;
-        isDefaultParent =
-          sponsorProfile.tup_sponsorship_number === 'SP5433235' &&
-          sponsorProfile.tup_username === 'default_parent';
+        isDefaultParent = sponsorProfile.tup_is_default_parent === true;
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
@@ -160,35 +155,6 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        if (!isDefaultParent) {
-          const { count } = await supabase
-            .from('tbl_user_profiles')
-            .select('tup_user_id', { count: 'exact', head: true })
-            .eq('tup_parent_account', sponsorSponsorshipNumber);
-
-          directAccountNumber = typeof count === 'number' ? count : null;
-
-          if (directAccountNumber) {
-            const { data: rule } = await supabase
-              .from('earning_distribution_settings')
-              .select('*')
-              .eq('is_active', true)
-              .lte('direct_account_range_start', directAccountNumber)
-              .gte('direct_account_range_end', directAccountNumber)
-              .order('direct_account_range_start', { ascending: true })
-              .limit(1)
-              .maybeSingle();
-
-            if (rule?.direct_referrer_percentage !== null && rule?.direct_referrer_percentage !== undefined) {
-              commissionPercentage = Number(rule.direct_referrer_percentage);
-              if (Number.isFinite(commissionPercentage)) {
-                commissionAmount = Number(((paymentAmount * commissionPercentage) / 100).toFixed(2));
-              } else {
-                commissionPercentage = null;
-              }
-            }
-          }
-        }
       }
     }
 
@@ -201,7 +167,7 @@ Deno.serve(async (req: Request) => {
       throw updateSubscriptionError;
     }
 
-    if (!isDefaultParent && sponsorUserId && normalizedParentIncome > 0) {
+    if (sponsorUserId && normalizedParentIncome > 0) {
       parentIncomeApplied = Math.min(normalizedParentIncome, paymentAmount);
       adminNetAmount = Math.max(0, paymentAmount - parentIncomeApplied);
     }
@@ -216,9 +182,9 @@ Deno.serve(async (req: Request) => {
           gross_amount: paymentAmount,
           parent_income: parentIncomeApplied,
           admin_income: adminNetAmount,
-          commission_amount: commissionAmount,
-          commission_percentage: commissionPercentage,
-          direct_account_number: directAccountNumber,
+          commission_amount: 0,
+          commission_percentage: null,
+          direct_account_number: null,
           is_default_parent: isDefaultParent,
           parent_account: parentAccount || null,
           parent_user_id: sponsorUserId || null
@@ -238,50 +204,70 @@ Deno.serve(async (req: Request) => {
       })
       .eq('tu_id', payment.tp_user_id);
 
-    if (sponsorUserId && (commissionAmount > 0 || parentIncomeApplied > 0)) {
-      const { data: sponsorWallet, error: walletError } = await supabase
-        .from('tbl_wallets')
-        .select('tw_id, tw_balance')
-        .eq('tw_user_id', sponsorUserId)
-        .maybeSingle();
+    if (sponsorUserId) {
+        const walletCache = new Map<string, { walletId: string; baseBalance: number; totalInserted: number }>();
 
-      if (walletError) {
-        console.error('Failed to get sponsor wallet:', walletError);
-      } else {
-        let walletId = sponsorWallet?.tw_id || null;
-        let baseBalance = parseFloat(String(sponsorWallet?.tw_balance || 0));
+        const ensureWalletForUser = async (userId: string) => {
+          const cached = walletCache.get(userId);
+          if (cached) return cached;
 
-        if (!walletId) {
-          const { data: newWallet, error: createWalletError } = await supabase
+          const { data: existingWallet, error: existingError } = await supabase
             .from('tbl_wallets')
-            .insert({
-              tw_user_id: sponsorUserId,
-              tw_balance: 0,
-              tw_currency: 'USD'
-            })
-            .select()
-            .single();
+            .select('tw_id, tw_balance')
+            .eq('tw_user_id', userId)
+            .maybeSingle();
 
-          if (!createWalletError && newWallet) {
-            walletId = newWallet.tw_id;
-            baseBalance = 0;
-          } else {
-            console.error('Failed to create sponsor wallet:', createWalletError);
-            walletId = null;
+          if (existingError) {
+            console.error('Failed to load wallet:', existingError);
+            return null;
           }
-        }
+
+          let resolvedWalletId = existingWallet?.tw_id || null;
+          let resolvedBalance = parseFloat(String(existingWallet?.tw_balance || 0));
+
+          if (!resolvedWalletId) {
+            const { data: createdWallet, error: createError } = await supabase
+              .from('tbl_wallets')
+              .insert({
+                tw_user_id: userId,
+                tw_balance: 0,
+                tw_currency: 'USDT'
+              })
+              .select()
+              .single();
+
+            if (createError) {
+              console.error('Failed to create wallet:', createError);
+              return null;
+            }
+
+            resolvedWalletId = createdWallet?.tw_id || null;
+            resolvedBalance = 0;
+          }
+
+          if (!resolvedWalletId) return null;
+
+          const entry = { walletId: resolvedWalletId, baseBalance: resolvedBalance, totalInserted: 0 };
+          walletCache.set(userId, entry);
+          return entry;
+        };
 
         const insertWalletTxIfMissing = async (
-          referenceType: 'registration_parent_income' | 'registration_payment',
+          userId: string,
+          referenceType: 'registration_parent_income' | 'mlm_level_reward',
           amount: number,
-          description: string
+          description: string,
+          referenceId: string
         ) => {
-          if (!walletId || amount <= 0) return 0;
+          if (amount <= 0) return 0;
+
+          const walletInfo = await ensureWalletForUser(userId);
+          if (!walletInfo) return 0;
 
           const { count, error: countError } = await supabase
             .from('tbl_wallet_transactions')
             .select('twt_id', { count: 'exact', head: true })
-            .eq('twt_reference_id', paymentId)
+            .eq('twt_reference_id', referenceId)
             .eq('twt_reference_type', referenceType);
 
           if (countError) {
@@ -296,14 +282,14 @@ Deno.serve(async (req: Request) => {
           const { error: insertError } = await supabase
             .from('tbl_wallet_transactions')
             .insert({
-              twt_wallet_id: walletId,
-              twt_user_id: sponsorUserId,
+              twt_wallet_id: walletInfo.walletId,
+              twt_user_id: userId,
               twt_transaction_type: 'credit',
               twt_amount: amount,
               twt_description: description,
               twt_status: 'completed',
               twt_reference_type: referenceType,
-              twt_reference_id: paymentId
+              twt_reference_id: referenceId
             });
 
           if (insertError) {
@@ -311,41 +297,104 @@ Deno.serve(async (req: Request) => {
             return 0;
           }
 
+          walletInfo.totalInserted += amount;
           return amount;
         };
 
-        if (walletId) {
-          let totalInserted = 0;
+        if (parentIncomeApplied > 0 && sponsorUserId) {
+          await insertWalletTxIfMissing(
+            sponsorUserId,
+            'registration_parent_income',
+            parentIncomeApplied,
+            `Registration commission from ${childSponsorshipNumber || 'unknown account'}`,
+            paymentId
+          );
+        }
 
-          if (parentIncomeApplied > 0) {
-            totalInserted += await insertWalletTxIfMissing(
-              'registration_parent_income',
-              parentIncomeApplied,
-              `Registration commission from ${childSponsorshipNumber || 'unknown account'}`
-            );
+        if (childSponsorshipNumber) {
+          const { data: milestonesData, error: milestonesError } = await supabase
+            .from('tbl_mlm_reward_milestones')
+            .select('tmm_id, tmm_title, tmm_level1_required, tmm_level2_required, tmm_level3_required, tmm_reward_amount, tmm_is_active')
+            .eq('tmm_is_active', true)
+            .order('tmm_reward_amount', { ascending: true });
+
+          if (milestonesError) {
+            console.error('Failed to load MLM reward milestones:', milestonesError);
           }
 
-          if (commissionAmount > 0) {
-            totalInserted += await insertWalletTxIfMissing(
-              'registration_payment',
-              commissionAmount,
-              `Referral commission for ${childSponsorshipNumber || 'unknown account'}`
-            );
+          const milestones = (milestonesData && milestonesData.length > 0)
+            ? milestonesData.map((row) => ({
+              id: String(row.tmm_id),
+              title: String(row.tmm_title),
+              level1: Number(row.tmm_level1_required || 0),
+              level2: Number(row.tmm_level2_required || 0),
+              level3: Number(row.tmm_level3_required || 0),
+              amount: Number(row.tmm_reward_amount || 0)
+            }))
+            : [];
+
+          if (milestones.length === 0) {
+            console.warn('No active MLM reward milestones configured');
           }
 
-          if (totalInserted > 0) {
-            const newBalance = baseBalance + totalInserted;
-            const { error: updateWalletError } = await supabase
-              .from('tbl_wallets')
-              .update({ tw_balance: newBalance })
-              .eq('tw_id', walletId);
+          const { data: uplines, error: uplinesError } = await supabase
+            .rpc('get_upline_sponsorships', {
+              p_child_sponsorship: childSponsorshipNumber,
+              p_max_levels: 3
+            });
 
-            if (updateWalletError) {
-              console.error('Failed to update sponsor wallet:', updateWalletError);
+          if (uplinesError) {
+            console.error('Failed to load upline sponsors:', uplinesError);
+          } else if (milestones.length > 0) {
+            for (const upline of uplines || []) {
+              const sponsorshipNumber = String(upline.sponsorship_number || '').trim();
+              const uplineUserId = String(upline.user_id || '').trim();
+              if (!sponsorshipNumber || !uplineUserId) continue;
+
+              const { data: countsRow, error: countsError } = await supabase
+                .rpc('upsert_mlm_level_counts', { p_sponsorship_number: sponsorshipNumber })
+                .maybeSingle();
+
+              if (countsError) {
+                console.error('Failed to update MLM level counts:', countsError);
+                continue;
+              }
+
+              const level1Count = Number(countsRow?.level1_count || 0);
+              const level2Count = Number(countsRow?.level2_count || 0);
+              const level3Count = Number(countsRow?.level3_count || 0);
+
+              for (const milestone of milestones) {
+                if (
+                  level1Count >= milestone.level1 &&
+                  level2Count >= milestone.level2 &&
+                  level3Count >= milestone.level3
+                ) {
+                  await insertWalletTxIfMissing(
+                    uplineUserId,
+                    'mlm_level_reward',
+                    milestone.amount,
+                    milestone.title,
+                    milestone.id
+                  );
+                }
+              }
             }
           }
         }
-      }
+
+        for (const [userId, walletInfo] of walletCache.entries()) {
+          if (walletInfo.totalInserted <= 0) continue;
+          const newBalance = walletInfo.baseBalance + walletInfo.totalInserted;
+          const { error: updateWalletError } = await supabase
+            .from('tbl_wallets')
+            .update({ tw_balance: newBalance })
+            .eq('tw_id', walletInfo.walletId);
+
+          if (updateWalletError) {
+            console.error('Failed to update sponsor wallet:', updateWalletError);
+          }
+        }
     }
 
     await supabase
@@ -358,11 +407,11 @@ Deno.serve(async (req: Request) => {
           payment_id: paymentId,
           user_email: payment.user.tu_email,
           amount: payment.tp_amount,
-          commission_paid: commissionAmount,
-          commission_percentage: commissionPercentage,
+          commission_paid: 0,
+          commission_percentage: null,
           parent_income: parentIncomeApplied,
           admin_income: adminNetAmount,
-          direct_account_number: directAccountNumber,
+          direct_account_number: null,
           sponsor_user_id: sponsorUserId,
           sponsor_sponsorship_number: sponsorSponsorshipNumber,
           timestamp: new Date().toISOString(),
@@ -373,9 +422,10 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         message: 'Payment processed successfully',
-        commission_paid: commissionAmount,
-        commission_percentage: commissionPercentage,
-        direct_account_number: directAccountNumber
+        commission_paid: 0,
+        commission_percentage: null,
+        direct_account_number: null,
+        parent_income: parentIncomeApplied
       }),
       {
         headers: {

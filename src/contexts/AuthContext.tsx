@@ -550,7 +550,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const { data: profileData, error: profileError } = await supabase
               .from('tbl_user_profiles')
-              .select('tup_sponsorship_number')
+              .select('tup_sponsorship_number, tup_parent_account')
               .eq('tup_user_id', authData.user.id)
               .single();
 
@@ -559,11 +559,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw profileError;
           }
 
-          if (profileData?.tup_sponsorship_number) {
+          const sponsorAccount = profileData?.tup_parent_account || userData.parentAccount;
+
+          if (profileData?.tup_sponsorship_number && sponsorAccount) {
             const treeResult = await addUserToMLMTree(
                 authData.user.id,
                 profileData.tup_sponsorship_number,
-                userData.parentAccount
+                sponsorAccount
             );
 
             if (treeResult?.success) {

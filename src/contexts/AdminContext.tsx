@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { getAdminSupabaseWithAuth } from '../lib/adminSupabase';
 
 interface GeneralSettings {
@@ -472,7 +472,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await loadSettings();
   }, [loadSettings]);
 
-  const value = {
+  // Memoize the value object to prevent unnecessary re-renders of child components
+  // This prevents a re-render loop when child components update their state
+  const value = useMemo(() => ({
     settings,
     smsSettings: smsGateway,
     emailSettings: emailSMTP,
@@ -483,7 +485,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     updateEmailSettings: updateEmailSMTP,
     updateSubscriptionPlans,
     refreshSettings
-  };
+  }), [settings, smsGateway, emailSMTP, subscriptionPlans, loading, updateSettings, updateSMSGateway, updateEmailSMTP, updateSubscriptionPlans, refreshSettings]);
 
   return (
       <AdminContext.Provider value={value}>

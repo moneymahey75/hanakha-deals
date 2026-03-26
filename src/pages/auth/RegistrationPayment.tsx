@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -180,7 +180,7 @@ const RegistrationPayment: React.FC = () => {
     });
   }, [availableWallets, enabledWallets]);
 
-  const saveWalletConnection = async (address: string, walletName: string, walletType: string, chainId: number | null) => {
+  const saveWalletConnection = useCallback(async (address: string, walletName: string, walletType: string, chainId: number | null) => {
     if (!user || !address) return;
 
     try {
@@ -229,9 +229,9 @@ const RegistrationPayment: React.FC = () => {
     } catch (error) {
       console.error('Error saving wallet connection:', error);
     }
-  };
+  }, [user]);
 
-  const handleWalletConnect = async (provider: any) => {
+  const handleWalletConnect = useCallback(async (provider: any) => {
     if (isConnecting) return;
 
     setIsConnecting(true);
@@ -274,7 +274,7 @@ const RegistrationPayment: React.FC = () => {
     } finally {
       setIsConnecting(false);
     }
-  };
+  }, [isConnecting, settings, walletService, notification, saveWalletConnection]);
 
   const handleWalletDisconnect = () => {
     walletService.disconnect();

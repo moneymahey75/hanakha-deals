@@ -41,7 +41,16 @@ export interface WalletTransaction {
     amount: number;
     currency: string;
     description: string;
-    referenceType?: 'task_reward' | 'coupon_share' | 'social_share' | 'admin_credit' | 'withdrawal' | 'deposit' | 'transfer';
+    referenceType?: 'task_reward'
+      | 'coupon_share'
+      | 'social_share'
+      | 'admin_credit'
+      | 'withdrawal'
+      | 'deposit'
+      | 'transfer'
+      | 'registration_parent_income'
+      | 'registration_payment'
+      | 'mlm_level_reward';
     referenceId?: string;
     blockchainHash?: string;
     status: 'pending' | 'completed' | 'failed' | 'cancelled';
