@@ -19,8 +19,8 @@ interface Payment {
   tp_payment_method: string;
   tp_payment_status: string;
   tp_transaction_id: string | null;
-  tp_payment_date?: string;
   tp_created_at?: string;
+  tp_verified_at?: string;
   user?: {
     tu_email: string;
   };
@@ -262,7 +262,7 @@ const PendingPayments: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center text-sm text-gray-500">
                         <Calendar className="h-4 w-4 mr-1" />
-                        {new Date(payment.tp_payment_date).toLocaleDateString()}
+                        {new Date(payment.tp_verified_at || payment.tp_created_at || Date.now()).toLocaleDateString()}
                       </div>
                     </td>
                     <td className="px-6 py-4">
