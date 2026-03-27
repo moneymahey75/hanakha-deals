@@ -9,7 +9,8 @@ import {
   User,
   Calendar,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 
 interface Payment {
@@ -33,16 +34,54 @@ interface Payment {
   };
 }
 
+interface AdminUser {
+  tau_id: string;
+  tau_email: string;
+  tau_full_name?: string | null;
+  tau_role?: string | null;
+}
+
+interface AdminEarning {
+  tp_id: string;
+  tp_transaction_id: string | null;
+  tp_amount: number | null;
+  tp_currency: string | null;
+  tp_payment_status: string | null;
+  tp_created_at?: string | null;
+  tp_verified_at?: string | null;
+  tp_gateway_response?: any;
+  tp_processed_by_admin_id?: string | null;
+  tp_processed_by_admin_email?: string | null;
+  tp_processed_by_admin_name?: string | null;
+  user?: {
+    tu_email: string;
+  };
+}
+
 const PendingPayments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
+  const [adminEarnings, setAdminEarnings] = useState<AdminEarning[]>([]);
+  const [earningsLoading, setEarningsLoading] = useState(false);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [earningsAdminFilter, setEarningsAdminFilter] = useState('all');
+  const [earningsStartDate, setEarningsStartDate] = useState('');
+  const [earningsEndDate, setEarningsEndDate] = useState('');
   const notification = useNotification();
 
   useEffect(() => {
     loadPayments();
   }, []);
+
+  useEffect(() => {
+    loadAdmins();
+  }, []);
+
+  useEffect(() => {
+    loadAdminEarnings();
+  }, [earningsAdminFilter, earningsStartDate, earningsEndDate]);
 
   const loadPayments = async () => {
     setLoading(true);
@@ -66,6 +105,79 @@ const PendingPayments: React.FC = () => {
       notification.showError('Load Failed', error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const parseGatewayResponse = (raw: any) => {
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  };
+
+  const loadAdmins = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_admin_users')
+        .select('tau_id, tau_email, tau_full_name, tau_role')
+        .eq('tau_is_active', true)
+        .order('tau_full_name', { ascending: true });
+
+      if (error) throw error;
+      setAdmins(data || []);
+    } catch (error: any) {
+      notification.showError('Load Failed', error.message);
+    }
+  };
+
+  const loadAdminEarnings = async () => {
+    setEarningsLoading(true);
+    try {
+      let query = supabase
+        .from('tbl_payments')
+        .select(`
+          tp_id,
+          tp_transaction_id,
+          tp_amount,
+          tp_currency,
+          tp_payment_status,
+          tp_created_at,
+          tp_verified_at,
+          tp_gateway_response,
+          tp_processed_by_admin_id,
+          tp_processed_by_admin_email,
+          tp_processed_by_admin_name,
+          user:tp_user_id(tu_email)
+        `)
+        .eq('tp_payment_status', 'completed')
+        .order('tp_verified_at', { ascending: false });
+
+      if (earningsAdminFilter !== 'all') {
+        query = query.eq('tp_processed_by_admin_id', earningsAdminFilter);
+      }
+
+      if (earningsStartDate) {
+        query = query.gte('tp_verified_at', `${earningsStartDate}T00:00:00.000Z`);
+      }
+
+      if (earningsEndDate) {
+        query = query.lte('tp_verified_at', `${earningsEndDate}T23:59:59.999Z`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setAdminEarnings(data || []);
+    } catch (error: any) {
+      notification.showError('Load Failed', error.message);
+    } finally {
+      setEarningsLoading(false);
     }
   };
 
@@ -166,6 +278,85 @@ const PendingPayments: React.FC = () => {
       setVerifying(null);
     }
   };
+
+  const getAdminLabel = (earning: AdminEarning) => {
+    const name = earning.tp_processed_by_admin_name?.trim();
+    const email = earning.tp_processed_by_admin_email?.trim();
+    if (name && email) return `${name} (${email})`;
+    if (name) return name;
+    if (email) return email;
+    return earning.tp_processed_by_admin_id || 'System';
+  };
+
+  const exportEarningsCsv = () => {
+    const headers = [
+      'Verified Date',
+      'Customer Email',
+      'Amount',
+      'Currency',
+      'Admin Income',
+      'Commission Paid',
+      'Commission To',
+      'Processed By',
+      'Transaction Id',
+      'Payment Id'
+    ];
+
+    const rows = adminEarnings.map((earning) => {
+      const gateway = parseGatewayResponse(earning.tp_gateway_response);
+      const adminIncome = Number(gateway.admin_income ?? 0);
+      const commissionPaid = Number(gateway.parent_income ?? 0);
+      const commissionTo = gateway.parent_account || gateway.parent_user_id || '';
+      const verifiedAt = earning.tp_verified_at || earning.tp_created_at || '';
+
+      return [
+        verifiedAt,
+        earning.user?.tu_email || '',
+        earning.tp_amount ?? '',
+        earning.tp_currency ?? '',
+        adminIncome,
+        commissionPaid,
+        commissionTo,
+        getAdminLabel(earning),
+        earning.tp_transaction_id || '',
+        earning.tp_id
+      ];
+    });
+
+    const escapeCsv = (value: any) => {
+      const str = String(value ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map(escapeCsv).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `admin-earnings-${dateStamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const earningsTotals = adminEarnings.reduce(
+    (acc, earning) => {
+      const gateway = parseGatewayResponse(earning.tp_gateway_response);
+      acc.gross += Number(earning.tp_amount ?? 0);
+      acc.adminIncome += Number(gateway.admin_income ?? 0);
+      acc.commission += Number(gateway.parent_income ?? 0);
+      return acc;
+    },
+    { gross: 0, adminIncome: 0, commission: 0 }
+  );
 
   if (loading) {
     return (
@@ -327,6 +518,165 @@ const PendingPayments: React.FC = () => {
           </div>
         </div>
       )}
+
+      <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Admin Earnings</h3>
+            <p className="text-sm text-gray-600">Track admin income and commissions paid to sub-admins</p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={loadAdminEarnings}
+              className="flex items-center space-x-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={exportEarningsCsv}
+              disabled={adminEarnings.length === 0}
+              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="bg-blue-50 rounded-lg p-4">
+            <p className="text-xs text-blue-700">Total Gross</p>
+            <p className="text-lg font-semibold text-blue-900">${earningsTotals.gross.toFixed(2)}</p>
+          </div>
+          <div className="bg-green-50 rounded-lg p-4">
+            <p className="text-xs text-green-700">Admin Income</p>
+            <p className="text-lg font-semibold text-green-900">${earningsTotals.adminIncome.toFixed(2)}</p>
+          </div>
+          <div className="bg-amber-50 rounded-lg p-4">
+            <p className="text-xs text-amber-700">Commission Paid</p>
+            <p className="text-lg font-semibold text-amber-900">${earningsTotals.commission.toFixed(2)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs text-gray-600">Records</p>
+            <p className="text-lg font-semibold text-gray-900">{adminEarnings.length}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-600 mb-1">Sub Admin</label>
+            <select
+              value={earningsAdminFilter}
+              onChange={(event) => setEarningsAdminFilter(event.target.value)}
+              className="px-3 py-2 rounded border border-gray-200 text-sm"
+            >
+              <option value="all">All Admins</option>
+              {admins.map((admin) => (
+                <option key={admin.tau_id} value={admin.tau_id}>
+                  {admin.tau_full_name || admin.tau_email}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-600 mb-1">Start Date</label>
+            <input
+              type="date"
+              value={earningsStartDate}
+              onChange={(event) => setEarningsStartDate(event.target.value)}
+              className="px-3 py-2 rounded border border-gray-200 text-sm"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-600 mb-1">End Date</label>
+            <input
+              type="date"
+              value={earningsEndDate}
+              onChange={(event) => setEarningsEndDate(event.target.value)}
+              className="px-3 py-2 rounded border border-gray-200 text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Customer
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Amount
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Admin Income
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Commission Paid
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Commission To
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Processed By
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {earningsLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
+                    Loading earnings...
+                  </td>
+                </tr>
+              ) : adminEarnings.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
+                    No earnings found for the selected filters.
+                  </td>
+                </tr>
+              ) : (
+                adminEarnings.map((earning) => {
+                  const gateway = parseGatewayResponse(earning.tp_gateway_response);
+                  const adminIncome = Number(gateway.admin_income ?? 0);
+                  const commissionPaid = Number(gateway.parent_income ?? 0);
+                  const commissionTo = gateway.parent_account || gateway.parent_user_id || 'N/A';
+                  const displayDate = earning.tp_verified_at || earning.tp_created_at;
+                  return (
+                    <tr key={earning.tp_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {displayDate ? new Date(displayDate).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {earning.user?.tu_email || 'N/A'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {earning.tp_amount ?? 0} {earning.tp_currency ?? 'USDT'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-green-700 font-medium">
+                        ${adminIncome.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-amber-700 font-medium">
+                        ${commissionPaid.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {commissionTo}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {getAdminLabel(earning)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

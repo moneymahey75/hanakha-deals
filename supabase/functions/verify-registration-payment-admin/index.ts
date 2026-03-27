@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: adminUser, error: adminError } = await supabase
       .from('tbl_admin_users')
-      .select('tau_id, tau_email, tau_role, tau_is_active')
+      .select('tau_id, tau_email, tau_full_name, tau_role, tau_is_active')
       .eq('tau_session_token', adminSessionToken)
       .eq('tau_is_active', true)
       .maybeSingle();
@@ -321,12 +321,29 @@ Deno.serve(async (req: Request) => {
 
     const { data: userProfile } = await supabase
       .from('tbl_user_profiles')
-      .select('tup_parent_account, tup_sponsorship_number')
+      .select('tup_parent_account, tup_sponsorship_number, tup_username, tup_first_name, tup_last_name')
       .eq('tup_user_id', userId)
+      .maybeSingle();
+
+    const { data: userRow } = await supabase
+      .from('tbl_users')
+      .select('tu_email')
+      .eq('tu_id', userId)
       .maybeSingle();
 
     const parentAccount = userProfile?.tup_parent_account?.trim();
     const childSponsorshipNumber = userProfile?.tup_sponsorship_number?.trim();
+    const childFirstName = userProfile?.tup_first_name?.trim();
+    const childLastName = userProfile?.tup_last_name?.trim();
+    const childUsername = userProfile?.tup_username?.trim();
+    const childEmail = userRow?.tu_email?.trim();
+    const childDisplayName = (
+      `${childFirstName || ''} ${childLastName || ''}`.trim() ||
+      childUsername ||
+      childEmail ||
+      childSponsorshipNumber ||
+      'unknown account'
+    );
     let sponsorUserId: string | null = null;
     let sponsorSponsorshipNumber: string | null = null;
     let isDefaultParent = false;
@@ -462,7 +479,7 @@ Deno.serve(async (req: Request) => {
 
     // Parent A/C income + MLM level rewards
     const paymentAmount = expectedAmount;
-    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0
+    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0 && !isDefaultParent
       ? Math.min(normalizedParentIncome, expectedAmount)
       : 0;
     let adminNetAmount = expectedAmount;
@@ -489,6 +506,9 @@ Deno.serve(async (req: Request) => {
         tp_block_number: receipt.blockNumber,
         tp_confirmations: confirmations,
         tp_verified_at: new Date().toISOString(),
+        tp_processed_by_admin_id: adminUser.tau_id,
+        tp_processed_by_admin_email: adminUser.tau_email,
+        tp_processed_by_admin_name: adminUser.tau_full_name || null,
         tp_gateway_response: {
           blockchain: isMainnet ? 'BSC Mainnet' : 'BSC Testnet',
           usdt_contract: usdtAddress,
@@ -616,12 +636,12 @@ Deno.serve(async (req: Request) => {
           return amount;
         };
 
-        if (parentIncomeApplied > 0 && sponsorUserId) {
+        if (parentIncomeApplied > 0 && sponsorUserId && !isDefaultParent) {
           await insertWalletTxIfMissing(
             sponsorUserId,
             'registration_parent_income',
             parentIncomeApplied,
-            `Registration commission from ${childSponsorshipNumber || 'unknown account'}`,
+            `Registration commission from ${childDisplayName}`,
             paymentId || sponsorUserId
           );
         }
