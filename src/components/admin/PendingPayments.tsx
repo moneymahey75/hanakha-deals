@@ -18,7 +18,7 @@ interface Payment {
   tp_amount: number;
   tp_payment_method: string;
   tp_payment_status: string;
-  tp_transaction_hash: string | null;
+  tp_transaction_id: string | null;
   tp_payment_date?: string;
   tp_created_at?: string;
   user?: {
@@ -37,6 +37,7 @@ const PendingPayments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState<string | null>(null);
   const notification = useNotification();
 
   useEffect(() => {
@@ -128,6 +129,41 @@ const PendingPayments: React.FC = () => {
       notification.showError('Rejection Failed', error.message);
     } finally {
       setProcessing(null);
+    }
+  };
+
+  const handleVerifyPayment = async (paymentId: string) => {
+    const adminSessionToken = sessionStorage.getItem('admin_session_token');
+    if (!adminSessionToken) {
+      notification.showError('Error', 'Admin session not found');
+      return;
+    }
+
+    setVerifying(paymentId);
+    try {
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-registration-payment-admin`;
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Session': adminSessionToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paymentId }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Payment verification failed');
+      }
+
+      notification.showSuccess('Verification Complete', 'Payment verified and updated.');
+      loadPayments();
+    } catch (error: any) {
+      notification.showError('Verification Failed', error.message);
+    } finally {
+      setVerifying(null);
     }
   };
 
@@ -230,9 +266,9 @@ const PendingPayments: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {payment.tp_transaction_hash ? (
+                      {payment.tp_transaction_id ? (
                         <div className="text-sm text-gray-900 font-mono truncate max-w-xs">
-                          {payment.tp_transaction_hash}
+                          {payment.tp_transaction_id}
                         </div>
                       ) : (
                         <span className="text-sm text-gray-400">Not provided</span>
@@ -242,7 +278,7 @@ const PendingPayments: React.FC = () => {
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleApprovePayment(payment.tp_id)}
-                          disabled={processing === payment.tp_id}
+                          disabled={processing === payment.tp_id || verifying === payment.tp_id}
                           className="flex items-center space-x-1 px-3 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50"
                         >
                           {processing === payment.tp_id ? (
@@ -258,8 +294,25 @@ const PendingPayments: React.FC = () => {
                           )}
                         </button>
                         <button
+                          onClick={() => handleVerifyPayment(payment.tp_id)}
+                          disabled={verifying === payment.tp_id || processing === payment.tp_id || !payment.tp_transaction_id}
+                          className="flex items-center space-x-1 px-3 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 disabled:opacity-50"
+                        >
+                          {verifying === payment.tp_id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700"></div>
+                              <span>Verifying...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4" />
+                              <span>Verify</span>
+                            </>
+                          )}
+                        </button>
+                        <button
                           onClick={() => handleRejectPayment(payment.tp_id)}
-                          disabled={processing === payment.tp_id}
+                          disabled={processing === payment.tp_id || verifying === payment.tp_id}
                           className="flex items-center space-x-1 px-3 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 disabled:opacity-50"
                         >
                           <XCircle className="h-4 w-4" />

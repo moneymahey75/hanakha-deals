@@ -4,7 +4,7 @@ import { ethers } from 'npm:ethers@6.10.0';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Session',
 };
 
 const TRANSFER_ABI = [
@@ -44,28 +44,68 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing auth token' }), {
+    const adminSessionToken = req.headers.get('X-Admin-Session');
+    if (!adminSessionToken) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing admin session token' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const token = authHeader.replace('Bearer ', '').trim();
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    const { data: adminUser, error: adminError } = await supabase
+      .from('tbl_admin_users')
+      .select('tau_id, tau_email, tau_role, tau_is_active')
+      .eq('tau_session_token', adminSessionToken)
+      .eq('tau_is_active', true)
+      .maybeSingle();
 
-    if (authError || !authData?.user) {
-      return new Response(JSON.stringify({ success: false, error: 'Invalid user session' }), {
+    if (adminError || !adminUser) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid admin session' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { txHash } = await req.json();
+    const { paymentId } = await req.json();
 
-    if (!txHash || typeof txHash !== 'string') {
-      return new Response(JSON.stringify({ success: false, error: 'Missing transaction hash' }), {
+    if (!paymentId) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing payment ID' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: payment, error: paymentError } = await supabase
+      .from('tbl_payments')
+      .select(`
+        *,
+        user:tp_user_id(tu_id, tu_email, tu_registration_paid),
+        subscription:tp_subscription_id(
+          tus_id,
+          tus_status,
+          plan:tus_plan_id(tsp_id, tsp_price, tsp_type, tsp_parent_income, tsp_duration_days)
+        )
+      `)
+      .eq('tp_id', paymentId)
+      .single();
+
+    if (paymentError || !payment) {
+      return new Response(JSON.stringify({ success: false, error: 'Payment not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (payment.tp_payment_status === 'completed') {
+      return new Response(JSON.stringify({ success: false, error: 'Payment already processed' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const txHash = String(payment.tp_transaction_id || '').trim();
+    if (!txHash) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing transaction hash on payment' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -78,7 +118,23 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const userId = authData.user.id;
+    const userId = payment.tp_user_id;
+
+    const { data: existingTxPayment } = await supabase
+      .from('tbl_payments')
+      .select('tp_id, tp_user_id')
+      .eq('tp_transaction_id', txHash)
+      .maybeSingle();
+
+    if (existingTxPayment && existingTxPayment.tp_id !== paymentId) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Transaction hash already linked to another payment'
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const { data: settingsRows, error: settingsError } = await supabase
       .from('tbl_system_settings')
@@ -141,21 +197,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: registrationPlan, error: planError } = await supabase
-      .from('tbl_subscription_plans')
-      .select('*')
-      .eq('tsp_type', 'registration')
-      .eq('tsp_is_active', true)
-      .maybeSingle();
+    let registrationPlan = payment.subscription?.plan ?? null;
 
-    if (planError || !registrationPlan) {
-      return new Response(JSON.stringify({ success: false, error: 'No active registration plan found' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!registrationPlan || registrationPlan.tsp_type !== 'registration') {
+      const { data: planRow, error: planError } = await supabase
+        .from('tbl_subscription_plans')
+        .select('*')
+        .eq('tsp_type', 'registration')
+        .eq('tsp_is_active', true)
+        .maybeSingle();
+
+      if (planError || !planRow) {
+        return new Response(JSON.stringify({ success: false, error: 'No active registration plan found' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      registrationPlan = planRow;
     }
 
-    const expectedAmount = Number(registrationPlan.tsp_price || 0);
+    const expectedAmount = Number(registrationPlan.tsp_price || payment.tp_amount || 0);
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid registration plan amount' }), {
         status: 400,
@@ -168,94 +230,45 @@ Deno.serve(async (req: Request) => {
       ? parentIncomeSetting
       : 0;
 
-    const { data: activeSubscription } = await supabase
-      .from('tbl_user_subscriptions')
-      .select('tus_id')
-      .eq('tus_user_id', userId)
-      .eq('tus_plan_id', registrationPlan.tsp_id)
-      .eq('tus_status', 'active')
-      .maybeSingle();
-
-    const { data: existingPayment } = await supabase
-      .from('tbl_payments')
-      .select('*')
-      .eq('tp_transaction_id', txHash)
-      .maybeSingle();
-
-    let paymentId = existingPayment?.tp_id ?? null;
-
-    if (existingPayment && existingPayment.tp_user_id !== userId) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Transaction hash already claimed by another user'
-      }), {
-        status: 409,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (activeSubscription && !existingPayment) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Registration payment already completed for this account'
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (existingPayment?.tp_payment_status === 'completed') {
-      return new Response(JSON.stringify({
-        success: false,
-        status: 'failed',
-        error: 'Transaction already processed for registration payment'
-      }), {
-        status: 409,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { data: walletConnection } = await supabase
-      .from('tbl_user_wallet_connections')
-      .select('tuwc_wallet_address')
-      .eq('tuwc_user_id', userId)
-      .eq('tuwc_is_active', true)
-      .maybeSingle();
-
-    if (walletConnection?.tuwc_wallet_address) {
-      const normalized = normalizeAddress(walletConnection.tuwc_wallet_address);
-      if (normalized && normalized !== txFrom) {
+    if (payment.tp_wallet_address) {
+      const storedWallet = normalizeAddress(payment.tp_wallet_address);
+      if (storedWallet && storedWallet !== txFrom) {
         return new Response(JSON.stringify({
           success: false,
-          error: 'Wallet mismatch. Please pay from your connected wallet.'
+          error: 'Wallet mismatch. Transaction does not match recorded wallet.'
         }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-    }
+    } else {
+      const { data: walletConnection } = await supabase
+        .from('tbl_user_wallet_connections')
+        .select('tuwc_wallet_address')
+        .eq('tuwc_user_id', userId)
+        .eq('tuwc_is_active', true)
+        .maybeSingle();
 
-    if (!existingPayment) {
-      const { data: createdPayment } = await supabase
-        .from('tbl_payments')
-        .insert({
-          tp_user_id: userId,
-          tp_subscription_id: null,
-          tp_amount: expectedAmount,
-          tp_currency: 'USDT',
-          tp_payment_method: 'blockchain',
-          tp_payment_status: 'pending',
-          tp_transaction_id: txHash,
-          tp_wallet_address: txFrom,
-          tp_to_address: normalizeAddress(adminWallet),
-          tp_expected_amount: expectedAmount,
-          tp_network: isMainnet ? 'BSC Mainnet' : 'BSC Testnet',
-          tp_chain_id: isMainnet ? 56 : 97
-        })
-        .select('tp_id')
-        .single();
+      if (!walletConnection?.tuwc_wallet_address) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'No active wallet found for user'
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
-      paymentId = createdPayment?.tp_id ?? null;
+      const normalized = normalizeAddress(walletConnection.tuwc_wallet_address);
+      if (normalized && normalized !== txFrom) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Wallet mismatch. Transaction does not match user wallet.'
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     const receipt = await provider.getTransactionReceipt(txHash);
@@ -277,8 +290,7 @@ Deno.serve(async (req: Request) => {
           tp_error_message: 'Transaction failed on-chain',
           tp_block_number: receipt.blockNumber
         })
-        .eq('tp_transaction_id', txHash)
-        .eq('tp_user_id', userId);
+        .eq('tp_id', paymentId);
 
       return new Response(JSON.stringify({
         success: false,
@@ -344,8 +356,7 @@ Deno.serve(async (req: Request) => {
               tp_payment_status: 'failed',
               tp_error_message: 'Parent A/C is not active or registration-paid'
             })
-            .eq('tp_transaction_id', txHash)
-            .eq('tp_user_id', userId);
+            .eq('tp_id', paymentId);
 
           return new Response(JSON.stringify({
             success: false,
@@ -396,8 +407,7 @@ Deno.serve(async (req: Request) => {
           tp_block_number: receipt.blockNumber,
           tp_amount_received: Number(ethers.formatUnits(totalReceived, decimals))
         })
-        .eq('tp_transaction_id', txHash)
-        .eq('tp_user_id', userId);
+        .eq('tp_id', paymentId);
 
       return new Response(JSON.stringify({
         success: false,
@@ -499,8 +509,7 @@ Deno.serve(async (req: Request) => {
           parent_user_id: sponsorUserId || null
         }
       })
-      .eq('tp_transaction_id', txHash)
-      .eq('tp_user_id', userId);
+      .eq('tp_id', paymentId);
 
     await supabase
       .from('tbl_users')
@@ -714,7 +723,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    console.error('Error verifying registration payment:', error);
+    console.error('Error verifying registration payment (admin):', error);
     return new Response(JSON.stringify({
       success: false,
       error: error.message || 'Internal server error'

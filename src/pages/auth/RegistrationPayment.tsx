@@ -52,6 +52,8 @@ const RegistrationPayment: React.FC = () => {
   });
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [parentAccountError, setParentAccountError] = useState<string | null>(null);
+  const [reverifyHash, setReverifyHash] = useState('');
+  const [reverifyProcessing, setReverifyProcessing] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -335,6 +337,70 @@ const RegistrationPayment: React.FC = () => {
     throw new Error('Payment confirmation timed out. Please check again later.');
   };
 
+  const handleReverify = async (hashOverride?: string) => {
+    if (!plan) {
+      notification.showError('Error', 'Payment configuration not loaded');
+      return;
+    }
+
+    const targetHash = (hashOverride || reverifyHash || transaction.hash || '').trim();
+    if (!targetHash) {
+      notification.showError('Missing Transaction', 'Please enter the transaction hash');
+      return;
+    }
+
+    if (!/^0x[a-fA-F0-9]{64}$/.test(targetHash)) {
+      notification.showError('Invalid Hash', 'Please enter a valid transaction hash');
+      return;
+    }
+
+    setReverifyProcessing(true);
+    setTransaction({
+      isProcessing: true,
+      hash: targetHash,
+      status: 'pending',
+      error: null,
+      distributionSteps: transaction.distributionSteps || []
+    });
+    setStatusMessage('Re-verifying on-chain payment...');
+
+    try {
+      const result = await pollVerification(targetHash);
+
+      setTransaction({
+        isProcessing: false,
+        hash: targetHash,
+        status: 'success',
+        error: null,
+        distributionSteps: transaction.distributionSteps || []
+      });
+      setStatusMessage('Payment confirmed!');
+
+      await fetchUserData(user!.id);
+
+      notification.showSuccess('Payment Confirmed', 'Your registration payment was verified.');
+      navigate('/registration-payment-success', {
+        state: {
+          txHash: targetHash,
+          amount: result.amount || plan.tsp_price,
+          network: result.network
+        }
+      });
+    } catch (error: any) {
+      setTransaction({
+        isProcessing: false,
+        hash: targetHash,
+        status: 'error',
+        error: error.message || 'Verification failed',
+        distributionSteps: transaction.distributionSteps || []
+      });
+      setStatusMessage(null);
+      notification.showError('Verification Failed', error.message || 'Verification failed');
+    } finally {
+      setReverifyProcessing(false);
+    }
+  };
+
   const handlePayment = async () => {
     if (!plan || !settings) {
       notification.showError('Error', 'Payment configuration not loaded');
@@ -555,6 +621,28 @@ const RegistrationPayment: React.FC = () => {
                     </button>
                   </div>
                 )}
+
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs text-gray-500">
+                    Re-verify using the same wallet that made the payment.
+                  </p>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={reverifyHash}
+                      onChange={(event) => setReverifyHash(event.target.value)}
+                      placeholder={transaction.hash || '0x...'}
+                      className="flex-1 px-3 py-2 text-sm rounded border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                    <button
+                      onClick={() => handleReverify()}
+                      disabled={reverifyProcessing || transaction.isProcessing || (!reverifyHash && !transaction.hash)}
+                      className="px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {reverifyProcessing ? 'Checking...' : 'Re-verify'}
+                    </button>
+                  </div>
+                </div>
 
                 {transaction.error && (
                   <p className="text-sm text-red-600 mt-4">{transaction.error}</p>
