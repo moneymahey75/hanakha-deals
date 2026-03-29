@@ -79,7 +79,7 @@ const CompanyDashboard: React.FC = () => {
             Welcome, {user?.companyName || user?.firstName}!
           </h1>
           <p className="text-gray-600 mt-2">
-            Company Dashboard - Manage your MLM business operations
+            Company Dashboard - Manage your referral business operations
           </p>
         </div>
 

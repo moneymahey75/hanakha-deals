@@ -30,7 +30,7 @@ const Home: React.FC = () => {
       image: 'https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop',
       title: 'Build Your Network Empire',
       subtitle: 'Join thousands of successful entrepreneurs',
-      description: 'Start your journey with our revolutionary binary tree MLM system and achieve financial freedom.',
+      description: 'Start your journey with our direct-referral network and build long-term earnings.',
       cta: 'Start Your Journey',
       ctaLink: '/customer/register'
     },
@@ -210,7 +210,7 @@ const Home: React.FC = () => {
               Why Choose <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">{settings.siteName}</span>?
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Experience the future of MLM with our cutting-edge platform designed for maximum growth and transparency.
+              Experience the future of referrals with a simple, direct network designed for transparency and growth.
             </p>
           </div>
           
@@ -219,7 +219,7 @@ const Home: React.FC = () => {
               {
                 icon: Users,
                 title: 'Binary Tree System',
-                description: 'Fair and transparent binary compensation with automated left-first placement algorithm.',
+                description: 'Fair and transparent direct-referral earnings with unlimited personal referrals.',
                 color: 'from-emerald-500 to-teal-600',
                 bgColor: 'bg-emerald-50',
                 iconColor: 'text-emerald-600',
@@ -367,7 +367,7 @@ const Home: React.FC = () => {
               {
                 step: '3',
                 title: 'Build & Earn',
-                description: 'Start building your network and earning through our transparent binary system.',
+                description: 'Start building your network and earning through transparent direct referrals.',
                 color: 'from-violet-500 to-purple-600',
                 image: 'https://images.pexels.com/photos/3184339/pexels-photo-3184339.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&fit=crop'
               }

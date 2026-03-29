@@ -34,7 +34,7 @@ const ReferralLinkGenerator: React.FC = () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Join My MLM Network',
+          title: 'Join My Referral Network',
           text: 'Join my network and start earning!',
           url: text
         });

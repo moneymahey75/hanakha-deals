@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { adminSupabase as supabase } from '../../lib/adminSupabase';
-import { Plus, Trash2, Save, Edit2, X, RefreshCw } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '../ui/NotificationProvider';
+import { Plus, Save, Edit2, Trash2, RefreshCw } from 'lucide-react';
 
-interface MlmRewardMilestone {
+interface Milestone {
   tmm_id: string;
   tmm_title: string;
   tmm_level1_required: number;
@@ -12,17 +12,6 @@ interface MlmRewardMilestone {
   tmm_reward_amount: number;
   tmm_currency: string;
   tmm_is_active: boolean;
-  tmm_created_at: string;
-  tmm_updated_at: string;
-}
-
-interface MilestoneFormData {
-  title: string;
-  level1_required: string;
-  level2_required: string;
-  level3_required: string;
-  reward_amount: string;
-  is_active: boolean;
 }
 
 interface LevelCountRow {
@@ -34,214 +23,142 @@ interface LevelCountRow {
   tmlc_updated_at: string;
 }
 
-interface ProfileRow {
-  tup_user_id: string;
-  tup_username: string | null;
-  tup_first_name: string | null;
-  tup_last_name: string | null;
-}
-
 const EarningDistributionSettings: React.FC = () => {
-  const [milestones, setMilestones] = useState<MlmRewardMilestone[]>([]);
-  const [milestonesLoading, setMilestonesLoading] = useState(true);
-  const [editingMilestone, setEditingMilestone] = useState<string | null>(null);
-  const [showMilestoneForm, setShowMilestoneForm] = useState(false);
-  const [milestoneForm, setMilestoneForm] = useState<MilestoneFormData>({
-    title: '',
-    level1_required: '',
-    level2_required: '',
-    level3_required: '',
-    reward_amount: '',
-    is_active: true,
-  });
+  const notification = useNotification();
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [counts, setCounts] = useState<LevelCountRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [countsLoading, setCountsLoading] = useState(true);
-  const [profileMap, setProfileMap] = useState<Map<string, ProfileRow>>(new Map());
-  const [recomputeLoading, setRecomputeLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    title: '',
+    level1: '',
+    level2: '',
+    level3: '',
+    amount: '',
+    isActive: true
+  });
 
-  useEffect(() => {
-    fetchMilestones();
-    fetchCounts();
-  }, []);
+  const resetForm = () => {
+    setForm({
+      title: '',
+      level1: '',
+      level2: '',
+      level3: '',
+      amount: '',
+      isActive: true
+    });
+    setEditingId(null);
+  };
 
-  const fetchMilestones = async () => {
+  const loadMilestones = async () => {
+    setLoading(true);
     try {
-      setMilestonesLoading(true);
       const { data, error } = await supabase
         .from('tbl_mlm_reward_milestones')
         .select('*')
         .order('tmm_reward_amount', { ascending: true });
 
       if (error) throw error;
-      setMilestones(data || []);
+      setMilestones((data || []) as Milestone[]);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to load MLM reward milestones');
+      notification.showError('Load Failed', error.message || 'Failed to load milestones');
     } finally {
-      setMilestonesLoading(false);
+      setLoading(false);
     }
   };
 
-  const fetchCounts = async () => {
+  const loadCounts = async () => {
+    setCountsLoading(true);
     try {
-      setCountsLoading(true);
       const { data, error } = await supabase
         .from('tbl_mlm_level_counts')
         .select('*')
         .order('tmlc_level1_count', { ascending: false });
 
       if (error) throw error;
-      const rows = data || [];
-      setCounts(rows as LevelCountRow[]);
-
-      const userIds = Array.from(new Set(rows.map((row: LevelCountRow) => row.tmlc_user_id).filter(Boolean)));
-      if (userIds.length === 0) {
-        setProfileMap(new Map());
-        return;
-      }
-
-      const { data: profiles, error: profileError } = await supabase
-        .from('tbl_user_profiles')
-        .select('tup_user_id, tup_username, tup_first_name, tup_last_name')
-        .in('tup_user_id', userIds);
-
-      if (profileError) throw profileError;
-
-      const map = new Map<string, ProfileRow>();
-      (profiles || []).forEach((profile: ProfileRow) => {
-        map.set(profile.tup_user_id, profile);
-      });
-      setProfileMap(map);
+      setCounts((data || []) as LevelCountRow[]);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to load MLM level counts');
+      notification.showError('Load Failed', error.message || 'Failed to load level counts');
     } finally {
       setCountsLoading(false);
     }
   };
 
-  const handleMilestoneInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    setMilestoneForm(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
-  };
+  useEffect(() => {
+    loadMilestones();
+    loadCounts();
+  }, []);
 
-  const resetMilestoneForm = () => {
-    setMilestoneForm({
-      title: '',
-      level1_required: '',
-      level2_required: '',
-      level3_required: '',
-      reward_amount: '',
-      is_active: true,
-    });
-    setEditingMilestone(null);
-    setShowMilestoneForm(false);
-  };
+  const saveMilestone = async () => {
+    const level1 = parseInt(form.level1, 10);
+    const level2 = parseInt(form.level2, 10);
+    const level3 = parseInt(form.level3, 10);
+    const amount = parseFloat(form.amount);
 
-  const validateMilestoneForm = (): boolean => {
-    if (!milestoneForm.title.trim()) {
-      toast.error('Please enter a title for the milestone');
-      return false;
+    if (!form.title.trim()) {
+      notification.showError('Validation', 'Title is required');
+      return;
     }
-
-    const level1 = parseInt(milestoneForm.level1_required);
-    const level2 = parseInt(milestoneForm.level2_required);
-    const level3 = parseInt(milestoneForm.level3_required);
-
-    if (!Number.isFinite(level1) || !Number.isFinite(level2) || !Number.isFinite(level3)) {
-      toast.error('Please enter valid level requirements');
-      return false;
-    }
-
-    if (level1 <= 0 || level2 <= 0 || level3 <= 0) {
-      toast.error('Level requirements must be greater than 0');
-      return false;
-    }
-
-    const rewardAmount = parseFloat(milestoneForm.reward_amount);
-    if (!Number.isFinite(rewardAmount) || rewardAmount <= 0) {
-      toast.error('Please enter a valid reward amount');
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleAddMilestone = async () => {
-    if (!validateMilestoneForm()) return;
-
-    try {
-      const newMilestone = {
-        tmm_title: milestoneForm.title.trim(),
-        tmm_level1_required: parseInt(milestoneForm.level1_required),
-        tmm_level2_required: parseInt(milestoneForm.level2_required),
-        tmm_level3_required: parseInt(milestoneForm.level3_required),
-        tmm_reward_amount: parseFloat(milestoneForm.reward_amount),
-        tmm_currency: 'USDT',
-        tmm_is_active: milestoneForm.is_active,
-      };
-
-      const { error } = await supabase
-        .from('tbl_mlm_reward_milestones')
-        .insert([newMilestone]);
-
-      if (error) throw error;
-
-      toast.success('MLM reward milestone added successfully');
-      resetMilestoneForm();
-      fetchMilestones();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to add MLM reward milestone');
-    }
-  };
-
-  const handleUpdateMilestone = async () => {
-    if (!validateMilestoneForm() || !editingMilestone) return;
-
-    try {
-      const updatedMilestone = {
-        tmm_title: milestoneForm.title.trim(),
-        tmm_level1_required: parseInt(milestoneForm.level1_required),
-        tmm_level2_required: parseInt(milestoneForm.level2_required),
-        tmm_level3_required: parseInt(milestoneForm.level3_required),
-        tmm_reward_amount: parseFloat(milestoneForm.reward_amount),
-        tmm_is_active: milestoneForm.is_active,
-      };
-
-      const { error } = await supabase
-        .from('tbl_mlm_reward_milestones')
-        .update(updatedMilestone)
-        .eq('tmm_id', editingMilestone);
-
-      if (error) throw error;
-
-      toast.success('MLM reward milestone updated successfully');
-      resetMilestoneForm();
-      fetchMilestones();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update MLM reward milestone');
-    }
-  };
-
-  const handleEditMilestone = (milestone: MlmRewardMilestone) => {
-    setMilestoneForm({
-      title: milestone.tmm_title,
-      level1_required: milestone.tmm_level1_required.toString(),
-      level2_required: milestone.tmm_level2_required.toString(),
-      level3_required: milestone.tmm_level3_required.toString(),
-      reward_amount: milestone.tmm_reward_amount.toString(),
-      is_active: milestone.tmm_is_active,
-    });
-    setEditingMilestone(milestone.tmm_id);
-    setShowMilestoneForm(true);
-  };
-
-  const handleDeleteMilestone = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this MLM reward milestone?')) {
+    if (![level1, level2, level3, amount].every((v) => Number.isFinite(v) && v >= 0)) {
+      notification.showError('Validation', 'Levels and amount must be valid numbers');
       return;
     }
 
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from('tbl_mlm_reward_milestones')
+          .update({
+            tmm_title: form.title,
+            tmm_level1_required: level1,
+            tmm_level2_required: level2,
+            tmm_level3_required: level3,
+            tmm_reward_amount: amount,
+            tmm_is_active: form.isActive
+          })
+          .eq('tmm_id', editingId);
+
+        if (error) throw error;
+        notification.showSuccess('Updated', 'Milestone updated');
+      } else {
+        const { error } = await supabase
+          .from('tbl_mlm_reward_milestones')
+          .insert({
+            tmm_title: form.title,
+            tmm_level1_required: level1,
+            tmm_level2_required: level2,
+            tmm_level3_required: level3,
+            tmm_reward_amount: amount,
+            tmm_currency: 'USDT',
+            tmm_is_active: form.isActive
+          });
+
+        if (error) throw error;
+        notification.showSuccess('Created', 'Milestone created');
+      }
+
+      resetForm();
+      loadMilestones();
+    } catch (error: any) {
+      notification.showError('Save Failed', error.message || 'Failed to save milestone');
+    }
+  };
+
+  const editMilestone = (milestone: Milestone) => {
+    setEditingId(milestone.tmm_id);
+    setForm({
+      title: milestone.tmm_title,
+      level1: String(milestone.tmm_level1_required),
+      level2: String(milestone.tmm_level2_required),
+      level3: String(milestone.tmm_level3_required),
+      amount: String(milestone.tmm_reward_amount),
+      isActive: milestone.tmm_is_active
+    });
+  };
+
+  const deleteMilestone = async (id: string) => {
+    if (!confirm('Delete this milestone?')) return;
     try {
       const { error } = await supabase
         .from('tbl_mlm_reward_milestones')
@@ -249,259 +166,123 @@ const EarningDistributionSettings: React.FC = () => {
         .eq('tmm_id', id);
 
       if (error) throw error;
-
-      toast.success('MLM reward milestone deleted successfully');
-      fetchMilestones();
+      notification.showSuccess('Deleted', 'Milestone deleted');
+      loadMilestones();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to delete MLM reward milestone');
+      notification.showError('Delete Failed', error.message || 'Failed to delete milestone');
     }
   };
-
-  const handleRecomputeCounts = async () => {
-    if (!confirm('Recompute counts for all users? This may take a moment.')) return;
-
-    try {
-      setRecomputeLoading(true);
-      const { data, error } = await supabase.rpc('recompute_all_mlm_level_counts');
-      if (error) throw error;
-
-      const processed = typeof data === 'number' ? data : 0;
-      toast.success(`Recomputed counts for ${processed} users`);
-      fetchCounts();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to recompute MLM counts');
-    } finally {
-      setRecomputeLoading(false);
-    }
-  };
-
-  const countRows = useMemo(() => counts, [counts]);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">MLM Level Rewards</h2>
-          <p className="text-gray-600 mt-1">Manage milestone rewards and level counts</p>
-        </div>
-        {!showMilestoneForm && (
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Level Reward Milestones</h3>
+            <p className="text-sm text-gray-600">Rewards for upline levels based on network growth</p>
+          </div>
           <button
-            onClick={() => setShowMilestoneForm(true)}
-            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+            onClick={loadMilestones}
+            className="flex items-center space-x-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100"
           >
-            <Plus className="w-5 h-5" />
-            Add Milestone
+            <RefreshCw className="h-4 w-4" />
+            <span>Refresh</span>
           </button>
-        )}
-      </div>
+        </div>
 
-      {showMilestoneForm && (
-        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {editingMilestone ? 'Edit Milestone' : 'Add Milestone'}
-            </h3>
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
+          <input
+            value={form.title}
+            onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
+            placeholder="Title"
+            className="md:col-span-2 px-3 py-2 border border-gray-200 rounded"
+          />
+          <input
+            value={form.level1}
+            onChange={(e) => setForm(prev => ({ ...prev, level1: e.target.value }))}
+            placeholder="Level 1"
+            className="px-3 py-2 border border-gray-200 rounded"
+          />
+          <input
+            value={form.level2}
+            onChange={(e) => setForm(prev => ({ ...prev, level2: e.target.value }))}
+            placeholder="Level 2"
+            className="px-3 py-2 border border-gray-200 rounded"
+          />
+          <input
+            value={form.level3}
+            onChange={(e) => setForm(prev => ({ ...prev, level3: e.target.value }))}
+            placeholder="Level 3"
+            className="px-3 py-2 border border-gray-200 rounded"
+          />
+          <input
+            value={form.amount}
+            onChange={(e) => setForm(prev => ({ ...prev, amount: e.target.value }))}
+            placeholder="Reward Amount"
+            className="px-3 py-2 border border-gray-200 rounded"
+          />
+        </div>
+
+        <div className="flex items-center space-x-3 mb-4">
+          <label className="flex items-center space-x-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={form.isActive}
+              onChange={(e) => setForm(prev => ({ ...prev, isActive: e.target.checked }))}
+            />
+            <span>Active</span>
+          </label>
+          <button
+            onClick={saveMilestone}
+            className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            <span>{editingId ? 'Update' : 'Add'}</span>
+          </button>
+          {editingId && (
             <button
-              onClick={resetMilestoneForm}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Milestone Title *
-              </label>
-              <input
-                type="text"
-                name="title"
-                value={milestoneForm.title}
-                onChange={handleMilestoneInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                placeholder="Level reward for 5 direct / 15 level-2 / 30 level-3 members"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Level 1 Required *
-              </label>
-              <input
-                type="number"
-                name="level1_required"
-                value={milestoneForm.level1_required}
-                onChange={handleMilestoneInputChange}
-                min="1"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., 5"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Level 2 Required *
-              </label>
-              <input
-                type="number"
-                name="level2_required"
-                value={milestoneForm.level2_required}
-                onChange={handleMilestoneInputChange}
-                min="1"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., 15"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Level 3 Required *
-              </label>
-              <input
-                type="number"
-                name="level3_required"
-                value={milestoneForm.level3_required}
-                onChange={handleMilestoneInputChange}
-                min="1"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., 30"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reward Amount (USDT) *
-              </label>
-              <input
-                type="number"
-                name="reward_amount"
-                value={milestoneForm.reward_amount}
-                onChange={handleMilestoneInputChange}
-                min="0"
-                step="0.01"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                placeholder="e.g., 50"
-              />
-            </div>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="is_active"
-                checked={milestoneForm.is_active}
-                onChange={handleMilestoneInputChange}
-                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-              />
-              <label className="ml-2 text-sm font-medium text-gray-700">
-                Active Milestone
-              </label>
-            </div>
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={editingMilestone ? handleUpdateMilestone : handleAddMilestone}
-              className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
-            >
-              <Save className="w-4 h-4" />
-              {editingMilestone ? 'Update Milestone' : 'Add Milestone'}
-            </button>
-            <button
-              onClick={resetMilestoneForm}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              onClick={resetForm}
+              className="px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
             >
               Cancel
             </button>
-          </div>
+          )}
         </div>
-      )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Title
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level 1
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level 2
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level 3
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Reward (USDT)
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">L1</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">L2</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">L3</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {milestonesLoading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                    Loading milestones...
-                  </td>
-                </tr>
+              {loading ? (
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">Loading...</td></tr>
               ) : milestones.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                    No MLM reward milestones configured yet
-                  </td>
-                </tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">No milestones configured.</td></tr>
               ) : (
-                milestones.map((milestone) => (
-                  <tr key={milestone.tmm_id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-gray-900">{milestone.tmm_title}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900">{milestone.tmm_level1_required}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900">{milestone.tmm_level2_required}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900">{milestone.tmm_level3_required}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900">{milestone.tmm_reward_amount}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          milestone.tmm_is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {milestone.tmm_is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEditMilestone(milestone)}
-                          className="text-blue-600 hover:text-blue-800 transition"
-                          title="Edit milestone"
-                        >
-                          <Edit2 className="w-4 h-4" />
+                milestones.map((row) => (
+                  <tr key={row.tmm_id}>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmm_title}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmm_level1_required}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmm_level2_required}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmm_level3_required}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmm_reward_amount}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmm_is_active ? 'Yes' : 'No'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => editMilestone(row)} className="p-1 text-blue-600 hover:text-blue-800">
+                          <Edit2 className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => handleDeleteMilestone(milestone.tmm_id)}
-                          className="text-red-600 hover:text-red-800 transition"
-                          title="Delete milestone"
-                        >
-                          <Trash2 className="w-4 h-4" />
+                        <button onClick={() => deleteMilestone(row.tmm_id)} className="p-1 text-red-600 hover:text-red-800">
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -513,89 +294,47 @@ const EarningDistributionSettings: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex justify-between items-center pt-6 border-t border-gray-200">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">MLM Level Counts</h2>
-          <p className="text-gray-600 mt-1">Paid and active members only, updated on payment</p>
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Level Counts</h3>
+            <p className="text-sm text-gray-600">Current level counts for sponsors</p>
+          </div>
+          <button
+            onClick={loadCounts}
+            className="flex items-center space-x-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100"
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>Refresh</span>
+          </button>
         </div>
-        <button
-          onClick={handleRecomputeCounts}
-          disabled={recomputeLoading}
-          className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <RefreshCw className={`w-5 h-5 ${recomputeLoading ? 'animate-spin' : ''}`} />
-          Recompute All
-        </button>
-      </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Member
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Sponsorship
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level 1
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level 2
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level 3
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Updated
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsor ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 1</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 2</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 3</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {countsLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    Loading counts...
-                  </td>
-                </tr>
-              ) : countRows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    No MLM level counts available yet
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">Loading...</td></tr>
+              ) : counts.length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">No counts available.</td></tr>
               ) : (
-                countRows.map((row) => {
-                  const profile = profileMap.get(row.tmlc_user_id);
-                  const displayName = profile?.tup_username
-                    || [profile?.tup_first_name, profile?.tup_last_name].filter(Boolean).join(' ')
-                    || 'Unknown';
-
-                  return (
-                    <tr key={row.tmlc_user_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-gray-900">{displayName}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900 font-mono">{row.tmlc_sponsorship_number}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">{row.tmlc_level1_count}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">{row.tmlc_level2_count}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">{row.tmlc_level3_count}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-600">{new Date(row.tmlc_updated_at).toLocaleString()}</span>
-                      </td>
-                    </tr>
-                  );
-                })
+                counts.map((row) => (
+                  <tr key={row.tmlc_user_id}>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-mono">{row.tmlc_sponsorship_number}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level1_count}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level2_count}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level3_count}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{new Date(row.tmlc_updated_at).toLocaleDateString()}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

@@ -7,6 +7,7 @@ import DailyTasksDashboard from '../../components/customer/DailyTasksDashboard';
 import CouponInteractionsList from '../../components/customer/CouponInteractionsList';
 import WalletList from '../../components/customer/WalletList';
 import PaymentHistory from '../../components/customer/PaymentHistory';
+import EarningsDashboard from '../../components/customer/EarningsDashboard';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
@@ -32,12 +33,9 @@ import MyNetwork from "../../components/mlm/MyNetwork";
 interface DashboardStats {
   totalReferrals: number;
   monthlyEarnings: number;
-  currentLevel: number;
   achievementPoints: number;
-  leftSideCount: number;
-  rightSideCount: number;
   directReferrals: number;
-  totalDownline: number;
+  activeReferrals: number;
 }
 
 interface RecentActivity {
@@ -48,36 +46,21 @@ interface RecentActivity {
   amount?: number;
 }
 
-interface EarningsData {
-  totalEarnings: number;
-  monthlyEarnings: number;
-  commissionRate: number;
-  growthPercentage: number;
-}
 
 const CustomerDashboard: React.FC = () => {
   const { user } = useAuth();
   const notification = useNotification();
-  const { treeData, loading: treeLoading, getTreeStats, loadTreeData } = useMLM();
+  const { treeData, getTreeStats, loadTreeData } = useMLM();
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     totalReferrals: 0,
     monthlyEarnings: 0,
-    currentLevel: 0,
     achievementPoints: 0,
-    leftSideCount: 0,
-    rightSideCount: 0,
     directReferrals: 0,
-    totalDownline: 0
+    activeReferrals: 0
   });
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
-  const [earningsData, setEarningsData] = useState<EarningsData>({
-    totalEarnings: 0,
-    monthlyEarnings: 0,
-    commissionRate: 0,
-    growthPercentage: 0
-  });
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
@@ -112,7 +95,7 @@ const CustomerDashboard: React.FC = () => {
         const loadPromises = [
           loadTreeStats(),
           loadRecentActivities(),
-          loadEarningsData()
+          // Earnings handled in Earnings tab
         ];
 
         // Add timeout to prevent infinite loading
@@ -166,11 +149,8 @@ const CustomerDashboard: React.FC = () => {
       setDashboardStats(prev => ({
         ...prev,
         totalReferrals: stats.totalDownline || 0,
-        leftSideCount: stats.leftSideCount || 0,
-        rightSideCount: stats.rightSideCount || 0,
         directReferrals: stats.directReferrals || 0,
-        totalDownline: stats.totalDownline || 0,
-        currentLevel: stats.maxDepth || 0
+        activeReferrals: stats.activeMembers || 0
       }));
     } catch (error) {
       console.error('❌ Failed to load tree stats:', error);
@@ -209,25 +189,6 @@ const CustomerDashboard: React.FC = () => {
       console.log('✅ Recent activities loaded');
     } catch (error) {
       console.error('❌ Failed to load recent activities:', error);
-    }
-  };
-
-  const loadEarningsData = async () => {
-    try {
-      console.log('💰 Loading earnings data...');
-
-      // Simulate API call - replace with actual API endpoint
-      const earnings: EarningsData = {
-        totalEarnings: 12450,
-        monthlyEarnings: 2450,
-        commissionRate: 12,
-        growthPercentage: 15
-      };
-
-      setEarningsData(earnings);
-      console.log('✅ Earnings data loaded');
-    } catch (error) {
-      console.error('❌ Failed to load earnings data:', error);
     }
   };
 
@@ -273,25 +234,25 @@ const CustomerDashboard: React.FC = () => {
       change: '+12%'
     },
     {
+      title: 'Direct Referrals',
+      value: dashboardStats.directReferrals,
+      icon: UserPlus,
+      color: 'bg-indigo-500',
+      change: 'Direct only'
+    },
+    {
+      title: 'Active Referrals',
+      value: dashboardStats.activeReferrals,
+      icon: TrendingUp,
+      color: 'bg-green-500',
+      change: 'Active users'
+    },
+    {
       title: 'Monthly Earnings',
       value: `$${dashboardStats.monthlyEarnings.toLocaleString()}`,
       icon: DollarSign,
-      color: 'bg-green-500',
-      change: '+8%'
-    },
-    {
-      title: 'Current Level',
-      value: dashboardStats.currentLevel,
-      icon: TrendingUp,
-      color: 'bg-purple-500',
-      change: 'Level up!'
-    },
-    {
-      title: 'Achievement Points',
-      value: dashboardStats.achievementPoints.toLocaleString(),
-      icon: Award,
       color: 'bg-yellow-500',
-      change: '+15%'
+      change: '+8%'
     }
   ];
 
@@ -505,22 +466,7 @@ const CustomerDashboard: React.FC = () => {
 
                 {activeTab === 'earnings' && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Earnings Summary</h3>
-                      <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white p-6 rounded-lg mb-6">
-                        <h4 className="text-lg font-semibold">Total Earnings</h4>
-                        <p className="text-3xl font-bold mt-2">{earningsData.totalEarnings.toLocaleString()} USDT</p>
-                        <p className="text-green-100 mt-1">+{earningsData.growthPercentage}% from last month</p>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <h5 className="font-semibold text-gray-900">This Month</h5>
-                          <p className="text-xl font-bold text-gray-700 mt-1">{earningsData.monthlyEarnings.toLocaleString()} USDT</p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <h5 className="font-semibold text-gray-900">Commission Rate</h5>
-                          <p className="text-xl font-bold text-gray-700 mt-1">{earningsData.commissionRate}%</p>
-                        </div>
-                      </div>
+                      <EarningsDashboard />
                     </div>
                 )}
 

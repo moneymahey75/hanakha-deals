@@ -56,10 +56,10 @@ const SubscriptionPlans: React.FC = () => {
         {
           tsp_id: '1',
           tsp_name: 'Basic Plan',
-          tsp_description: 'Perfect for beginners starting their MLM journey',
+          tsp_description: 'Perfect for beginners starting their referral journey',
           tsp_price: 50,
           tsp_duration_days: 30,
-          tsp_features: ['MLM Tree Access', 'Basic Dashboard', 'Email Support', 'Mobile App Access'],
+          tsp_features: ['Direct Referral Access', 'Basic Dashboard', 'Email Support', 'Mobile App Access'],
           tsp_is_active: true,
           tsp_created_at: new Date().toISOString()
         },
@@ -69,7 +69,7 @@ const SubscriptionPlans: React.FC = () => {
           tsp_description: 'For serious entrepreneurs ready to scale',
           tsp_price: 100,
           tsp_duration_days: 30,
-          tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics & Reports', 'Marketing Tools', 'API Access'],
+          tsp_features: ['Direct Referral Access', 'Advanced Dashboard', 'Priority Support', 'Analytics & Reports', 'Marketing Tools', 'API Access'],
           tsp_is_active: true,
           tsp_created_at: new Date().toISOString()
         },
@@ -79,7 +79,7 @@ const SubscriptionPlans: React.FC = () => {
           tsp_description: 'Complete solution for enterprise-level operations',
           tsp_price: 200,
           tsp_duration_days: 30,
-          tsp_features: ['MLM Tree Access', 'Advanced Dashboard', 'Priority Support', 'Analytics & Reports', 'Marketing Tools', 'API Access', 'Custom Branding', 'White Label Options'],
+          tsp_features: ['Direct Referral Access', 'Advanced Dashboard', 'Priority Support', 'Analytics & Reports', 'Marketing Tools', 'API Access', 'Custom Branding', 'White Label Options'],
           tsp_is_active: true,
           tsp_created_at: new Date().toISOString()
         }
@@ -141,8 +141,8 @@ const SubscriptionPlans: React.FC = () => {
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
             {user 
-              ? 'Select the perfect USDT subscription plan to unlock your MLM dashboard and start earning.'
-              : 'Explore our USDT subscription plans. Login to purchase and start your MLM journey.'
+              ? 'Select the perfect USDT subscription plan to unlock your referral dashboard and start earning.'
+              : 'Explore our USDT subscription plans. Login to purchase and start your referral journey.'
             }
           </p>
           

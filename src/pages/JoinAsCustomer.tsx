@@ -18,7 +18,7 @@ const JoinAsCustomer: React.FC = () => {
     {
       icon: DollarSign,
       title: "Multiple Income Streams",
-      description: "Earn through direct sales, team bonuses, and binary tree commissions with unlimited earning potential.",
+      description: "Earn through direct sales and referral commissions with unlimited earning potential.",
       color: "from-green-500 to-emerald-600"
     },
     {
@@ -63,7 +63,7 @@ const JoinAsCustomer: React.FC = () => {
     {
       step: "4",
       title: "Start Building",
-      description: "Begin building your network and earning through our transparent binary system.",
+      description: "Begin building your network and earning through direct referrals.",
       image: "https://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&fit=crop"
     }
   ];
@@ -73,7 +73,7 @@ const JoinAsCustomer: React.FC = () => {
       name: "Sarah Johnson",
       earnings: "5,200 USDT",
       period: "monthly",
-      quote: "The binary system is incredibly fair and transparent. I've built a sustainable income stream that continues to grow.",
+      quote: "The direct referral model is simple and transparent. I've built a sustainable income stream that continues to grow.",
       image: "https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop",
       rating: 5
     },
@@ -89,7 +89,7 @@ const JoinAsCustomer: React.FC = () => {
       name: "Emma Davis",
       earnings: "12,300 USDT",
       period: "monthly",
-      quote: "I love the blockchain transparency. Every transaction is visible and secure. It's the future of MLM.",
+      quote: "I love the blockchain transparency. Every transaction is visible and secure. It's the future of referrals.",
       image: "https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop",
       rating: 5
     }
@@ -117,7 +117,7 @@ const JoinAsCustomer: React.FC = () => {
                 Start Your <span className="bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">Financial Journey</span>
               </h1>
               <p className="text-xl text-gray-200 mb-8 leading-relaxed">
-                Join thousands of successful entrepreneurs building their financial future through our innovative binary tree MLM system.
+                Join thousands of successful entrepreneurs building their financial future through our direct referral system.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link

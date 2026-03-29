@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, supabaseBatch, sessionManager, addUserToMLMTree } from '../lib/supabase';
+import { supabase, supabaseBatch, sessionManager } from '../lib/supabase';
 import { adminSessionManager } from '../lib/adminSupabase';
 import { OTPService, verifyOTPAPI } from '../services/otpService';
 import { useNotification } from '../components/ui/NotificationProvider';
@@ -543,42 +543,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error(regError.message);
         }
 
-        // Add user to MLM tree if parent account is provided
-
-        try {
-          console.log('🌳 Adding user to MLM tree with sponsor:', userData.parentAccount);
-
-          const { data: profileData, error: profileError } = await supabase
-              .from('tbl_user_profiles')
-              .select('tup_sponsorship_number, tup_parent_account')
-              .eq('tup_user_id', authData.user.id)
-              .single();
-
-          if (profileError) {
-            console.error('❌ Could not get sponsorship number for MLM tree placement:', profileError);
-            throw profileError;
-          }
-
-          const sponsorAccount = profileData?.tup_parent_account || userData.parentAccount;
-
-          if (profileData?.tup_sponsorship_number && sponsorAccount) {
-            const treeResult = await addUserToMLMTree(
-                authData.user.id,
-                profileData.tup_sponsorship_number,
-                sponsorAccount
-            );
-
-            if (treeResult?.success) {
-              console.log('✅ MLM tree placement successful');
-            } else {
-              console.error('❌ MLM tree placement failed:', treeResult);
-              throw new Error(treeResult?.error || 'MLM tree placement failed');
-            }
-          }
-        } catch (treeError) {
-          console.error('❌ MLM tree placement failed:', treeError);
-          console.warn('⚠️ Registration completed but MLM tree placement failed');
-        }
+        // Direct parent relationship only (no MLM tree placement)
 
       } else if (userType === 'company') {
         console.log('📝 Registering company profile...');

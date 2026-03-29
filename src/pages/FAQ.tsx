@@ -17,16 +17,16 @@ const FAQ: React.FC = () => {
   const faqs = {
     general: [
       {
-        question: "What is MLM and how does your platform work?",
-        answer: "MLM (Multi-Level Marketing) is a business model where you earn money through direct sales and by recruiting others to join your network. Our platform uses a binary tree system where each member can have two direct recruits, creating a balanced and fair compensation structure. You earn commissions from your personal sales and bonuses from your team's performance."
+        question: "How does the referral program work?",
+        answer: "Our referral program lets you earn through direct sales and by inviting others to register under your account. There is no binary tree or multi-level structure—only direct referrals, with unlimited personal recruits."
       },
       {
         question: "How much money can I make?",
-        answer: "Earnings vary greatly depending on your effort, dedication, and ability to build and maintain a network. We do not guarantee specific income levels. Success in MLM requires consistent work, effective marketing, and strong relationship-building skills. Some members earn modest supplemental income while others build substantial businesses."
+        answer: "Earnings vary greatly depending on your effort, dedication, and ability to build and maintain a network. We do not guarantee specific income levels. Success with referrals requires consistent work, effective marketing, and strong relationship-building skills. Some members earn modest supplemental income while others build substantial businesses."
       },
       {
         question: "Is this a pyramid scheme?",
-        answer: "No, our platform is a legitimate MLM business that focuses on actual product sales and services. Unlike pyramid schemes, we have real products/services, sustainable compensation plans, and comply with all FTC regulations. Members earn money primarily through sales, not just recruitment."
+        answer: "No, our platform is a legitimate referral program that focuses on actual product sales and services. Unlike pyramid schemes, we have real products/services, sustainable compensation plans, and comply with applicable FTC regulations. Members earn money primarily through sales, not just recruitment."
       },
       {
         question: "What countries do you operate in?",
@@ -40,7 +40,7 @@ const FAQ: React.FC = () => {
       },
       {
         question: "Can I change my sponsor/upline after registration?",
-        answer: "No, sponsor relationships cannot be changed after account creation. This maintains the integrity of our binary tree structure and ensures fair compensation distribution. Please carefully choose your sponsor during registration as this decision is permanent."
+        answer: "No, sponsor relationships cannot be changed after account creation. This keeps the direct-referral structure consistent and fair. Please choose your sponsor carefully during registration."
       },
       {
         question: "What if I forget my password?",
@@ -131,7 +131,7 @@ const FAQ: React.FC = () => {
           </div>
           <h1 className="text-4xl md:text-6xl font-bold mb-6">Frequently Asked Questions</h1>
           <p className="text-xl md:text-2xl text-indigo-100 max-w-3xl mx-auto mb-8">
-            Find quick answers to common questions about our MLM platform.
+            Find quick answers to common questions about our referral platform.
           </p>
           
           {/* Search Bar */}

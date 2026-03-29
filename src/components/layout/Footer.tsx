@@ -27,7 +27,7 @@ const Footer: React.FC = () => {
               </div>
             </div>
             <p className="text-gray-300 mb-6 leading-relaxed max-w-md">
-              The ultimate MLM platform with binary tree architecture, designed for sustainable growth and transparent earnings. 
+              The ultimate referral platform with direct-parent relationships, designed for sustainable growth and transparent earnings. 
               Join thousands of successful entrepreneurs building their financial future.
             </p>
             
@@ -128,7 +128,7 @@ const Footer: React.FC = () => {
                 © {new Date().getFullYear()} {settings.siteName}. All rights reserved.
               </p>
               <p className="text-gray-500 text-xs mt-1">
-                Built with ❤️ for the MLM community
+                Built for the referral community
               </p>
             </div>
           </div>

@@ -71,7 +71,7 @@ const CustomerLogin: React.FC = () => {
         <div className="bg-white p-8 rounded-2xl shadow-xl">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900">Customer Login</h2>
-            <p className="mt-2 text-gray-600">Access your MLM dashboard</p>
+            <p className="mt-2 text-gray-600">Access your referral dashboard</p>
           </div>
 
           {error && (

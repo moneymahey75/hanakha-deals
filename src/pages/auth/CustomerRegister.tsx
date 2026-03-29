@@ -848,7 +848,7 @@ const CustomerRegister: React.FC = () => {
           <div className="bg-white p-8 rounded-2xl shadow-xl">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-gray-900">Customer Registration</h2>
-              <p className="mt-2 text-gray-600">Join our MLM network and start earning</p>
+              <p className="mt-2 text-gray-600">Join our referral network and start earning</p>
             </div>
 
             {error && (

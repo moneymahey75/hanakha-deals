@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
-import { getMLMTreeStructure, getTreeStatistics } from '../lib/supabase';
+import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { getMLMTreeStructure } from '../lib/supabase';
 
 interface TreeNode {
   id: string;
@@ -8,7 +9,7 @@ interface TreeNode {
   leftChildId: string | null;
   rightChildId: string | null;
   level: number;
-  position: 'left' | 'right' | 'root';
+  position: 'left' | 'right' | 'root' | 'direct';
   sponsorshipNumber: string;
   isActive: boolean;
   userData?: {
@@ -37,8 +38,8 @@ interface MLMContextType {
   getDownline: (userId: string) => TreeNode[];
   getUpline: (userId: string) => TreeNode[];
   getTreeStats: (userId: string) => Promise<TreeStats>;
-  loadTreeData: (userId: string) => Promise<void>;
-  refreshTreeData: () => Promise<void>;
+  loadTreeData: (userId: string) => Promise<TreeNode[]>;
+  refreshTreeData: () => Promise<TreeNode[]>;
 }
 
 const MLMContext = createContext<MLMContextType | undefined>(undefined);
@@ -57,111 +58,214 @@ export const MLMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const getUserPosition = (userId: string): TreeNode | null => {
+  const getUserPosition = useCallback((userId: string): TreeNode | null => {
     return treeData.find(node => node.userId === userId) || null;
-  };
+  }, [treeData]);
 
-  const getDownline = (userId: string): TreeNode[] => {
+  const getDownline = useCallback((userId: string): TreeNode[] => {
     const userNode = getUserPosition(userId);
     if (!userNode) return [];
-    
-    const result: TreeNode[] = [];
-    const nodeId = userNode.id;
-    const queue = [nodeId];
-    
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const node = treeData.find(n => n.id === currentId);
-      
-      if (node) {
-        if (node.id !== nodeId) { // Don't include the user themselves
-          result.push(node);
-        }
-        if (node.leftChildId) queue.push(node.leftChildId);
-        if (node.rightChildId) queue.push(node.rightChildId);
-      }
-    }
-    
-    return result;
-  };
 
-  const getUpline = (userId: string): TreeNode[] => {
+    return treeData.filter(node => node.parentId === userNode.userId || node.parentId === userId);
+  }, [getUserPosition, treeData]);
+
+  const getUpline = useCallback((userId: string): TreeNode[] => {
     const userNode = getUserPosition(userId);
-    if (!userNode) return [];
-    
-    const result: TreeNode[] = [];
-    let currentNode = userNode;
-    
-    while (currentNode && currentNode.parentId) {
-      const parent = treeData.find(n => n.id === currentNode.parentId);
-      if (parent) {
-        result.push(parent);
-        currentNode = parent;
-      } else {
-        break;
-      }
-    }
-    
-    return result;
-  };
+    if (!userNode?.parentId) return [];
+    const parent = treeData.find(node => node.userId === userNode.parentId);
+    return parent ? [parent] : [];
+  }, [getUserPosition, treeData]);
 
-  const loadTreeData = async (userId: string) => {
-    if (!userId) return;
+  const loadTreeData = useCallback(async (userId: string): Promise<TreeNode[]> => {
+    if (!userId) return [];
     
     setLoading(true);
     setError(null);
     setCurrentUserId(userId);
     
     try {
-      console.log('🔍 Loading MLM tree data for user:', userId);
-      const data = await getMLMTreeStructure(userId, 5);
-      
-      // Convert database format to TreeNode format
-      const treeNodes: TreeNode[] = data.map((node: any) => ({
-        id: node.node_id,
-        userId: node.user_id,
-        parentId: node.parent_id,
-        leftChildId: node.left_child_id,
-        rightChildId: node.right_child_id,
-        level: node.level,
-        position: node.position,
-        sponsorshipNumber: node.sponsorship_number,
-        isActive: node.is_active,
-        userData: {
-          firstName: node.first_name,
-          lastName: node.last_name,
-          email: node.user_email,
-          username: node.username
+      console.log('🔍 Loading full referral network for user:', userId);
+
+      // Prefer RPC-based tree structure (works even when RLS blocks direct table reads)
+      try {
+        const rpcData = await getMLMTreeStructure(userId, 10);
+        if (Array.isArray(rpcData)) {
+          const rpcNodes: TreeNode[] = rpcData
+            .map((row: any) => {
+              const resolvedUserId =
+                row.tmt_user_id ||
+                row.user_id ||
+                row.userId ||
+                row.tup_user_id ||
+                row.id;
+              const resolvedSponsorship =
+                row.tmt_sponsorship_number ||
+                row.sponsorship_number ||
+                row.sponsorshipNumber ||
+                row.tup_sponsorship_number;
+              if (!resolvedUserId || !resolvedSponsorship) return null;
+
+              const resolvedParentId =
+                row.tmt_parent_id ||
+                row.parent_id ||
+                row.parentId ||
+                row.parent_user_id ||
+                null;
+
+              return {
+                id: row.id || resolvedUserId,
+                userId: resolvedUserId,
+                parentId: resolvedParentId,
+                leftChildId: row.tmt_left_child_id || row.left_child_id || null,
+                rightChildId: row.tmt_right_child_id || row.right_child_id || null,
+                level: row.tmt_level ?? row.level ?? row.node_level ?? 0,
+                position: row.tmt_position || row.position || 'direct',
+                sponsorshipNumber: resolvedSponsorship,
+                isActive: row.tmt_is_active ?? row.is_active ?? row.tu_is_active ?? false,
+                userData: {
+                  firstName: row.first_name || row.tup_first_name || row.firstName || '',
+                  lastName: row.last_name || row.tup_last_name || row.lastName || '',
+                  email: row.email || row.tu_email || '',
+                  username: row.username || row.tup_username || ''
+                }
+              } as TreeNode;
+            })
+            .filter(Boolean) as TreeNode[];
+
+          if (rpcNodes.length > 0 || rpcData.length === 0) {
+            setTreeData(rpcNodes);
+            console.log('✅ Network loaded via RPC:', rpcNodes.length);
+            return rpcNodes;
+          }
         }
-      }));
-      
-      setTreeData(treeNodes);
-      console.log('✅ MLM tree data loaded:', treeNodes.length, 'nodes');
+      } catch (rpcError) {
+        console.warn('RPC tree load failed, falling back to direct queries:', rpcError);
+      }
+
+      const { data: profileData, error: profileError } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_sponsorship_number')
+        .eq('tup_user_id', userId)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      const rootSponsorship = profileData?.tup_sponsorship_number?.trim();
+      if (!rootSponsorship) {
+        setTreeData([]);
+        return [];
+      }
+
+      const nodes: TreeNode[] = [];
+      const sponsorshipToUserId = new Map<string, string>([[rootSponsorship, userId]]);
+      const queue: Array<{ sponsorship: string; level: number; parentUserId: string }> = [
+        { sponsorship: rootSponsorship, level: 0, parentUserId: userId }
+      ];
+
+      const fetchProfilesByParent = async (parents: string[]) => {
+        const { data, error } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_user_id, tup_first_name, tup_last_name, tup_username, tup_sponsorship_number, tup_parent_account')
+          .in('tup_parent_account', parents);
+        if (error) throw error;
+        return data || [];
+      };
+
+      while (queue.length > 0) {
+        const levelGroups = new Map<number, string[]>();
+        queue.splice(0, queue.length).forEach((item) => {
+          const list = levelGroups.get(item.level) || [];
+          list.push(item.sponsorship);
+          levelGroups.set(item.level, list);
+        });
+
+        for (const [level, parents] of levelGroups.entries()) {
+          if (parents.length === 0) continue;
+          const childProfiles = await fetchProfilesByParent(parents);
+          if (childProfiles.length === 0) continue;
+
+          const childIds = childProfiles.map((row: any) => row.tup_user_id).filter(Boolean);
+          const { data: childUsers } = await supabase
+            .from('tbl_users')
+            .select('tu_id, tu_email, tu_is_active')
+            .in('tu_id', childIds);
+
+          const userMap = new Map((childUsers || []).map((u: any) => [u.tu_id, u]));
+
+          for (const row of childProfiles) {
+            if (!row.tup_user_id || !row.tup_sponsorship_number) continue;
+            sponsorshipToUserId.set(row.tup_sponsorship_number, row.tup_user_id);
+
+            const userRow = userMap.get(row.tup_user_id);
+            const parentUserId = sponsorshipToUserId.get(row.tup_parent_account || '') || null;
+
+            nodes.push({
+              id: row.tup_user_id,
+              userId: row.tup_user_id,
+              parentId: parentUserId,
+              leftChildId: null,
+              rightChildId: null,
+              level: level + 1,
+              position: 'direct',
+              sponsorshipNumber: row.tup_sponsorship_number,
+              isActive: userRow?.tu_is_active === true,
+              userData: {
+                firstName: row.tup_first_name || '',
+                lastName: row.tup_last_name || '',
+                email: userRow?.tu_email || '',
+                username: row.tup_username || ''
+              }
+            });
+          }
+
+          for (const row of childProfiles) {
+            if (!row.tup_sponsorship_number || !row.tup_user_id) continue;
+            queue.push({
+              sponsorship: row.tup_sponsorship_number,
+              level: level + 1,
+              parentUserId: row.tup_user_id
+            });
+          }
+        }
+      }
+
+      setTreeData(nodes);
+      console.log('✅ Network loaded:', nodes.length);
+      return nodes;
     } catch (error) {
       console.error('❌ Failed to load MLM tree data:', error);
       setError('Failed to load tree data');
       setTreeData([]);
+      return [];
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const refreshTreeData = async () => {
+  const refreshTreeData = useCallback(async () => {
     if (currentUserId) {
-      await loadTreeData(currentUserId);
+      return await loadTreeData(currentUserId);
     }
-  };
+    return [];
+  }, [currentUserId, loadTreeData]);
 
-  const getTreeStats = async (userId: string): Promise<TreeStats> => {
+  const getTreeStats = useCallback(async (userId: string): Promise<TreeStats> => {
     try {
-      const stats = await getTreeStatistics(userId);
+      const downline = (treeData && treeData.length > 0)
+        ? treeData
+        : await loadTreeData(userId);
+      const totalDownline = downline.length;
+      const directReferrals = downline.filter(node => node.level === 1).length;
+      const activeMembers = downline.filter(node => node.isActive).length;
+      const maxDepth = downline.reduce((max, node) => Math.max(max, node.level), 0);
+
       return {
-        totalDownline: stats.total_downline || 0,
-        leftSideCount: stats.left_side_count || 0,
-        rightSideCount: stats.right_side_count || 0,
-        directReferrals: stats.direct_referrals || 0,
-        maxDepth: stats.max_depth || 0,
-        activeMembers: stats.active_members || 0
+        totalDownline,
+        leftSideCount: 0,
+        rightSideCount: 0,
+        directReferrals,
+        maxDepth,
+        activeMembers
       };
     } catch (error) {
       console.error('Failed to get tree stats:', error);
@@ -174,9 +278,9 @@ export const MLMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeMembers: 0
       };
     }
-  };
+  }, [treeData, loadTreeData]);
 
-  const value = {
+  const value = useMemo(() => ({
     treeData,
     loading,
     error,
@@ -186,7 +290,17 @@ export const MLMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getTreeStats,
     loadTreeData,
     refreshTreeData
-  };
+  }), [
+    treeData,
+    loading,
+    error,
+    getUserPosition,
+    getDownline,
+    getUpline,
+    getTreeStats,
+    loadTreeData,
+    refreshTreeData
+  ]);
 
   return (
     <MLMContext.Provider value={value}>

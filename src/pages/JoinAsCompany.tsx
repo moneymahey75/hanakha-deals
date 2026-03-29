@@ -145,7 +145,7 @@ const JoinAsCompany: React.FC = () => {
                 Scale Your <span className="bg-gradient-to-r from-green-300 to-blue-400 bg-clip-text text-transparent">Business</span> Globally
               </h1>
               <p className="text-xl text-gray-200 mb-8 leading-relaxed">
-                Partner with our platform to reach 50,000+ active members worldwide and accelerate your business growth through our proven MLM network.
+                Partner with our platform to reach 50,000+ active members worldwide and accelerate your business growth through our direct referral network.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link
@@ -203,7 +203,7 @@ const JoinAsCompany: React.FC = () => {
               Why Partner With Us?
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Unlock powerful business growth opportunities through our comprehensive MLM platform and global network.
+              Unlock powerful business growth opportunities through our comprehensive referral platform and global network.
             </p>
           </div>
 
@@ -235,7 +235,7 @@ const JoinAsCompany: React.FC = () => {
               Powerful Business Tools
             </h2>
             <p className="text-xl text-gray-600">
-              Everything you need to succeed in the MLM marketplace
+              Everything you need to succeed in the referral marketplace
             </p>
           </div>
 
@@ -360,7 +360,7 @@ const JoinAsCompany: React.FC = () => {
                   "Registered business entity with valid documentation",
                   "Minimum 2 years of business operation",
                   "Compliance with local and international regulations",
-                  "Quality products or services suitable for MLM distribution",
+                  "Quality products or services suitable for referral distribution",
                   "Commitment to ethical business practices and transparency"
                 ].map((requirement, index) => (
                   <div key={index} className="flex items-center space-x-3">

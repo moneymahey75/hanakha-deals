@@ -16,7 +16,7 @@ const AboutUs: React.FC = () => {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">About Our Platform</h1>
           <p className="text-xl md:text-2xl text-indigo-100 max-w-3xl mx-auto">
-            Empowering entrepreneurs worldwide through innovative MLM technology and transparent business practices.
+            Empowering entrepreneurs worldwide through innovative referral technology and transparent business practices.
           </p>
         </div>
       </section>
@@ -39,7 +39,7 @@ const AboutUs: React.FC = () => {
                 through network marketing.
               </p>
               <p className="text-lg text-gray-600">
-                By combining cutting-edge blockchain technology with proven MLM strategies, we're creating 
+                By combining cutting-edge blockchain technology with proven referral strategies, we're creating 
                 a transparent, fair, and profitable ecosystem for all participants.
               </p>
             </div>
@@ -65,7 +65,7 @@ const AboutUs: React.FC = () => {
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">Our Story</h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Founded in 2020 by a team of entrepreneurs and technology experts who experienced 
-              the challenges of traditional MLM systems firsthand.
+              the challenges of traditional multi-level systems firsthand.
             </p>
           </div>
 
