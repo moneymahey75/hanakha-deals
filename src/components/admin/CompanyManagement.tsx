@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { Building, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Mail, Phone, Globe, FileText, Calendar, ArrowLeft, Save, Key, LogIn, X, AlertTriangle, User, Settings, Plus, RefreshCw } from 'lucide-react';
+
+let inFlightCompaniesRequest: Promise<any[]> | null = null;
 
 interface Company {
   tc_id: string;
@@ -61,46 +63,23 @@ const CompanyManagement: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const { data: companiesData, error: companiesError } = await supabase
-          .from('tbl_companies')
-          .select('*')
-          .order('tc_created_at', { ascending: false });
+      const requestPromise = inFlightCompaniesRequest ?? adminApi.post<any[]>('admin-get-companies');
+      inFlightCompaniesRequest = requestPromise;
 
-      if (companiesError) {
-        setError(`Database error: ${companiesError.message}`);
-        setCompanies([]);
-        return;
-      }
-
-      const companiesWithUserInfo = await Promise.all(
-          (companiesData || []).map(async (company) => {
-            try {
-              const { data: userData } = await supabase
-                  .from('tbl_users')
-                  .select('tu_email, tu_is_active')
-                  .eq('tu_id', company.tc_user_id)
-                  .maybeSingle();
-
-              return {
-                ...company,
-                user_info: userData
-                    ? { email: userData.tu_email, is_active: userData.tu_is_active }
-                    : { email: company.tc_official_email, is_active: true }
-              };
-            } catch {
-              return {
-                ...company,
-                user_info: { email: company.tc_official_email, is_active: true }
-              };
-            }
-          })
-      );
+      const companiesData = await requestPromise;
+      const companiesWithUserInfo = (companiesData || []).map((company) => ({
+        ...company,
+        user_info: company.user_info
+          ? { email: company.user_info.tu_email, is_active: company.user_info.tu_is_active }
+          : { email: company.tc_official_email, is_active: true }
+      }));
 
       setCompanies(companiesWithUserInfo);
     } catch (error: any) {
       setError(`Unexpected error: ${error.message}`);
       setCompanies([]);
     } finally {
+      inFlightCompaniesRequest = null;
       setLoading(false);
     }
   };
@@ -115,13 +94,10 @@ const CompanyManagement: React.FC = () => {
 
   const handleApproveCompany = async (companyId: string) => {
     try {
-      const { data, error } = await supabase.rpc('admin_update_company', {
-        p_company_id: companyId,
-        p_verification_status: 'verified'
+      await adminApi.post('admin-update-company', {
+        companyId,
+        verificationStatus: 'verified'
       });
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed');
 
       notification.showSuccess('Company Approved', 'Company has been verified and approved');
       loadCompanies();
@@ -134,13 +110,10 @@ const CompanyManagement: React.FC = () => {
     if (!confirm('Are you sure you want to reject this company registration?')) return;
 
     try {
-      const { data, error } = await supabase.rpc('admin_update_company', {
-        p_company_id: companyId,
-        p_verification_status: 'rejected'
+      await adminApi.post('admin-update-company', {
+        companyId,
+        verificationStatus: 'rejected'
       });
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed');
 
       notification.showSuccess('Company Rejected', 'Company registration has been rejected');
       loadCompanies();
@@ -153,12 +126,7 @@ const CompanyManagement: React.FC = () => {
     if (!confirm('Are you sure you want to delete this company? This action cannot be undone.')) return;
 
     try {
-      const { error } = await supabase
-          .from('tbl_companies')
-          .delete()
-          .eq('tc_id', companyId);
-
-      if (error) throw error;
+      await adminApi.post('admin-delete-company', { companyId });
 
       notification.showSuccess('Company Deleted', 'Company has been deleted successfully');
       loadCompanies();
@@ -183,13 +151,10 @@ const CompanyManagement: React.FC = () => {
     }
 
     try {
-      const { data: result, error } = await supabase.rpc('admin_reset_user_password', {
-        p_user_id: company.tc_user_id,
-        p_new_password: newPassword
+      await adminApi.post('admin-reset-user-password', {
+        userId: company.tc_user_id,
+        newPassword
       });
-
-      if (error) throw error;
-      if (!result?.success) throw new Error(result?.error || 'Failed to reset password');
 
       notification.showSuccess(
         'Password Reset',
@@ -211,12 +176,9 @@ const CompanyManagement: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      const { data: result, error } = await supabase.rpc('admin_get_user_auth_info', {
-        p_user_id: company.tc_user_id
+      await adminApi.post('admin-get-user-auth-info', {
+        userId: company.tc_user_id
       });
-
-      if (error) throw error;
-      if (!result?.success) throw new Error(result?.error || 'Failed to get company info');
 
       notification.showInfo(
         'Impersonation Notice',
@@ -236,52 +198,20 @@ const CompanyManagement: React.FC = () => {
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data: adminAuthData, error: adminAuthError } = await supabase.auth.admin.createUser({
-        email: newCompany.user_email,
+      await adminApi.post('admin-create-company', {
+        userEmail: newCompany.user_email,
         password: newCompany.password,
-        email_confirm: true
+        companyName: newCompany.company_name,
+        brandName: newCompany.brand_name || null,
+        businessType: newCompany.business_type || null,
+        businessCategory: newCompany.business_category || null,
+        registrationNumber: newCompany.registration_number,
+        gstin: newCompany.gstin,
+        websiteUrl: newCompany.website_url || null,
+        officialEmail: newCompany.official_email,
+        affiliateCode: newCompany.affiliate_code || null,
+        verificationStatus: newCompany.verification_status
       });
-
-      if (adminAuthError) throw new Error(`Authentication error: ${adminAuthError.message}`);
-      if (!adminAuthData.user) throw new Error('Failed to create user account');
-
-      const { error: userError } = await supabase
-          .from('tbl_users')
-          .insert({
-            tu_id: adminAuthData.user.id,
-            tu_email: newCompany.user_email,
-            tu_user_type: 'company',
-            tu_is_verified: true,
-            tu_email_verified: true,
-            tu_mobile_verified: true,
-            tu_is_active: true
-          });
-
-      if (userError) {
-        await supabase.auth.admin.deleteUser(adminAuthData.user.id);
-        throw new Error(`Failed to create user record: ${userError.message}`);
-      }
-
-      const { error: companyError } = await supabase
-          .from('tbl_companies')
-          .insert({
-            tc_user_id: adminAuthData.user.id,
-            tc_company_name: newCompany.company_name,
-            tc_brand_name: newCompany.brand_name || null,
-            tc_business_type: newCompany.business_type || null,
-            tc_business_category: newCompany.business_category || null,
-            tc_registration_number: newCompany.registration_number,
-            tc_gstin: newCompany.gstin,
-            tc_website_url: newCompany.website_url || null,
-            tc_official_email: newCompany.official_email,
-            tc_affiliate_code: newCompany.affiliate_code || null,
-            tc_verification_status: newCompany.verification_status
-          });
-
-      if (companyError) {
-        await supabase.auth.admin.deleteUser(adminAuthData.user.id);
-        throw new Error(`Failed to create company record: ${companyError.message}`);
-      }
 
       notification.showSuccess('Company Created', 'Company account has been created successfully');
       setShowCreateModal(false);
@@ -820,23 +750,19 @@ const CompanyDetails: React.FC<{
     try {
       const now = new Date().toISOString();
 
-      const { error } = await supabase
-          .from('tbl_companies')
-          .update({
-            tc_company_name: editData.company_name,
-            tc_brand_name: editData.brand_name || null,
-            tc_business_type: editData.business_type || null,
-            tc_business_category: editData.business_category || null,
-            tc_registration_number: editData.registration_number,
-            tc_gstin: editData.gstin,
-            tc_website_url: editData.website_url || null,
-            tc_official_email: editData.official_email,
-            tc_affiliate_code: editData.affiliate_code || null,
-            tc_verification_status: editData.verification_status
-          })
-          .eq('tc_id', company.tc_id);
-
-      if (error) throw error;
+      await adminApi.post('admin-update-company-details', {
+        companyId: company.tc_id,
+        companyName: editData.company_name,
+        brandName: editData.brand_name || null,
+        businessType: editData.business_type || null,
+        businessCategory: editData.business_category || null,
+        registrationNumber: editData.registration_number,
+        gstin: editData.gstin,
+        websiteUrl: editData.website_url || null,
+        officialEmail: editData.official_email,
+        affiliateCode: editData.affiliate_code || null,
+        verificationStatus: editData.verification_status
+      });
 
       // ✅ Build updated company object immediately
       const updatedCompany: Company = {

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { adminSupabase, adminSessionManager } from '../lib/adminSupabase';
+import { adminApi } from '../lib/adminApi';
 import { useNotification } from '../components/ui/NotificationProvider';
 
 interface AdminUser {
@@ -59,16 +60,6 @@ export const useAdminAuth = () => {
     throw new Error('useAdminAuth must be used within an AdminAuthProvider');
   }
   return context;
-};
-
-// Utility function (moved inside Provider or imported, assumed to be available)
-const generateTempPassword = (): string => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  let password = '';
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return password;
 };
 
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -201,91 +192,42 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       console.log('🔍 Starting admin login process for:', email);
 
-      console.log('🔐 Fetching admin user data...');
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-login`;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // Use secure RPC function to get admin user data (using adminSupabase, NOT regular supabase)
-      const { data: loginData, error: loginError } = await adminSupabase
-        .rpc('admin_login_verify', {
-          p_email: email.trim()
-        });
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey
+        },
+        body: JSON.stringify({ email: email.trim(), password })
+      });
 
-      if (loginError) {
-        console.error('❌ Admin login RPC failed:', loginError);
-        throw new Error('Invalid email or password');
+      const result = await response.json();
+
+      if (!result?.success) {
+        throw new Error(result?.error || 'Invalid email or password');
       }
-
-      if (!loginData || loginData.length === 0) {
-        console.error('❌ Admin user not found');
-        throw new Error('Invalid email or password');
-      }
-
-      const adminData = loginData[0];
-
-      console.log('🔐 Verifying password...');
-
-      // Verify password using bcrypt
-      let passwordMatch = false;
-      try {
-        const bcrypt = await import('bcryptjs');
-        passwordMatch = await bcrypt.compare(password, adminData.admin_password_hash);
-        console.log('✅ Using bcrypt for password verification');
-      } catch (bcryptError) {
-        console.log('⚠️ bcrypt not available, using fallback verification', bcryptError);
-        passwordMatch = password === adminData.admin_password_hash;
-      }
-
-      if (!passwordMatch) {
-        console.error('❌ Password verification failed');
-        throw new Error('Invalid email or password');
-      }
-
-      console.log('✅ Password verified successfully');
 
       const adminUser: AdminUser = {
-        id: adminData.admin_id,
-        email: adminData.admin_email,
-        fullName: adminData.admin_full_name,
-        role: adminData.admin_role,
-        permissions: adminData.admin_permissions,
-        isActive: adminData.admin_is_active,
-        lastLogin: adminData.admin_last_login || '',
-        createdAt: adminData.admin_created_at || ''
+        id: result.admin.id,
+        email: result.admin.email,
+        fullName: result.admin.fullName,
+        role: result.admin.role,
+        permissions: result.admin.permissions,
+        isActive: result.admin.isActive,
+        lastLogin: result.admin.lastLogin || '',
+        createdAt: result.admin.createdAt || ''
       };
 
-      // Check if admin has auth.users record
-      if (adminData.admin_auth_uid) {
-        console.log('🔐 Admin has Supabase Auth record, signing in...');
-
-        try {
-          const { data: authData, error: authError } = await adminSupabase.auth.signInWithPassword({
-            email: email.trim(),
-            password: password
-          });
-
-          if (authError) {
-            console.warn('⚠️ Supabase Auth sign-in failed:', authError.message);
-          } else {
-            console.log('✅ Signed in to Supabase Auth successfully');
-          }
-        } catch (authError) {
-          console.warn('⚠️ Supabase Auth sign-in error:', authError);
-        }
-      } else {
-        console.log('ℹ️ Admin does not have Supabase Auth record (legacy admin)');
-      }
-
-      // Save admin session
-      adminSessionManager.saveSession(adminUser);
+      adminSessionManager.saveSession({
+        ...adminUser,
+        sessionToken: result.session_token,
+        sessionExpiresAt: result.session_expires_at
+      });
       setAdmin(adminUser);
-
-      // Update last login using RPC
-      try {
-        await adminSupabase.rpc('admin_update_last_login', {
-          p_admin_id: adminUser.id
-        });
-      } catch (updateError) {
-        console.warn('Failed to update last login time:', updateError);
-      }
 
       console.log('✅ Admin login successful');
       notification.showSuccess('Welcome Back!', 'You have successfully logged in.');
@@ -314,6 +256,26 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     };
 
+    // Revoke admin session token (best-effort)
+    try {
+      const adminSessionToken = sessionStorage.getItem('admin_session_token');
+      if (adminSessionToken) {
+        const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-logout`;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${anonKey}`,
+            apikey: anonKey,
+            'X-Admin-Session': adminSessionToken
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('⚠️ Admin session revoke failed (continuing logout):', error);
+    }
+
     // Sign out from Supabase Auth if authenticated with timeout
     try {
       await withTimeout(adminSupabase.auth.signOut(), 5000, 'Admin Supabase sign-out');
@@ -337,55 +299,18 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }) => {
     try {
       if (!admin?.id) throw new Error('Admin not authenticated');
-
-      const { data: existingUser, error: checkError } = await adminSupabase
-          .from('tbl_admin_users')
-          .select('tau_id')
-          .eq('tau_email', data.email.trim())
-          .maybeSingle();
-
-      if (checkError) {
-        console.error('Email check error:', checkError);
-        throw new Error('Failed to check email availability');
-      }
-
-      if (existingUser) {
-        throw new Error('Email address already exists');
-      }
-
-      const tempPassword = generateTempPassword();
-      const bcrypt = await import('bcryptjs');
-      const saltRounds = 12;
-      const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
-
-      const { data: newAdmin, error: insertError } = await adminSupabase
-          .from('tbl_admin_users')
-          .insert({
-            tau_email: data.email.trim(),
-            tau_full_name: data.fullName,
-            tau_password_hash: hashedPassword,
-            tau_role: 'sub_admin',
-            tau_permissions: data.permissions,
-            tau_is_active: true,
-            tau_created_by: admin.id,
-            tau_created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-      if (insertError) {
-        console.error('Database insert error:', insertError);
-        throw new Error(insertError.message || 'Failed to create sub-admin');
-      }
-
-      console.log('Temporary password for email:', tempPassword);
+      await adminApi.post('admin-create-sub-admin', {
+        email: data.email,
+        fullName: data.fullName,
+        permissions: data.permissions
+      });
 
       notification.showSuccess(
           'Sub-Admin Created',
           `Sub-admin created successfully. Login credentials have been sent to ${data.email}`
       );
 
-      return newAdmin;
+      return;
     } catch (error: any) {
       console.error('Create sub-admin error:', error);
       notification.showError(
@@ -398,33 +323,13 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const updateSubAdmin = async (id: string, data: Partial<SubAdmin>) => {
     try {
-      const updateData: any = {};
-
-      if (data.isActive !== undefined) {
-        updateData.tau_is_active = data.isActive;
-      }
-
-      if (data.permissions) {
-        updateData.tau_permissions = data.permissions;
-      }
-
-      if (data.fullName) {
-        updateData.tau_full_name = data.fullName;
-      }
-
-      if (data.email) {
-        updateData.tau_email = data.email;
-      }
-
-      const { error } = await adminSupabase
-          .from('tbl_admin_users')
-          .update(updateData)
-          .eq('tau_id', id);
-
-      if (error) {
-        console.error('Database update error:', error);
-        throw new Error(error.message || 'Failed to update sub-admin');
-      }
+      await adminApi.post('admin-update-sub-admin', {
+        id,
+        email: data.email,
+        fullName: data.fullName,
+        isActive: data.isActive,
+        permissions: data.permissions
+      });
 
       notification.showSuccess('Sub-Admin Updated', 'Sub-admin details updated successfully.');
     } catch (error: any) {
@@ -436,15 +341,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteSubAdmin = async (id: string) => {
     try {
-      const { error } = await adminSupabase
-          .from('tbl_admin_users')
-          .delete()
-          .eq('tau_id', id);
-
-      if (error) {
-        console.error('Database delete error:', error);
-        throw new Error(error.message || 'Failed to delete sub-admin');
-      }
+      await adminApi.post('admin-delete-sub-admin', { id });
 
       notification.showSuccess('Sub-Admin Deleted', 'Sub-admin deleted successfully.');
     } catch (error: any) {
@@ -456,27 +353,14 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const resetSubAdminPassword = async (id: string): Promise<string> => {
     try {
-      const newPassword = generateTempPassword();
-      const bcrypt = await import('bcryptjs');
-      const saltRounds = 12;
-      const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-      const { error } = await adminSupabase
-          .from('tbl_admin_users')
-          .update({ tau_password_hash: hashedPassword })
-          .eq('tau_id', id);
-
-      if (error) {
-        console.error('Database password reset error:', error);
-        throw new Error(error.message || 'Failed to reset password');
-      }
+      const result = await adminApi.post<{ newPassword: string }>('admin-reset-sub-admin-password', { id });
 
       notification.showSuccess(
           'Password Reset',
           'New password has been sent to the sub-admin\'s email address.'
       );
 
-      return newPassword;
+      return result?.newPassword || '';
     } catch (error: any) {
       console.error('Reset password error:', error);
       notification.showError('Reset Failed', error.message || 'Failed to reset password');
@@ -486,19 +370,8 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const getSubAdmins = async (): Promise<SubAdmin[]> => {
     try {
-      const { data: subAdmins, error } = await adminSupabase
-          .from('tbl_admin_users')
-          .select('*')
-          .eq('tau_role', 'sub_admin')
-          .order('tau_created_at', { ascending: false });
-
-      if (error) {
-        console.error('Database fetch error:', error);
-        throw new Error('Failed to fetch sub-admins');
-      }
-
-      // Handle case where no sub-admins exist (empty array is fine)
-      return subAdmins?.map(admin => ({
+      const subAdmins = await adminApi.post<any[]>('admin-get-sub-admins', {});
+      return (subAdmins || []).map((admin: any) => ({
         id: admin.tau_id,
         email: admin.tau_email,
         fullName: admin.tau_full_name,
@@ -507,7 +380,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         createdBy: admin.tau_created_by,
         lastLogin: admin.tau_last_login,
         createdAt: admin.tau_created_at
-      })) || [];
+      }));
     } catch (error) {
       console.error('Get sub-admins error:', error);
       notification.showError('Fetch Failed', 'Failed to fetch sub-admins');

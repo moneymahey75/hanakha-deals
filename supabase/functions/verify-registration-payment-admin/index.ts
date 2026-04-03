@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { logAdminAction } from '../_shared/adminSession.ts';
 import { ethers } from 'npm:ethers@6.10.0';
 
 const corsHeaders = {
@@ -51,15 +52,27 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const nowIso = new Date().toISOString();
 
-    const { data: adminUser, error: adminError } = await supabase
-      .from('tbl_admin_users')
-      .select('tau_id, tau_email, tau_full_name, tau_role, tau_is_active')
-      .eq('tau_session_token', adminSessionToken)
-      .eq('tau_is_active', true)
+    const { data: adminSession, error: adminError } = await supabase
+      .from('tbl_admin_sessions')
+      .select(`
+        tas_admin_id,
+        admin:tas_admin_id(
+          tau_id,
+          tau_email,
+          tau_full_name,
+          tau_role,
+          tau_is_active
+        )
+      `)
+      .eq('tas_session_token', adminSessionToken)
+      .gt('tas_expires_at', nowIso)
       .maybeSingle();
 
-    if (adminError || !adminUser) {
+    const adminUser = adminSession?.admin;
+
+    if (adminError || !adminUser || !adminUser.tau_is_active) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid admin session' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -731,6 +744,13 @@ Deno.serve(async (req: Request) => {
           }
         }
     }
+
+    await logAdminAction(supabase, adminUser.tau_id, 'verify_registration_payment', 'payments', {
+      payment_id: paymentId,
+      tx_hash: txHash,
+      amount: expectedAmount,
+      confirmations
+    });
 
     return new Response(JSON.stringify({
       success: true,

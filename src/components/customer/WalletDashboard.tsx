@@ -48,6 +48,34 @@ interface Transaction {
   twt_created_at: string;
 }
 
+interface WithdrawalRequest {
+  twr_id: string;
+  twr_amount: number;
+  twr_commission_percent: number;
+  twr_commission_amount: number;
+  twr_net_amount: number;
+  twr_status: string;
+  twr_destination_address: string;
+  twr_requested_at: string;
+  twr_blockchain_tx?: string | null;
+  twr_failure_reason?: string | null;
+}
+
+interface WithdrawalSettings {
+  minAmount: number;
+  stepAmount: number;
+  commissionPercent: number;
+  autoTransfer: boolean;
+  processingDays: number;
+}
+
+interface DefaultWalletConnection {
+  tuwc_id: string;
+  tuwc_wallet_address: string;
+  tuwc_wallet_type: string;
+  tuwc_chain_id: number;
+}
+
 interface DailyTask {
   tdt_id: string;
   tdt_task_type: 'coupon_share' | 'social_share' | 'video_share' | 'custom';
@@ -77,10 +105,23 @@ const WalletDashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'tasks'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'tasks' | 'withdrawals'>('overview');
   const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [withdrawalSettings, setWithdrawalSettings] = useState<WithdrawalSettings>({
+    minAmount: 10,
+    stepAmount: 10,
+    commissionPercent: 0.5,
+    autoTransfer: false,
+    processingDays: 5
+  });
+  const [withdrawalAmount, setWithdrawalAmount] = useState(0);
+  const [withdrawalSubmitting, setWithdrawalSubmitting] = useState(false);
+  const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalRequest[]>([]);
+  const [withdrawalsLoading, setWithdrawalsLoading] = useState(false);
+  const [defaultWallet, setDefaultWallet] = useState<DefaultWalletConnection | null>(null);
+  const [cancelingWithdrawalId, setCancelingWithdrawalId] = useState<string | null>(null);
   const [userFeedback, setUserFeedback] = useState({
     feedback: '' as 'liked' | 'disliked' | '',
     note: ''
@@ -92,6 +133,9 @@ const WalletDashboard: React.FC = () => {
       loadWalletData();
       loadTransactions();
       loadDailyTasks();
+      loadWithdrawalSettings();
+      loadWithdrawalRequests();
+      loadDefaultWallet();
     }
   }, [user?.id]);
 
@@ -175,6 +219,198 @@ const WalletDashboard: React.FC = () => {
       console.error('Failed to load daily tasks:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadWithdrawalSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tbl_system_settings')
+        .select('tss_setting_key, tss_setting_value')
+        .in('tss_setting_key', [
+          'withdrawal_min_amount',
+          'withdrawal_step_amount',
+          'withdrawal_commission_percent',
+          'withdrawal_auto_transfer',
+          'withdrawal_processing_days'
+        ]);
+
+      if (error) throw error;
+
+      const settingsMap = (data || []).reduce((acc: any, setting: any) => {
+        try {
+          acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
+        } catch {
+          acc[setting.tss_setting_key] = setting.tss_setting_value;
+        }
+        return acc;
+      }, {});
+
+      setWithdrawalSettings({
+        minAmount: Number(settingsMap.withdrawal_min_amount ?? 10),
+        stepAmount: Number(settingsMap.withdrawal_step_amount ?? 10),
+        commissionPercent: Number(settingsMap.withdrawal_commission_percent ?? 0.5),
+        autoTransfer: Boolean(settingsMap.withdrawal_auto_transfer ?? false),
+        processingDays: Number(settingsMap.withdrawal_processing_days ?? 5)
+      });
+    } catch (error) {
+      console.error('Failed to load withdrawal settings:', error);
+    }
+  };
+
+  const loadDefaultWallet = async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('tbl_user_wallet_connections')
+        .select('tuwc_id, tuwc_wallet_address, tuwc_wallet_type, tuwc_chain_id')
+        .eq('tuwc_user_id', user.id)
+        .eq('tuwc_is_default', true)
+        .eq('tuwc_is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      setDefaultWallet(data || null);
+    } catch (error) {
+      console.error('Failed to load default wallet:', error);
+    }
+  };
+
+  const loadWithdrawalRequests = async () => {
+    if (!user?.id) return;
+    setWithdrawalsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('tbl_withdrawal_requests')
+        .select('*')
+        .eq('twr_user_id', user.id)
+        .order('twr_requested_at', { ascending: false });
+
+      if (error) throw error;
+      setWithdrawalRequests(data || []);
+    } catch (error) {
+      console.error('Failed to load withdrawals:', error);
+    } finally {
+      setWithdrawalsLoading(false);
+    }
+  };
+
+  const isStepValid = (amount: number, step: number) => {
+    if (step <= 0) return true;
+    const factor = 100; // cents precision
+    const scaledAmount = Math.round(amount * factor);
+    const scaledStep = Math.round(step * factor);
+    return scaledAmount % scaledStep === 0;
+  };
+
+  const handleWithdrawalSubmit = async () => {
+    if (!user?.id) return;
+
+    if (!defaultWallet?.tuwc_wallet_address) {
+      notification.showError('Missing Wallet', 'Please set a default wallet before withdrawing.');
+      return;
+    }
+
+    if (withdrawalAmount <= 0) {
+      notification.showError('Invalid Amount', 'Enter a valid withdrawal amount.');
+      return;
+    }
+
+    if (withdrawalAmount < withdrawalSettings.minAmount) {
+      notification.showError(
+        'Minimum Withdrawal',
+        `Minimum withdrawal amount is ${withdrawalSettings.minAmount} USDT.`
+      );
+      return;
+    }
+
+    if (!isStepValid(withdrawalAmount, withdrawalSettings.stepAmount)) {
+      notification.showError(
+        'Invalid Step',
+        `Withdrawal amount must be in multiples of ${withdrawalSettings.stepAmount} USDT.`
+      );
+      return;
+    }
+
+    if (wallet && withdrawalAmount > wallet.tw_balance) {
+      notification.showError('Insufficient Balance', 'Your wallet balance is too low for this withdrawal.');
+      return;
+    }
+
+    setWithdrawalSubmitting(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('Missing user session');
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-withdrawal`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: withdrawalAmount
+        })
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Withdrawal request failed');
+      }
+
+      notification.showSuccess(
+        withdrawalSettings.autoTransfer ? 'Withdrawal Submitted' : 'Withdrawal Requested',
+        withdrawalSettings.autoTransfer
+          ? 'Your withdrawal is being processed automatically.'
+          : `Your approval request will be entertained within ${withdrawalSettings.processingDays} working days.`
+      );
+
+      setWithdrawalAmount(0);
+      loadWithdrawalRequests();
+      loadWalletData();
+    } catch (error: any) {
+      notification.showError('Withdrawal Failed', error.message || 'Unable to submit withdrawal');
+    } finally {
+      setWithdrawalSubmitting(false);
+    }
+  };
+
+  const handleCancelWithdrawal = async (withdrawalId: string) => {
+    if (!user?.id) return;
+    setCancelingWithdrawalId(withdrawalId);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('Missing user session');
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-withdrawal`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ withdrawalId })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Cancellation failed');
+      }
+
+      notification.showSuccess('Withdrawal Cancelled', 'Your withdrawal request has been cancelled.');
+      loadWithdrawalRequests();
+    } catch (error: any) {
+      notification.showError('Cancellation Failed', error.message || 'Unable to cancel withdrawal');
+    } finally {
+      setCancelingWithdrawalId(null);
     }
   };
 
@@ -350,7 +586,8 @@ const WalletDashboard: React.FC = () => {
               {[
                 { id: 'overview', label: 'Overview', icon: TrendingUp },
                 { id: 'transactions', label: 'Transactions', icon: DollarSign },
-                { id: 'tasks', label: 'Daily Tasks', icon: Calendar }
+                { id: 'tasks', label: 'Daily Tasks', icon: Calendar },
+                { id: 'withdrawals', label: 'Withdrawals', icon: ArrowUpRight }
               ].map((tab) => (
                   <button
                       key={tab.id}
@@ -666,6 +903,145 @@ const WalletDashboard: React.FC = () => {
                       </div>
                   )}
                 </div>
+            )}
+
+            {activeTab === 'withdrawals' && (
+              <div className="space-y-6">
+                <div className="border border-gray-200 rounded-xl p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Request Withdrawal</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Amount (USDT)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={withdrawalAmount}
+                        onChange={(event) => setWithdrawalAmount(Number(event.target.value))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder={`Minimum ${withdrawalSettings.minAmount} USDT`}
+                      />
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-600">Default Wallet</p>
+                      <p className="text-sm font-medium text-gray-900 mt-1">
+                        {defaultWallet?.tuwc_wallet_address || 'No default wallet selected'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Withdrawals go to your default wallet.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                    <div>
+                      Minimum: <span className="font-medium text-gray-900">{withdrawalSettings.minAmount} USDT</span>
+                    </div>
+                    <div>
+                      Step: <span className="font-medium text-gray-900">{withdrawalSettings.stepAmount} USDT</span>
+                    </div>
+                    <div>
+                      Commission: <span className="font-medium text-gray-900">{withdrawalSettings.commissionPercent}%</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between text-sm">
+                    <div>
+                      Estimated commission:{" "}
+                      <span className="font-medium text-gray-900">
+                        {(withdrawalAmount * (withdrawalSettings.commissionPercent / 100)).toFixed(2)} USDT
+                      </span>
+                    </div>
+                    <div>
+                      Estimated net:{" "}
+                      <span className="font-semibold text-gray-900">
+                        {(withdrawalAmount - withdrawalAmount * (withdrawalSettings.commissionPercent / 100)).toFixed(2)} USDT
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-between">
+                    <p className="text-xs text-gray-500">
+                      {withdrawalSettings.autoTransfer
+                        ? 'Auto-transfer is enabled. Your withdrawal will be processed instantly.'
+                        : `Withdrawals require admin approval. Expect ${withdrawalSettings.processingDays} working days.`}
+                    </p>
+                    <button
+                      onClick={handleWithdrawalSubmit}
+                      disabled={withdrawalSubmitting}
+                      className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {withdrawalSubmitting ? 'Submitting...' : 'Submit Withdrawal'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-semibold text-gray-900">Withdrawal History</h4>
+                    <button
+                      onClick={loadWithdrawalRequests}
+                      className="text-sm text-green-600 hover:text-green-700"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {withdrawalsLoading ? (
+                    <div className="text-center py-6 text-sm text-gray-500">Loading withdrawals...</div>
+                  ) : withdrawalRequests.length === 0 ? (
+                    <div className="text-center py-6 text-sm text-gray-500">No withdrawals yet.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {withdrawalRequests.map((request) => (
+                        <div key={request.twr_id} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {Number(request.twr_amount).toFixed(2)} USDT
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Net: {Number(request.twr_net_amount).toFixed(2)} USDT • {new Date(request.twr_requested_at).toLocaleDateString()}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Wallet: {request.twr_destination_address}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                request.twr_status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  request.twr_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                    request.twr_status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                                      request.twr_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                              }`}>
+                                {request.twr_status}
+                              </span>
+                              {request.twr_blockchain_tx && (
+                                <span className="text-xs text-gray-500">Tx: {request.twr_blockchain_tx.slice(0, 8)}...</span>
+                              )}
+                              {request.twr_status === 'pending' && (
+                                <button
+                                  onClick={() => handleCancelWithdrawal(request.twr_id)}
+                                  disabled={cancelingWithdrawalId === request.twr_id}
+                                  className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                                >
+                                  {cancelingWithdrawalId === request.twr_id ? 'Cancelling...' : 'Cancel'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {request.twr_failure_reason && (
+                            <p className="text-xs text-red-600 mt-2">
+                              {request.twr_failure_reason}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>

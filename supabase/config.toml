@@ -20,3 +20,47 @@ entrypoint = "./functions/resend/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/resend/*.html" ]
+
+[functions.admin-get-customers]
+enabled = true
+verify_jwt = false
+
+[functions.admin-get-companies]
+enabled = true
+verify_jwt = false
+
+[functions.admin-get-sub-admins]
+enabled = true
+verify_jwt = false
+
+[functions.admin-get-admin-users]
+enabled = true
+verify_jwt = false
+
+[functions.admin-create-sub-admin]
+enabled = true
+verify_jwt = false
+
+[functions.admin-update-sub-admin]
+enabled = true
+verify_jwt = false
+
+[functions.admin-update-customer-user]
+enabled = true
+verify_jwt = false
+
+[functions.admin-update-customer-profile]
+enabled = true
+verify_jwt = false
+
+[functions.admin-impersonate]
+enabled = true
+verify_jwt = false
+
+[functions.admin-delete-sub-admin]
+enabled = true
+verify_jwt = false
+
+[functions.admin-reset-sub-admin-password]
+enabled = true
+verify_jwt = false

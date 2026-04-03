@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { CreditCard, Plus, CreditCard as Edit, Trash2, Save, X, CheckCircle, AlertCircle, DollarSign, Calendar, Package, UserPlus, TrendingUp } from 'lucide-react';
+
+let inFlightSubscriptionPlansRequest: {
+  key: string;
+  promise: Promise<SubscriptionPlan[]>;
+} | null = null;
 
 interface SubscriptionPlan {
   tsp_id: string;
@@ -43,17 +48,31 @@ const SubscriptionManagement: React.FC = () => {
   const loadPlans = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('tbl_subscription_plans')
-        .select('*')
-        .eq('tsp_type', activeTab)
-        .order('tsp_created_at', { ascending: false });
+      const requestPayload = {
+        planType: activeTab
+      };
+      const requestKey = JSON.stringify(requestPayload);
+      const requestPromise =
+        inFlightSubscriptionPlansRequest?.key === requestKey
+          ? inFlightSubscriptionPlansRequest.promise
+          : adminApi.post<SubscriptionPlan[]>('admin-get-subscription-plans', requestPayload);
 
-      if (error) throw error;
+      if (inFlightSubscriptionPlansRequest?.key !== requestKey) {
+        inFlightSubscriptionPlansRequest = {
+          key: requestKey,
+          promise: requestPromise
+        };
+      }
+
+      const data = await requestPromise;
       setPlans(data || []);
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
+      const requestKey = JSON.stringify({ planType: activeTab });
+      if (inFlightSubscriptionPlansRequest?.key === requestKey) {
+        inFlightSubscriptionPlansRequest = null;
+      }
       setLoading(false);
     }
   };
@@ -71,20 +90,16 @@ const SubscriptionManagement: React.FC = () => {
         ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
         : 0;
 
-      const { error } = await supabase
-        .from('tbl_subscription_plans')
-        .insert({
-          tsp_name: formData.name,
-          tsp_description: formData.description,
-          tsp_price: parseFloat(formData.price),
-          tsp_duration_days: parseInt(formData.duration_days),
-          tsp_features: featuresObj,
-          tsp_parent_income: parentIncomeValue,
-          tsp_is_active: formData.is_active,
-          tsp_type: activeTab
-        });
-
-      if (error) throw error;
+      await adminApi.post('admin-save-subscription-plan', {
+        name: formData.name,
+        description: formData.description,
+        price: parseFloat(formData.price),
+        durationDays: parseInt(formData.duration_days),
+        features: featuresObj,
+        parentIncome: parentIncomeValue,
+        isActive: formData.is_active,
+        planType: activeTab
+      });
 
       notification.showSuccess('Success', `${activeTab === 'registration' ? 'Registration' : 'Upgrade'} plan created`);
       setShowCreateModal(false);
@@ -110,20 +125,17 @@ const SubscriptionManagement: React.FC = () => {
         ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
         : 0;
 
-      const { error } = await supabase
-        .from('tbl_subscription_plans')
-        .update({
-          tsp_name: formData.name,
-          tsp_description: formData.description,
-          tsp_price: parseFloat(formData.price),
-          tsp_duration_days: parseInt(formData.duration_days),
-          tsp_features: featuresObj,
-          tsp_parent_income: parentIncomeValue,
-          tsp_is_active: formData.is_active
-        })
-        .eq('tsp_id', selectedPlan.tsp_id);
-
-      if (error) throw error;
+      await adminApi.post('admin-save-subscription-plan', {
+        id: selectedPlan.tsp_id,
+        name: formData.name,
+        description: formData.description,
+        price: parseFloat(formData.price),
+        durationDays: parseInt(formData.duration_days),
+        features: featuresObj,
+        parentIncome: parentIncomeValue,
+        isActive: formData.is_active,
+        planType: activeTab
+      });
 
       notification.showSuccess('Success', 'Plan updated successfully');
       setShowEditModal(false);
@@ -139,12 +151,7 @@ const SubscriptionManagement: React.FC = () => {
     if (!confirm('Are you sure you want to delete this plan?')) return;
 
     try {
-      const { error } = await supabase
-        .from('tbl_subscription_plans')
-        .delete()
-        .eq('tsp_id', planId);
-
-      if (error) throw error;
+      await adminApi.post('admin-delete-subscription-plan', { id: planId });
 
       notification.showSuccess('Success', 'Plan deleted successfully');
       loadPlans();
@@ -155,12 +162,17 @@ const SubscriptionManagement: React.FC = () => {
 
   const handleToggleActive = async (plan: SubscriptionPlan) => {
     try {
-      const { error } = await supabase
-        .from('tbl_subscription_plans')
-        .update({ tsp_is_active: !plan.tsp_is_active })
-        .eq('tsp_id', plan.tsp_id);
-
-      if (error) throw error;
+      await adminApi.post('admin-save-subscription-plan', {
+        id: plan.tsp_id,
+        name: plan.tsp_name,
+        description: plan.tsp_description,
+        price: plan.tsp_price,
+        durationDays: plan.tsp_duration_days,
+        features: plan.tsp_features,
+        parentIncome: plan.tsp_parent_income ?? 0,
+        isActive: !plan.tsp_is_active,
+        planType: plan.tsp_type
+      });
 
       notification.showSuccess('Success', `Plan ${!plan.tsp_is_active ? 'activated' : 'deactivated'}`);
       loadPlans();

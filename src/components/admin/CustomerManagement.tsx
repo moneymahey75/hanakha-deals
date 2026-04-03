@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -8,6 +8,11 @@ import {
     CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft,
     ChevronsRight, MoreHorizontal, Key, LogIn
 } from 'lucide-react';
+
+let inFlightCustomersRequest: {
+    key: string;
+    promise: Promise<any[]>;
+} | null = null;
 
 interface Customer {
     tu_id: string;
@@ -124,16 +129,27 @@ const CustomerManagement: React.FC = () => {
             setError(null);
 
             const offset = (currentPage - 1) * itemsPerPage;
+            const requestPayload = {
+                searchTerm: searchTerm || null,
+                statusFilter,
+                verificationFilter,
+                offset,
+                limit: itemsPerPage
+            };
+            const requestKey = JSON.stringify(requestPayload);
+            const requestPromise =
+                inFlightCustomersRequest?.key === requestKey
+                    ? inFlightCustomersRequest.promise
+                    : adminApi.post<any[]>('admin-get-customers', requestPayload);
 
-            const { data, error } = await supabase.rpc('admin_get_customers', {
-                p_search_term: searchTerm || null,
-                p_status_filter: statusFilter,
-                p_verification_filter: verificationFilter,
-                p_offset: offset,
-                p_limit: itemsPerPage
-            });
+            if (inFlightCustomersRequest?.key !== requestKey) {
+                inFlightCustomersRequest = {
+                    key: requestKey,
+                    promise: requestPromise
+                };
+            }
 
-            if (error) throw error;
+            const data = await requestPromise;
 
             if (data && data.length > 0) {
                 const total = data[0]?.total_count || 0;
@@ -159,6 +175,17 @@ const CustomerManagement: React.FC = () => {
             setError('Failed to load customers. Please try again.');
             notification.showError('Load Failed', 'Failed to load customer data from database');
         } finally {
+            const offset = (currentPage - 1) * itemsPerPage;
+            const requestKey = JSON.stringify({
+                searchTerm: searchTerm || null,
+                statusFilter,
+                verificationFilter,
+                offset,
+                limit: itemsPerPage
+            });
+            if (inFlightCustomersRequest?.key === requestKey) {
+                inFlightCustomersRequest = null;
+            }
             setLoading(false);
             setListLoading(false);
         }
@@ -189,21 +216,14 @@ const CustomerManagement: React.FC = () => {
 
     const handleToggleStatus = async (customer: Customer, currentStatus: boolean) => {
         try {
-            const { data: authStatus } = await supabase.rpc('debug_auth_status');
-            if (!authStatus?.is_authenticated) throw new Error('Not authenticated. Please log out and log back in.');
-            if (!authStatus?.admin_exists) throw new Error('Admin account not properly linked. Please contact support.');
-
-            const { data: result, error } = await supabase.rpc('admin_update_customer_user', {
-                p_user_id: customer.tu_id,
-                p_email: customer.tu_email,
-                p_is_verified: customer.tu_is_verified,
-                p_email_verified: customer.tu_email_verified,
-                p_mobile_verified: customer.tu_mobile_verified,
-                p_is_active: !currentStatus
+            await adminApi.post('admin-update-customer-user', {
+                userId: customer.tu_id,
+                email: customer.tu_email,
+                isVerified: customer.tu_is_verified,
+                emailVerified: customer.tu_email_verified,
+                mobileVerified: customer.tu_mobile_verified,
+                isActive: !currentStatus
             });
-
-            if (error) throw error;
-            if (!result?.success) throw new Error(result?.error || 'Failed to update status');
 
             const updatedCustomer = { ...customer, tu_is_active: !currentStatus };
             setCustomers(prev => prev.map(c => c.tu_id === customer.tu_id ? updatedCustomer : c));
@@ -234,13 +254,10 @@ const CustomerManagement: React.FC = () => {
         }
 
         try {
-            const { data: result, error } = await supabase.rpc('admin_reset_user_password', {
-                p_user_id: customer.tu_id,
-                p_new_password: newPassword
+            await adminApi.post('admin-reset-user-password', {
+                userId: customer.tu_id,
+                newPassword
             });
-
-            if (error) throw error;
-            if (!result?.success) throw new Error(result?.error || 'Failed to reset password');
 
             notification.showSuccess(
                 'Password Reset',
@@ -619,26 +636,9 @@ const CustomerDetails: React.FC<{
     const loadTransactions = async () => {
         setLoading(true);
         try {
-            const { data: payments, error } = await supabase
-                .from('tbl_payments')
-                .select(`
-                    tp_id,
-                    tp_amount,
-                    tp_currency,
-                    tp_payment_method,
-                    tp_payment_status,
-                    tp_transaction_id,
-                    tp_created_at,
-                    tp_gateway_response,
-                    tbl_subscription_plans (
-                        tsp_name,
-                        tsp_price
-                    )
-                `)
-                .eq('tp_user_id', customer.tu_id)
-                .order('tp_created_at', { ascending: false });
-
-            if (error) throw error;
+            const payments = await adminApi.post<any[]>('admin-get-customer-payments', {
+                userId: customer.tu_id
+            });
             setTransactions(payments || []);
         } catch (error) {
             console.error('Failed to load payments:', error);
@@ -652,29 +652,23 @@ const CustomerDetails: React.FC<{
         if (!customer) return;
 
         try {
-            const { data: userResult, error: userError } = await supabase.rpc('admin_update_customer_user', {
-                p_user_id: customer.tu_id,
-                p_email: editData.email,
-                p_is_verified: editData.email_verified || editData.mobile_verified,
-                p_email_verified: editData.email_verified,
-                p_mobile_verified: editData.mobile_verified,
-                p_is_active: editData.is_active
+            await adminApi.post('admin-update-customer-user', {
+                userId: customer.tu_id,
+                email: editData.email,
+                isVerified: editData.email_verified || editData.mobile_verified,
+                emailVerified: editData.email_verified,
+                mobileVerified: editData.mobile_verified,
+                isActive: editData.is_active
             });
 
-            if (userError) throw userError;
-            if (!userResult?.success) throw new Error(userResult?.error || 'Failed to update user');
-
-            const { data: profileResult, error: profileError } = await supabase.rpc('admin_update_customer_profile', {
-                p_user_id: customer.tu_id,
-                p_first_name: editData.first_name,
-                p_last_name: editData.last_name,
-                p_username: editData.username,
-                p_mobile: editData.mobile,
-                p_gender: editData.gender
+            await adminApi.post('admin-update-customer-profile', {
+                userId: customer.tu_id,
+                firstName: editData.first_name,
+                lastName: editData.last_name,
+                username: editData.username,
+                mobile: editData.mobile,
+                gender: editData.gender
             });
-
-            if (profileError) throw profileError;
-            if (!profileResult?.success) throw new Error(profileResult?.error || 'Failed to update profile');
 
             // ✅ Build updated customer object immediately
             const updatedCustomer: Customer = {

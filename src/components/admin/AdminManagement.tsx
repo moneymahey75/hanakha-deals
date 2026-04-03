@@ -18,6 +18,8 @@ import {
   Save
 } from 'lucide-react';
 
+let inFlightSubAdminsRequest: Promise<SubAdmin[]> | null = null;
+
 interface SubAdmin {
   id: string;
   email: string;
@@ -90,11 +92,14 @@ const AdminManagement: React.FC = () => {
   const loadSubAdmins = async () => {
     setLoading(true);
     try {
-      const data = await getSubAdmins();
+      const requestPromise = inFlightSubAdminsRequest ?? getSubAdmins();
+      inFlightSubAdminsRequest = requestPromise;
+      const data = await requestPromise;
       setSubAdmins(data);
     } catch (error) {
       console.error('Failed to load sub-admins:', error);
     } finally {
+      inFlightSubAdminsRequest = null;
       setLoading(false);
     }
   };

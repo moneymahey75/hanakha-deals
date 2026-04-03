@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { Settings, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const PaymentSettings: React.FC = () => {
@@ -13,6 +13,11 @@ const PaymentSettings: React.FC = () => {
         subscriptionWalletAddress: settings.subscriptionWalletAddress,
         investmentWalletAddress: settings.investmentWalletAddress,
         adminPaymentWallet: settings.adminPaymentWallet,
+        withdrawalMinAmount: settings.withdrawalMinAmount,
+        withdrawalStepAmount: settings.withdrawalStepAmount,
+        withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
+        withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
+        withdrawalProcessingDays: settings.withdrawalProcessingDays,
         paymentWalletsEnabled: settings.paymentWalletsEnabled || {
             trust_wallet: true,
             metamask: true,
@@ -31,6 +36,11 @@ const PaymentSettings: React.FC = () => {
             subscriptionWalletAddress: settings.subscriptionWalletAddress,
             investmentWalletAddress: settings.investmentWalletAddress,
             adminPaymentWallet: settings.adminPaymentWallet,
+            withdrawalMinAmount: settings.withdrawalMinAmount,
+            withdrawalStepAmount: settings.withdrawalStepAmount,
+            withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
+            withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
+            withdrawalProcessingDays: settings.withdrawalProcessingDays,
             paymentWalletsEnabled: settings.paymentWalletsEnabled || {
                 trust_wallet: true,
                 metamask: true,
@@ -59,24 +69,21 @@ const PaymentSettings: React.FC = () => {
                 { key: 'subscription_wallet_address', value: JSON.stringify(formData.subscriptionWalletAddress) },
                 { key: 'investment_wallet_address', value: JSON.stringify(formData.investmentWalletAddress) },
                 { key: 'admin_payment_wallet', value: JSON.stringify(formData.adminPaymentWallet || '') },
-                { key: 'payment_wallets_enabled', value: JSON.stringify(formData.paymentWalletsEnabled) }
+                { key: 'payment_wallets_enabled', value: JSON.stringify(formData.paymentWalletsEnabled) },
+                { key: 'withdrawal_min_amount', value: JSON.stringify(formData.withdrawalMinAmount) },
+                { key: 'withdrawal_step_amount', value: JSON.stringify(formData.withdrawalStepAmount) },
+                { key: 'withdrawal_commission_percent', value: JSON.stringify(formData.withdrawalCommissionPercent) },
+                { key: 'withdrawal_auto_transfer', value: JSON.stringify(formData.withdrawalAutoTransfer) },
+                { key: 'withdrawal_processing_days', value: JSON.stringify(formData.withdrawalProcessingDays) }
             ];
 
-            for (const update of updates) {
-                const { error } = await supabase
-                    .from('tbl_system_settings')
-                    .upsert({
-                        tss_setting_key: update.key,
-                        tss_setting_value: update.value,
-                        tss_description: `${update.key.replace('_', ' ')} setting`
-                    }, {
-                        onConflict: 'tss_setting_key'
-                    });
-
-                if (error) {
-                    throw error;
-                }
-            }
+            await adminApi.post('admin-upsert-settings', {
+                updates: updates.map((update) => ({
+                    key: update.key,
+                    value: update.value,
+                    description: `${update.key.replace('_', ' ')} setting`
+                }))
+            });
 
             // Update context
             updateSettings(formData);
@@ -103,6 +110,21 @@ const PaymentSettings: React.FC = () => {
         setFormData(prev => ({
             ...prev,
             [e.target.name]: e.target.value
+        }));
+    };
+
+    const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const parsed = Number(e.target.value);
+        setFormData(prev => ({
+            ...prev,
+            [e.target.name]: Number.isFinite(parsed) ? parsed : 0
+        }));
+    };
+
+    const handleToggleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData(prev => ({
+            ...prev,
+            [e.target.name]: e.target.checked
         }));
     };
 
@@ -248,6 +270,96 @@ const PaymentSettings: React.FC = () => {
                                 />
                                 SafePal
                             </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-lg p-6">
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Withdrawal Settings
+                        </label>
+                        <p className="text-xs text-gray-500">
+                            Configure minimums, step size, and commission for customer withdrawals.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="withdrawalMinAmount" className="block text-sm font-medium text-gray-700 mb-2">
+                                Minimum Withdrawal Amount (USD)
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                id="withdrawalMinAmount"
+                                name="withdrawalMinAmount"
+                                value={formData.withdrawalMinAmount}
+                                onChange={handleNumberChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="10"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="withdrawalStepAmount" className="block text-sm font-medium text-gray-700 mb-2">
+                                Withdrawal Step Amount (USD)
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="1"
+                                id="withdrawalStepAmount"
+                                name="withdrawalStepAmount"
+                                value={formData.withdrawalStepAmount}
+                                onChange={handleNumberChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="10"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="withdrawalCommissionPercent" className="block text-sm font-medium text-gray-700 mb-2">
+                                Withdrawal Commission (%)
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                id="withdrawalCommissionPercent"
+                                name="withdrawalCommissionPercent"
+                                value={formData.withdrawalCommissionPercent}
+                                onChange={handleNumberChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="0.5"
+                            />
+                        </div>
+                        <div className="flex items-center">
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    name="withdrawalAutoTransfer"
+                                    checked={formData.withdrawalAutoTransfer}
+                                    onChange={handleToggleChange}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                />
+                                Auto-transfer withdrawals (no admin approval)
+                            </label>
+                        </div>
+                        <div>
+                            <label htmlFor="withdrawalProcessingDays" className="block text-sm font-medium text-gray-700 mb-2">
+                                Processing Days (Working Days)
+                            </label>
+                            <input
+                                type="number"
+                                step="1"
+                                min="1"
+                                id="withdrawalProcessingDays"
+                                name="withdrawalProcessingDays"
+                                value={formData.withdrawalProcessingDays}
+                                onChange={handleNumberChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="5"
+                            />
                         </div>
                     </div>
                 </div>

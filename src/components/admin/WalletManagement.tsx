@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import {
   Wallet,
@@ -27,6 +27,12 @@ import {
   ChevronRight,
   MoreHorizontal
 } from 'lucide-react';
+
+let inFlightWalletsRequest: Promise<WalletData[]> | null = null;
+let inFlightWalletTransactionsRequest: {
+  key: string;
+  promise: Promise<Transaction[]>;
+} | null = null;
 
 interface WalletData {
   user_id: string;
@@ -192,82 +198,7 @@ const WalletManagement: React.FC = () => {
   const searchUsers = async (searchQuery: string) => {
     try {
       // First search for users by email
-      const { data: usersData, error: usersError } = await supabase
-          .from('tbl_users')
-          .select(`
-          tu_id,
-          tu_email,
-          tu_user_type,
-          tbl_user_profiles (
-            tup_first_name,
-            tup_last_name
-          )
-        `)
-          .ilike('tu_email', `%${searchQuery}%`)
-          .limit(10);
-
-      if (usersError) throw usersError;
-
-      // Then search for users by name in profiles
-      const { data: profileUsersData, error: profileError } = await supabase
-          .from('tbl_user_profiles')
-          .select(`
-            tup_first_name,
-            tup_last_name,
-            tbl_users (
-              tu_id,
-              tu_email,
-              tu_user_type
-            )
-          `)
-          .or(`tup_first_name.ilike.%${searchQuery}%,tup_last_name.ilike.%${searchQuery}%`)
-          .limit(10);
-
-      if (profileError) throw profileError;
-
-      // Combine results
-      const allUsers = [...(usersData || [])];
-
-      if (profileUsersData) {
-        profileUsersData.forEach(profile => {
-          if (profile.tbl_users && !allUsers.some(u => u.tu_id === profile.tbl_users.tu_id)) {
-            allUsers.push({
-              ...profile.tbl_users,
-              tbl_user_profiles: [{
-                tup_first_name: profile.tup_first_name,
-                tup_last_name: profile.tup_last_name
-              }]
-            });
-          }
-        });
-      }
-
-      // Get user IDs to search for companies
-      const userIds = allUsers.map(user => user.tu_id);
-
-      // Search for companies related to these users
-      let companiesMap = new Map();
-      if (userIds.length > 0) {
-        const { data: companiesData, error: companiesError } = await supabase
-            .from('tbl_companies')
-            .select('tc_user_id, tc_company_name')
-            .in('tc_user_id', userIds);
-
-        if (!companiesError && companiesData) {
-          companiesData.forEach(company => {
-            companiesMap.set(company.tc_user_id, company.tc_company_name);
-          });
-        }
-      }
-
-      const formattedUsers = allUsers.map(user => ({
-        tu_id: user.tu_id,
-        tu_email: user.tu_email,
-        tu_user_type: user.tu_user_type,
-        tup_first_name: user.tbl_user_profiles?.[0]?.tup_first_name,
-        tup_last_name: user.tbl_user_profiles?.[0]?.tup_last_name,
-        company_name: companiesMap.get(user.tu_id)
-      }));
+      const formattedUsers = await adminApi.post<User[]>('admin-search-users', { query: searchQuery });
 
       setUsers(formattedUsers);
       setShowUserDropdown(formattedUsers.length > 0);
@@ -298,154 +229,23 @@ const WalletManagement: React.FC = () => {
       setListLoading(true);
       console.log('🔍 Loading wallet data...');
 
-      // First get wallets
-      const { data: walletsData, error: walletsError } = await supabase
-          .from('tbl_wallets')
-          .select(`
-          tw_user_id,
-          tw_balance,
-          tw_currency,
-          tw_created_at
-        `)
-          .eq('tw_currency', 'USDT')
-          .order('tw_balance', { ascending: false });
+      const requestPromise = inFlightWalletsRequest ?? adminApi.post<WalletData[]>('admin-get-wallets');
+      inFlightWalletsRequest = requestPromise;
 
-      if (walletsError) {
-        console.error('Wallets error:', walletsError);
-        throw walletsError;
-      }
-
-      if (!walletsData || walletsData.length === 0) {
-        console.log('No wallet data found');
+      const walletsWithStats = await requestPromise;
+      if (!walletsWithStats || walletsWithStats.length === 0) {
         setWallets([]);
         setLoading(false);
         setListLoading(false);
         return;
       }
-
-      // Get user IDs to fetch user details
-      const userIds = walletsData.map(wallet => wallet.tw_user_id);
-
-      // Get users with their type and profiles
-      const { data: usersData, error: usersError } = await supabase
-          .from('tbl_users')
-          .select(`
-          tu_id,
-          tu_email,
-          tu_user_type,
-          tbl_user_profiles (
-            tup_first_name,
-            tup_last_name
-          )
-        `)
-          .in('tu_id', userIds);
-
-      if (usersError) {
-        console.error('Users error:', usersError);
-        throw usersError;
-      }
-
-      // Get companies for company users
-      const companyUserIds = usersData?.filter(user => user.tu_user_type === 'company').map(user => user.tu_id) || [];
-      let companiesMap = new Map();
-
-      if (companyUserIds.length > 0) {
-        const { data: companiesData, error: companiesError } = await supabase
-            .from('tbl_companies')
-            .select('tc_user_id, tc_company_name')
-            .in('tc_user_id', companyUserIds);
-
-        if (!companiesError && companiesData) {
-          companiesData.forEach(company => {
-            companiesMap.set(company.tc_user_id, company.tc_company_name);
-          });
-        }
-      }
-
-      // Get transaction counts and totals for each user
-      const walletsWithStats = await Promise.all(
-          walletsData.map(async (wallet) => {
-            try {
-              // Get transactions for this wallet
-              const { data: txData, error: txError } = await supabase
-                  .from('tbl_wallet_transactions')
-                  .select('twt_amount, twt_transaction_type, twt_created_at')
-                  .eq('twt_user_id', wallet.tw_user_id)
-                  .eq('twt_status', 'completed');
-
-              if (txError) {
-                console.error('Error fetching transactions:', txError);
-              }
-
-              const totalEarned = txData?.filter(tx => tx.twt_transaction_type === 'credit')
-                  .reduce((sum, tx) => sum + parseFloat(tx.twt_amount.toString()), 0) || 0;
-
-              const totalSpent = txData?.filter(tx => tx.twt_transaction_type === 'debit')
-                  .reduce((sum, tx) => sum + parseFloat(tx.twt_amount.toString()), 0) || 0;
-
-              const lastTransaction = txData && txData.length > 0
-                  ? txData.reduce((latest, tx) =>
-                          new Date(tx.twt_created_at) > new Date(latest) ? tx.twt_created_at : latest,
-                      txData[0].twt_created_at
-                  )
-                  : wallet.tw_created_at;
-
-              // Find user details
-              const user = usersData?.find(u => u.tu_id === wallet.tw_user_id);
-              const userType = user?.tu_user_type as 'customer' | 'company' | 'admin';
-              const userEmail = user?.tu_email || 'Unknown Email';
-
-              let userName = 'Unknown User';
-              let companyName: string | undefined;
-
-              if (userType === 'company') {
-                companyName = companiesMap.get(wallet.tw_user_id);
-                userName = companyName || 'Company User';
-              } else {
-                const firstName = user?.tbl_user_profiles?.[0]?.tup_first_name || '';
-                const lastName = user?.tbl_user_profiles?.[0]?.tup_last_name || '';
-                userName = firstName || lastName ? `${firstName} ${lastName}`.trim() : userEmail;
-              }
-
-              return {
-                user_id: wallet.tw_user_id,
-                user_email: userEmail,
-                user_name: userName,
-                user_type: userType,
-                wallet_balance: parseFloat(wallet.tw_balance.toString()),
-                total_earned: totalEarned,
-                total_spent: totalSpent,
-                transaction_count: txData?.length || 0,
-                last_transaction: lastTransaction,
-                company_name: companyName
-              };
-            } catch (error) {
-              console.error('Error processing wallet:', wallet.tw_user_id, error);
-              // Return basic wallet info even if transaction data fails
-              const user = usersData?.find(u => u.tu_id === wallet.tw_user_id);
-              return {
-                user_id: wallet.tw_user_id,
-                user_email: user?.tu_email || 'Unknown Email',
-                user_name: user?.tbl_user_profiles?.[0]?.tup_first_name
-                    ? `${user.tbl_user_profiles[0].tup_first_name} ${user.tbl_user_profiles[0].tup_last_name || ''}`.trim()
-                    : user?.tu_email || 'Unknown User',
-                user_type: user?.tu_user_type as 'customer' | 'company' | 'admin' || 'customer',
-                wallet_balance: parseFloat(wallet.tw_balance.toString()),
-                total_earned: 0,
-                total_spent: 0,
-                transaction_count: 0,
-                last_transaction: wallet.tw_created_at
-              };
-            }
-          })
-      );
-
       setWallets(walletsWithStats);
       console.log('✅ Wallets loaded:', walletsWithStats.length);
     } catch (error) {
       console.error('Failed to load wallets:', error);
       notification.showError('Load Failed', 'Failed to load wallet data. Please check console for details.');
     } finally {
+      inFlightWalletsRequest = null;
       setLoading(false);
       setListLoading(false);
     }
@@ -457,105 +257,37 @@ const WalletManagement: React.FC = () => {
       setListLoading(true);
       console.log('🔍 Loading transactions...');
 
-      const { data: transactionsData, error: transactionsError } = await supabase
-          .from('tbl_wallet_transactions')
-          .select(`
-          twt_id,
-          twt_user_id,
-          twt_transaction_type,
-          twt_amount,
-          twt_description,
-          twt_reference_type,
-          twt_status,
-          twt_created_at
-        `)
-          .order('twt_created_at', { ascending: false })
-          .limit(100);
+      const requestPayload = { limit: 100 };
+      const requestKey = JSON.stringify(requestPayload);
+      const requestPromise =
+        inFlightWalletTransactionsRequest?.key === requestKey
+          ? inFlightWalletTransactionsRequest.promise
+          : adminApi.post<Transaction[]>('admin-get-wallet-transactions', requestPayload);
 
-      if (transactionsError) {
-        console.error('Transactions error:', transactionsError);
-        throw transactionsError;
+      if (inFlightWalletTransactionsRequest?.key !== requestKey) {
+        inFlightWalletTransactionsRequest = {
+          key: requestKey,
+          promise: requestPromise
+        };
       }
 
-      if (!transactionsData || transactionsData.length === 0) {
+      const formattedTransactions = await requestPromise;
+      if (!formattedTransactions || formattedTransactions.length === 0) {
         setTransactions([]);
         setLoading(false);
         setListLoading(false);
         return;
       }
-
-      // Get user IDs from transactions
-      const userIds = [...new Set(transactionsData.map(tx => tx.twt_user_id))];
-
-      // Get users with their type and profiles
-      const { data: usersData, error: usersError } = await supabase
-          .from('tbl_users')
-          .select(`
-          tu_id,
-          tu_email,
-          tu_user_type,
-          tbl_user_profiles (
-            tup_first_name,
-            tup_last_name
-          )
-        `)
-          .in('tu_id', userIds);
-
-      if (usersError) {
-        console.error('Users error:', usersError);
-        throw usersError;
-      }
-
-      // Get companies for company users
-      const companyUserIds = usersData?.filter(user => user.tu_user_type === 'company').map(user => user.tu_id) || [];
-      let companiesMap = new Map();
-
-      if (companyUserIds.length > 0) {
-        const { data: companiesData, error: companiesError } = await supabase
-            .from('tbl_companies')
-            .select('tc_user_id, tc_company_name')
-            .in('tc_user_id', companyUserIds);
-
-        if (!companiesError && companiesData) {
-          companiesData.forEach(company => {
-            companiesMap.set(company.tc_user_id, company.tc_company_name);
-          });
-        }
-      }
-
-      const formattedTransactions = transactionsData.map(tx => {
-        const user = usersData?.find(u => u.tu_id === tx.twt_user_id);
-        const userType = user?.tu_user_type as 'customer' | 'company' | 'admin';
-
-        let userName = 'Unknown User';
-        let companyName: string | undefined;
-
-        if (userType === 'company') {
-          companyName = companiesMap.get(tx.twt_user_id);
-          userName = companyName || 'Company User';
-        } else {
-          const firstName = user?.tbl_user_profiles?.[0]?.tup_first_name || '';
-          const lastName = user?.tbl_user_profiles?.[0]?.tup_last_name || '';
-          userName = firstName || lastName ? `${firstName} ${lastName}`.trim() : user?.tu_email || 'Customer User';
-        }
-
-        return {
-          ...tx,
-          user_info: {
-            email: user?.tu_email || 'Unknown Email',
-            name: userName,
-            type: userType,
-            company_name: companyName
-          }
-        };
-      });
-
       setTransactions(formattedTransactions);
       console.log('✅ Transactions loaded:', formattedTransactions.length);
     } catch (error) {
       console.error('Failed to load transactions:', error);
       notification.showError('Load Failed', 'Failed to load transaction data. Please check console for details.');
     } finally {
+      const requestKey = JSON.stringify({ limit: 100 });
+      if (inFlightWalletTransactionsRequest?.key === requestKey) {
+        inFlightWalletTransactionsRequest = null;
+      }
       setLoading(false);
       setListLoading(false);
     }
@@ -565,26 +297,7 @@ const WalletManagement: React.FC = () => {
     try {
       setLoading(true);
 
-      // First get the wallet ID
-      const { data: wallet, error: walletError } = await supabase
-          .from('tbl_wallets')
-          .select('tw_id')
-          .eq('tw_user_id', userId)
-          .eq('tw_currency', 'USDT')
-          .single();
-
-      if (walletError) throw walletError;
-
-      // Then get transactions for this wallet
-      const { data: transactionsData, error } = await supabase
-          .from('tbl_wallet_transactions')
-          .select('*')
-          .eq('twt_wallet_id', wallet.tw_id)
-          .order('twt_created_at', { ascending: false })
-          .limit(50);
-
-      if (error) throw error;
-
+      const transactionsData = await adminApi.post<Transaction[]>('admin-get-user-wallet-transactions', { userId });
       setSelectedWalletTransactions(transactionsData || []);
       setSelectedWalletUser({
         tu_id: userId,
@@ -604,40 +317,8 @@ const WalletManagement: React.FC = () => {
 
   const ensureWalletExists = async (userId: string): Promise<string> => {
     try {
-      // Check if wallet already exists
-      const { data: existingWallet, error: checkError } = await supabase
-          .from('tbl_wallets')
-          .select('tw_id')
-          .eq('tw_user_id', userId)
-          .eq('tw_currency', 'USDT')
-          .single();
-
-      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows found"
-        throw checkError;
-      }
-
-      // If wallet doesn't exist, create it
-      if (!existingWallet) {
-        const newWalletId = crypto.randomUUID();
-        const { error: createError } = await supabase
-            .from('tbl_wallets')
-            .insert({
-              tw_id: newWalletId,
-              tw_user_id: userId,
-              tw_balance: 0,
-              tw_currency: 'USDT',
-              tw_is_active: true,
-              tw_created_at: new Date().toISOString(),
-              tw_updated_at: new Date().toISOString()
-            });
-
-        if (createError) throw createError;
-
-        console.log('✅ Wallet created for user:', userId);
-        return newWalletId;
-      }
-
-      return existingWallet.tw_id; // Return existing wallet ID
+      const result = await adminApi.post<{ walletId: string }>('admin-ensure-wallet', { userId });
+      return result.walletId;
     } catch (error) {
       console.error('Error ensuring wallet exists:', error);
       throw error;
@@ -649,56 +330,15 @@ const WalletManagement: React.FC = () => {
       setLoading(true);
       notification.showInfo('Processing', 'Creating wallets for users without one...');
 
-      // Get all users
-      const { data: users, error: usersError } = await supabase
-          .from('tbl_users')
-          .select('tu_id')
-          .eq('tu_is_active', true);
-
-      if (usersError) throw usersError;
-
-      if (!users || users.length === 0) {
-        notification.showInfo('Complete', 'No users found to create wallets for');
-        return;
-      }
-
-      // Get existing wallets
-      const { data: existingWallets, error: walletsError } = await supabase
-          .from('tbl_wallets')
-          .select('tw_user_id')
-          .eq('tw_currency', 'USDT');
-
-      if (walletsError) throw walletsError;
-
-      const existingWalletUserIds = new Set(existingWallets?.map(w => w.tw_user_id) || []);
-
-      // Find users without wallets
-      const usersWithoutWallets = users.filter(user => !existingWalletUserIds.has(user.tu_id));
-
-      if (usersWithoutWallets.length === 0) {
+      const result = await adminApi.post<{ created: number }>('admin-create-wallets-for-all');
+      if (!result.created) {
         notification.showInfo('Complete', 'All users already have wallets');
         return;
       }
 
-      // Create wallets for users without one
-      const walletCreations = usersWithoutWallets.map(user =>
-          supabase
-              .from('tbl_wallets')
-              .insert({
-                tw_user_id: user.tu_id,
-                tw_balance: 0,
-                tw_currency: 'USDT',
-                tw_is_active: true,
-                tw_created_at: new Date().toISOString(),
-                tw_updated_at: new Date().toISOString()
-              })
-      );
-
-      await Promise.all(walletCreations);
-
       notification.showSuccess(
           'Wallets Created',
-          `Created wallets for ${usersWithoutWallets.length} users`
+          `Created wallets for ${result.created} users`
       );
 
       loadWallets(); // Reload the wallets list
@@ -730,33 +370,8 @@ const WalletManagement: React.FC = () => {
     if (selectedUserId && !selectedUser) {
       try {
         // Fetch user details based on selectedUserId
-        const { data: userData, error: userError } = await supabase
-            .from('tbl_users')
-            .select(`
-          tu_id,
-          tu_email,
-          tu_user_type,
-          tbl_user_profiles (
-            tup_first_name,
-            tup_last_name
-          )
-        `)
-            .eq('tu_id', selectedUserId)
-            .single();
-
-        if (userError) throw userError;
-
-        // Get company name if it's a company user
-        let companyName;
-        if (userData.tu_user_type === 'company') {
-          const { data: companyData } = await supabase
-              .from('tbl_companies')
-              .select('tc_company_name')
-              .eq('tc_user_id', selectedUserId)
-              .single();
-
-          companyName = companyData?.tc_company_name;
-        }
+        const userData = await adminApi.post<any>('admin-get-user-details', { userId: selectedUserId });
+        const companyName = userData.company_name;
 
         setSelectedUser({
           tu_id: userData.tu_id,
@@ -782,50 +397,14 @@ const WalletManagement: React.FC = () => {
 
     // Rest of your function remains the same...
     try {
-      // Ensure wallet exists before processing transaction
       await ensureWalletExists(selectedUserId);
-
-      // Get current wallet details including wallet ID
-      const { data: currentWallet, error: walletError } = await supabase
-          .from('tbl_wallets')
-          .select('tw_id, tw_balance')
-          .eq('tw_user_id', selectedUserId)
-          .eq('tw_currency', 'USDT')
-          .single();
-
-      if (walletError) throw walletError;
-
-      // Calculate the transaction amount with proper sign
-      const transactionAmount = transactionType === 'credit' ? amount : -amount;
-      const newBalance = parseFloat(currentWallet.tw_balance) + transactionAmount;
-
-      // Update wallet balance
-      const { error: updateError } = await supabase
-          .from('tbl_wallets')
-          .update({
-            tw_balance: newBalance,
-            tw_updated_at: new Date().toISOString()
-          })
-          .eq('tw_id', currentWallet.tw_id);
-
-      if (updateError) throw updateError;
-
-      // Record transaction with wallet ID
-      const { error: txError } = await supabase
-          .from('tbl_wallet_transactions')
-          .insert({
-            twt_id: crypto.randomUUID(),
-            twt_wallet_id: currentWallet.tw_id,
-            twt_user_id: selectedUserId,
-            twt_transaction_type: transactionType,
-            twt_amount: amount,
-            twt_description: description || `Admin ${transactionType}`,
-            twt_reference_type: transactionType === 'credit' ? 'admin_credit' : 'withdrawal',
-            twt_status: 'completed',
-            twt_created_at: new Date().toISOString()
-          });
-
-      if (txError) throw txError;
+      const result = await adminApi.post<{ newBalance: number }>('admin-wallet-transaction', {
+        userId: selectedUserId,
+        amount,
+        transactionType,
+        description
+      });
+      const newBalance = result.newBalance;
 
       notification.showSuccess(
           'Wallet Updated',

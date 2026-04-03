@@ -70,16 +70,41 @@ export const adminSessionManager = {
 
         console.log('💾 Saving admin session to sessionStorage:', adminId);
 
+        const existingToken = sessionStorage.getItem('admin_session_token');
+        const existingSessionData = sessionStorage.getItem('admin_session_data');
+        let existingExpiresAt: string | null = null;
+        if (existingSessionData) {
+          try {
+            const parsedExisting = JSON.parse(existingSessionData);
+            existingExpiresAt = parsedExisting.sessionExpiresAt || parsedExisting.tau_session_expires_at || null;
+          } catch {
+            existingExpiresAt = null;
+          }
+        }
+
         const sessionData = {
           adminId,
           email: adminData.email || adminData.tau_email || adminData.admin_email,
           fullName: adminData.fullName || adminData.tau_full_name || adminData.admin_full_name,
           role: adminData.role || adminData.tau_role || adminData.admin_role,
           permissions: adminData.permissions || adminData.tau_permissions || adminData.admin_permissions,
+          sessionToken:
+            adminData.sessionToken ||
+            adminData.tau_session_token ||
+            adminData.admin_session_token ||
+            existingToken,
+          sessionExpiresAt:
+            adminData.sessionExpiresAt ||
+            adminData.tau_session_expires_at ||
+            adminData.admin_session_expires_at ||
+            existingExpiresAt,
           timestamp: Date.now()
         };
 
         sessionStorage.setItem('admin_session_data', JSON.stringify(sessionData));
+        if (sessionData.sessionToken) {
+          sessionStorage.setItem('admin_session_token', sessionData.sessionToken);
+        }
         sessionStorage.setItem('session_type', 'admin');
 
         console.log('✅ Admin session saved successfully');
@@ -108,14 +133,17 @@ export const adminSessionManager = {
             session.adminId;
         }
 
-        // Check if session is expired (8 hours)
-        const sessionAge = Date.now() - session.timestamp;
+        // Check if session is expired (use server expiry if present, else 8 hours)
+        const now = Date.now();
+        const expiresAtMs = session.sessionExpiresAt ? Date.parse(session.sessionExpiresAt) : null;
+        const sessionAge = now - session.timestamp;
         const maxSessionAge = 8 * 60 * 60 * 1000;
 
-        if (sessionAge > maxSessionAge) {
+        if ((expiresAtMs && now > expiresAtMs) || (!expiresAtMs && sessionAge > maxSessionAge)) {
           console.log('⏰ Admin session expired', {
             sessionAgeMs: sessionAge,
-            maxSessionAgeMs: maxSessionAge
+            maxSessionAgeMs: maxSessionAge,
+            expiresAt: session.sessionExpiresAt || null
           });
           adminSessionManager.removeSession();
           return null;

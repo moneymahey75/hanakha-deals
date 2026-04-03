@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { UserCheck, Mail, Smartphone, Save, AlertCircle, CheckCircle, Key, Settings, User, Lock } from 'lucide-react';
+
+let inFlightRegistrationSettingsRequest: {
+    key: string;
+    promise: Promise<any[]>;
+} | null = null;
 
 const RegistrationSettings: React.FC = () => {
     const [formData, setFormData] = useState({
@@ -47,10 +52,8 @@ const RegistrationSettings: React.FC = () => {
 
     const loadSettings = async () => {
         try {
-            const { data, error } = await supabase
-                .from('tbl_system_settings')
-                .select('tss_setting_key, tss_setting_value')
-                .in('tss_setting_key', [
+            const requestPayload = {
+                keys: [
                     'email_verification_required',
                     'mobile_verification_required',
                     'referral_mandatory',
@@ -83,13 +86,27 @@ const RegistrationSettings: React.FC = () => {
                     'password_min_unique_chars',
                     'password_expiry_days',
                     'password_history_count'
-                ]);
+                ]
+            };
+            const requestKey = JSON.stringify(requestPayload);
+            const requestPromise =
+                inFlightRegistrationSettingsRequest?.key === requestKey
+                    ? inFlightRegistrationSettingsRequest.promise
+                    : adminApi.post<any[]>('admin-get-settings', requestPayload);
 
-            if (error) {
-                console.warn('Failed to load settings from database, using defaults:', error);
+            if (inFlightRegistrationSettingsRequest?.key !== requestKey) {
+                inFlightRegistrationSettingsRequest = {
+                    key: requestKey,
+                    promise: requestPromise
+                };
+            }
+
+            const data = await requestPromise;
+
+            if (!data) {
                 setDefaultSettings();
             } else {
-                const settingsMap = data?.reduce((acc: any, setting: any) => {
+                const settingsMap = data.reduce((acc: any, setting: any) => {
                     try {
                         acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
                     } catch (parseError) {
@@ -138,6 +155,43 @@ const RegistrationSettings: React.FC = () => {
             console.error('Unexpected error loading settings:', error);
             setDefaultSettings();
         } finally {
+            const requestKey = JSON.stringify({
+                keys: [
+                    'email_verification_required',
+                    'mobile_verification_required',
+                    'referral_mandatory',
+                    'either_verification_required',
+                    'test_otp_enabled',
+                    'test_otp_code',
+                    'registration_payment_auto_approve',
+                    'username_min_length',
+                    'username_max_length',
+                    'username_allow_spaces',
+                    'username_allow_special_chars',
+                    'username_allowed_special_chars',
+                    'username_force_lower_case',
+                    'username_unique_required',
+                    'username_allow_numbers',
+                    'username_must_start_with_letter',
+                    'password_min_length',
+                    'password_max_length',
+                    'password_require_uppercase',
+                    'password_require_lowercase',
+                    'password_require_numbers',
+                    'password_require_special_chars',
+                    'password_allowed_special_chars',
+                    'password_prevent_common',
+                    'password_prevent_sequences',
+                    'password_prevent_repeats',
+                    'password_max_consecutive',
+                    'password_min_unique_chars',
+                    'password_expiry_days',
+                    'password_history_count'
+                ]
+            });
+            if (inFlightRegistrationSettingsRequest?.key === requestKey) {
+                inFlightRegistrationSettingsRequest = null;
+            }
             setLoading(false);
         }
     };
@@ -342,26 +396,21 @@ const RegistrationSettings: React.FC = () => {
                     tss_description: 'Test OTP code for development/testing'
                 });
             } else {
-                // Remove test OTP code from database when disabled
-                const { error: deleteError } = await supabase
-                    .from('tbl_system_settings')
-                    .delete()
-                    .eq('tss_setting_key', 'test_otp_code');
-
-                if (deleteError) {
-                    console.warn('Failed to delete test OTP code:', deleteError);
-                }
+                // Remove test OTP code by setting empty value when disabled
+                updates.push({
+                    tss_setting_key: 'test_otp_code',
+                    tss_setting_value: JSON.stringify(''),
+                    tss_description: 'Test OTP code for development/testing'
+                });
             }
 
-            for (const update of updates) {
-                const { error } = await supabase
-                    .from('tbl_system_settings')
-                    .upsert(update, {
-                        onConflict: 'tss_setting_key'
-                    });
-
-                if (error) throw error;
-            }
+            await adminApi.post('admin-upsert-settings', {
+                updates: updates.map((update) => ({
+                    key: update.tss_setting_key,
+                    value: update.tss_setting_value,
+                    description: update.tss_description
+                }))
+            });
 
             setSaveResult({
                 success: true,

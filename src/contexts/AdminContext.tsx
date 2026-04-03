@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { getAdminSupabaseWithAuth } from '../lib/adminSupabase';
+import { adminApi } from '../lib/adminApi';
+
+let inFlightAdminSettingsRequest: Promise<any[]> | null = null;
 
 interface GeneralSettings {
   siteName: string;
@@ -24,6 +26,11 @@ interface GeneralSettings {
     metamask: boolean;
     safepal: boolean;
   };
+  withdrawalMinAmount: number;
+  withdrawalStepAmount: number;
+  withdrawalCommissionPercent: number;
+  withdrawalAutoTransfer: boolean;
+  withdrawalProcessingDays: number;
   // Username validation settings
   usernameMinLength: number;
   usernameMaxLength: number;
@@ -126,6 +133,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       metamask: true,
       safepal: true
     },
+    withdrawalMinAmount: 10,
+    withdrawalStepAmount: 10,
+    withdrawalCommissionPercent: 0.5,
+    withdrawalAutoTransfer: false,
+    withdrawalProcessingDays: 5,
     // Username validation default settings
     usernameMinLength: 8,
     usernameMaxLength: 30,
@@ -208,23 +220,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
-      const adminClient = getAdminSupabaseWithAuth();
-      const fetchPromise = adminClient
-          .from('tbl_system_settings')
-          .select('tss_setting_key, tss_setting_value');
-
-      const { data: settingsData, error } = await Promise.race([
-        fetchPromise,
-        timeoutPromise
-      ]) as any;
-
-      if (error) {
-        console.warn('Failed to load settings from database:', error);
-        if (!hasLoadedSettings) {
-          setSettings(defaultSettings);
-        }
-        return;
-      }
+      const fetchPromise = inFlightAdminSettingsRequest ?? adminApi.post<any[]>('admin-get-settings', {});
+      inFlightAdminSettingsRequest = fetchPromise;
+      const settingsData = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
       if (settingsData && settingsData.length > 0) {
         const loadedSettings: Partial<GeneralSettings> = {};
@@ -295,6 +293,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'payment_wallets_enabled':
                 loadedSettings.paymentWalletsEnabled = value;
+                break;
+              case 'withdrawal_min_amount':
+                loadedSettings.withdrawalMinAmount = Number(value);
+                break;
+              case 'withdrawal_step_amount':
+                loadedSettings.withdrawalStepAmount = Number(value);
+                break;
+              case 'withdrawal_commission_percent':
+                loadedSettings.withdrawalCommissionPercent = Number(value);
+                break;
+              case 'withdrawal_auto_transfer':
+                loadedSettings.withdrawalAutoTransfer = Boolean(value);
+                break;
+              case 'withdrawal_processing_days':
+                loadedSettings.withdrawalProcessingDays = Number(value);
                 break;
 
                 // Username validation settings
@@ -426,7 +439,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           passwordHistoryCount: loadedSettings.passwordHistoryCount !== undefined ?
               loadedSettings.passwordHistoryCount : defaultSettings.passwordHistoryCount,
           passwordAllowedSpecialChars: loadedSettings.passwordAllowedSpecialChars ||
-              defaultSettings.passwordAllowedSpecialChars
+              defaultSettings.passwordAllowedSpecialChars,
+          withdrawalMinAmount: Number.isFinite(loadedSettings.withdrawalMinAmount as number)
+            ? (loadedSettings.withdrawalMinAmount as number)
+            : defaultSettings.withdrawalMinAmount,
+          withdrawalStepAmount: Number.isFinite(loadedSettings.withdrawalStepAmount as number)
+            ? (loadedSettings.withdrawalStepAmount as number)
+            : defaultSettings.withdrawalStepAmount,
+          withdrawalCommissionPercent: Number.isFinite(loadedSettings.withdrawalCommissionPercent as number)
+            ? (loadedSettings.withdrawalCommissionPercent as number)
+            : defaultSettings.withdrawalCommissionPercent,
+          withdrawalAutoTransfer: loadedSettings.withdrawalAutoTransfer !== undefined
+            ? Boolean(loadedSettings.withdrawalAutoTransfer)
+            : defaultSettings.withdrawalAutoTransfer,
+          withdrawalProcessingDays: Number.isFinite(loadedSettings.withdrawalProcessingDays as number)
+            ? (loadedSettings.withdrawalProcessingDays as number)
+            : defaultSettings.withdrawalProcessingDays
         };
 
         setSettings(mergedSettings);
@@ -443,6 +471,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSettings(defaultSettings);
       }
     } finally {
+      inFlightAdminSettingsRequest = null;
       setLoading(false);
     }
   }, []);

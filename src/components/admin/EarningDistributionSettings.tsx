@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { Plus, Save, Edit2, Trash2, RefreshCw } from 'lucide-react';
+
+let inFlightMilestonesRequest: Promise<Milestone[]> | null = null;
+let inFlightLevelCountsRequest: Promise<LevelCountRow[]> | null = null;
 
 interface Milestone {
   tmm_id: string;
@@ -54,16 +57,14 @@ const EarningDistributionSettings: React.FC = () => {
   const loadMilestones = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('tbl_mlm_reward_milestones')
-        .select('*')
-        .order('tmm_reward_amount', { ascending: true });
-
-      if (error) throw error;
+      const requestPromise = inFlightMilestonesRequest ?? adminApi.post<Milestone[]>('admin-get-earning-milestones');
+      inFlightMilestonesRequest = requestPromise;
+      const data = await requestPromise;
       setMilestones((data || []) as Milestone[]);
     } catch (error: any) {
       notification.showError('Load Failed', error.message || 'Failed to load milestones');
     } finally {
+      inFlightMilestonesRequest = null;
       setLoading(false);
     }
   };
@@ -71,16 +72,14 @@ const EarningDistributionSettings: React.FC = () => {
   const loadCounts = async () => {
     setCountsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('tbl_mlm_level_counts')
-        .select('*')
-        .order('tmlc_level1_count', { ascending: false });
-
-      if (error) throw error;
+      const requestPromise = inFlightLevelCountsRequest ?? adminApi.post<LevelCountRow[]>('admin-get-earning-level-counts');
+      inFlightLevelCountsRequest = requestPromise;
+      const data = await requestPromise;
       setCounts((data || []) as LevelCountRow[]);
     } catch (error: any) {
       notification.showError('Load Failed', error.message || 'Failed to load level counts');
     } finally {
+      inFlightLevelCountsRequest = null;
       setCountsLoading(false);
     }
   };
@@ -106,37 +105,16 @@ const EarningDistributionSettings: React.FC = () => {
     }
 
     try {
-      if (editingId) {
-        const { error } = await supabase
-          .from('tbl_mlm_reward_milestones')
-          .update({
-            tmm_title: form.title,
-            tmm_level1_required: level1,
-            tmm_level2_required: level2,
-            tmm_level3_required: level3,
-            tmm_reward_amount: amount,
-            tmm_is_active: form.isActive
-          })
-          .eq('tmm_id', editingId);
-
-        if (error) throw error;
-        notification.showSuccess('Updated', 'Milestone updated');
-      } else {
-        const { error } = await supabase
-          .from('tbl_mlm_reward_milestones')
-          .insert({
-            tmm_title: form.title,
-            tmm_level1_required: level1,
-            tmm_level2_required: level2,
-            tmm_level3_required: level3,
-            tmm_reward_amount: amount,
-            tmm_currency: 'USDT',
-            tmm_is_active: form.isActive
-          });
-
-        if (error) throw error;
-        notification.showSuccess('Created', 'Milestone created');
-      }
+      await adminApi.post('admin-save-earning-milestone', {
+        id: editingId,
+        title: form.title,
+        level1,
+        level2,
+        level3,
+        amount,
+        isActive: form.isActive
+      });
+      notification.showSuccess(editingId ? 'Updated' : 'Created', editingId ? 'Milestone updated' : 'Milestone created');
 
       resetForm();
       loadMilestones();
@@ -160,12 +138,7 @@ const EarningDistributionSettings: React.FC = () => {
   const deleteMilestone = async (id: string) => {
     if (!confirm('Delete this milestone?')) return;
     try {
-      const { error } = await supabase
-        .from('tbl_mlm_reward_milestones')
-        .delete()
-        .eq('tmm_id', id);
-
-      if (error) throw error;
+      await adminApi.post('admin-delete-earning-milestone', { id });
       notification.showSuccess('Deleted', 'Milestone deleted');
       loadMilestones();
     } catch (error: any) {

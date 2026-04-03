@@ -34,15 +34,26 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
+    const nowIso = new Date().toISOString();
 
-    const { data: adminUser, error: adminError } = await supabase
-      .from('tbl_admin_users')
-      .select('tau_id, tau_email, tau_role, tau_is_active')
-      .eq('tau_session_token', adminSessionToken)
-      .eq('tau_is_active', true)
+    const { data: adminSession, error: adminError } = await supabase
+      .from('tbl_admin_sessions')
+      .select(`
+        tas_admin_id,
+        admin:tas_admin_id(
+          tau_id,
+          tau_email,
+          tau_role,
+          tau_is_active
+        )
+      `)
+      .eq('tas_session_token', adminSessionToken)
+      .gt('tas_expires_at', nowIso)
       .maybeSingle();
 
-    if (adminError || !adminUser) {
+    const adminUser = adminSession?.admin;
+
+    if (adminError || !adminUser || !adminUser.tau_is_active) {
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid admin session' }),
         {

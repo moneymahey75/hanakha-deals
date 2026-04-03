@@ -822,12 +822,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-impersonate`;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'X-Admin-Session': adminSessionToken,
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey,
         },
         body: JSON.stringify({ customerId }),
       });

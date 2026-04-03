@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { Gift, Plus, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Calendar, DollarSign, Image, FileText, Save, X, ArrowLeft, Upload, Tag, Percent, Users, TrendingUp, Rocket, Play } from 'lucide-react';
 import {useAdminAuth} from "../../contexts/AdminAuthContext.tsx";
+
+let inFlightCouponsRequest: Promise<any[]> | null = null;
+let inFlightCouponCompaniesRequest: Promise<Company[]> | null = null;
 
 interface Coupon {
   tc_id: string;
@@ -82,16 +85,16 @@ const CouponManagement: React.FC = () => {
 
   const loadCompanies = async () => {
     try {
-      const { data, error } = await supabase
-          .from('tbl_companies')
-          .select('tc_id, tc_company_name, tc_official_email, tc_verification_status')
-          .eq('tc_verification_status', 'verified')
-          .order('tc_company_name');
+      const requestPromise = inFlightCouponCompaniesRequest ?? adminApi.post<Company[]>('admin-get-companies');
+      inFlightCouponCompaniesRequest = requestPromise;
 
-      if (error) throw error;
-      setCompanies(data || []);
+      const data = await requestPromise;
+      const verified = (data || []).filter((c) => c.tc_verification_status === 'verified');
+      setCompanies(verified);
     } catch (error) {
       notification.showError('Load Failed', 'Failed to load companies');
+    } finally {
+      inFlightCouponCompaniesRequest = null;
     }
   };
 
@@ -99,14 +102,10 @@ const CouponManagement: React.FC = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.rpc('admin_get_coupons', {
-        p_search_term: null,
-        p_status_filter: 'all',
-        p_offset: 0,
-        p_limit: 1000
-      });
+      const requestPromise = inFlightCouponsRequest ?? adminApi.post<any[]>('admin-get-coupons');
+      inFlightCouponsRequest = requestPromise;
 
-      if (error) throw error;
+      const data = await requestPromise;
 
       // ✅ Fixed: all Coupon interface fields are now correctly mapped from RPC response
       const formattedCoupons = (data || []).map((row: any) => ({
@@ -142,6 +141,7 @@ const CouponManagement: React.FC = () => {
     } catch (error) {
       notification.showError('Load Failed', 'Failed to load coupon data');
     } finally {
+      inFlightCouponsRequest = null;
       setLoading(false);
     }
   };
@@ -167,34 +167,25 @@ const CouponManagement: React.FC = () => {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { notification.showError('Error', 'Authentication failed'); return; }
-
-      const { error } = await supabase
-          .from('tbl_coupons')
-          .insert({
-            tc_created_by: null,
-            tc_created_by_admin_uid: user.id,
-            tc_company_id: newCoupon.company_id,
-            tc_title: newCoupon.title,
-            tc_description: newCoupon.description,
-            tc_coupon_code: newCoupon.coupon_code,
-            tc_discount_type: newCoupon.discount_type,
-            tc_discount_value: newCoupon.discount_value,
-            tc_image_url: newCoupon.image_url,
-            tc_terms_conditions: newCoupon.terms_conditions,
-            tc_valid_from: new Date(newCoupon.valid_from).toISOString(),
-            tc_valid_until: new Date(newCoupon.valid_until).toISOString(),
-            tc_usage_limit: newCoupon.usage_limit,
-            tc_share_reward_amount: newCoupon.share_reward_amount,
-            tc_status: 'approved',
-            tc_is_active: newCoupon.is_active,
-            tc_launch_date: newCoupon.launch_date ? new Date(newCoupon.launch_date).toISOString() : null,
-            tc_launch_now: newCoupon.launch_now,
-            tc_website_url: newCoupon.website_url
-          });
-
-      if (error) throw error;
+      await adminApi.post('admin-save-coupon', {
+        companyId: newCoupon.company_id,
+        title: newCoupon.title,
+        description: newCoupon.description,
+        couponCode: newCoupon.coupon_code,
+        discountType: newCoupon.discount_type,
+        discountValue: newCoupon.discount_value,
+        imageUrl: newCoupon.image_url,
+        termsConditions: newCoupon.terms_conditions,
+        validFrom: new Date(newCoupon.valid_from).toISOString(),
+        validUntil: new Date(newCoupon.valid_until).toISOString(),
+        usageLimit: newCoupon.usage_limit,
+        shareRewardAmount: newCoupon.share_reward_amount,
+        status: 'approved',
+        isActive: newCoupon.is_active,
+        launchDate: newCoupon.launch_date ? new Date(newCoupon.launch_date).toISOString() : null,
+        launchNow: newCoupon.launch_now,
+        websiteUrl: newCoupon.website_url
+      });
 
       notification.showSuccess('Coupon Created', 'Coupon has been created successfully');
       setShowCreateModal(false);
@@ -207,12 +198,26 @@ const CouponManagement: React.FC = () => {
 
   const handleUpdateCoupon = async (couponId: string, updates: Partial<Coupon>): Promise<boolean> => {
     try {
-      const { error } = await supabase
-          .from('tbl_coupons')
-          .update(updates)
-          .eq('tc_id', couponId);
-
-      if (error) throw error;
+      await adminApi.post('admin-save-coupon', {
+        id: couponId,
+        companyId: updates.tc_company_id,
+        title: updates.tc_title,
+        description: updates.tc_description,
+        couponCode: updates.tc_coupon_code,
+        discountType: updates.tc_discount_type,
+        discountValue: updates.tc_discount_value,
+        imageUrl: updates.tc_image_url,
+        termsConditions: updates.tc_terms_conditions,
+        validFrom: updates.tc_valid_from,
+        validUntil: updates.tc_valid_until,
+        usageLimit: updates.tc_usage_limit,
+        shareRewardAmount: updates.tc_share_reward_amount,
+        status: updates.tc_status,
+        isActive: updates.tc_is_active,
+        launchDate: updates.tc_launch_date,
+        launchNow: updates.tc_launch_now,
+        websiteUrl: updates.tc_website_url
+      });
 
       notification.showSuccess('Coupon Updated', 'Coupon has been updated successfully');
       return true;
@@ -224,12 +229,10 @@ const CouponManagement: React.FC = () => {
 
   const handleApproveCoupon = async (couponId: string) => {
     try {
-      const { data, error } = await supabase.rpc('admin_update_coupon', {
-        p_coupon_id: couponId,
-        p_status: 'approved'
+      await adminApi.post('admin-update-coupon-status', {
+        couponId,
+        status: 'approved'
       });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Approved', 'Coupon has been approved and is now active');
       loadCoupons();
     } catch { notification.showError('Approval Failed', 'Failed to approve coupon'); }
@@ -237,12 +240,10 @@ const CouponManagement: React.FC = () => {
 
   const handleDeclineCoupon = async (couponId: string) => {
     try {
-      const { data, error } = await supabase.rpc('admin_update_coupon', {
-        p_coupon_id: couponId,
-        p_status: 'declined'
+      await adminApi.post('admin-update-coupon-status', {
+        couponId,
+        status: 'declined'
       });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Declined', 'Coupon has been declined');
       loadCoupons();
     } catch { notification.showError('Decline Failed', 'Failed to decline coupon'); }
@@ -251,13 +252,11 @@ const CouponManagement: React.FC = () => {
   const handleCancelCoupon = async (couponId: string) => {
     if (!confirm('Are you sure you want to cancel this coupon?')) return;
     try {
-      const { data, error } = await supabase.rpc('admin_update_coupon', {
-        p_coupon_id: couponId,
-        p_status: 'cancelled',
-        p_is_active: false
+      await adminApi.post('admin-update-coupon-status', {
+        couponId,
+        status: 'cancelled',
+        isActive: false
       });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed');
       notification.showSuccess('Coupon Cancelled', 'Coupon has been cancelled');
       loadCoupons();
     } catch { notification.showError('Cancellation Failed', 'Failed to cancel coupon'); }
@@ -266,11 +265,7 @@ const CouponManagement: React.FC = () => {
   const handleDeleteCoupon = async (couponId: string) => {
     if (!confirm('Are you sure you want to delete this coupon? This action cannot be undone.')) return;
     try {
-      const { data, error } = await supabase.rpc('admin_delete_coupon', {
-        p_coupon_id: couponId
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed');
+      await adminApi.post('admin-delete-coupon', { couponId });
       notification.showSuccess('Coupon Deleted', 'Coupon has been deleted successfully');
       loadCoupons();
     } catch { notification.showError('Deletion Failed', 'Failed to delete coupon'); }
@@ -278,8 +273,7 @@ const CouponManagement: React.FC = () => {
 
   const handleLaunchNow = async (couponId: string) => {
     try {
-      const { error } = await supabase.from('tbl_coupons').update({ tc_launch_now: true, tc_launch_date: new Date().toISOString() }).eq('tc_id', couponId);
-      if (error) throw error;
+      await adminApi.post('admin-launch-coupon', { couponId });
       notification.showSuccess('Coupon Launched', 'Coupon has been launched immediately');
       loadCoupons();
     } catch { notification.showError('Launch Failed', 'Failed to launch coupon'); }

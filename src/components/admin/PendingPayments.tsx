@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import {
   DollarSign,
@@ -12,6 +12,13 @@ import {
   RefreshCw,
   Download
 } from 'lucide-react';
+
+let inFlightPendingPaymentsRequest: Promise<Payment[]> | null = null;
+let inFlightAdminUsersRequest: Promise<AdminUser[]> | null = null;
+let inFlightAdminEarningsRequest: {
+  key: string;
+  promise: Promise<AdminEarning[]>;
+} | null = null;
 
 interface Payment {
   tp_id: string;
@@ -86,24 +93,14 @@ const PendingPayments: React.FC = () => {
   const loadPayments = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('tbl_payments')
-        .select(`
-          *,
-          user:tp_user_id(tu_email),
-          subscription:tp_subscription_id(
-            tus_id,
-            plan:tus_plan_id(tsp_name, tsp_type)
-          )
-        `)
-        .eq('tp_payment_status', 'pending')
-        .order('tp_created_at', { ascending: false });
-
-      if (error) throw error;
+      const requestPromise = inFlightPendingPaymentsRequest ?? adminApi.post<Payment[]>('admin-get-pending-payments');
+      inFlightPendingPaymentsRequest = requestPromise;
+      const data = await requestPromise;
       setPayments(data || []);
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
+      inFlightPendingPaymentsRequest = null;
       setLoading(false);
     }
   };
@@ -123,91 +120,61 @@ const PendingPayments: React.FC = () => {
 
   const loadAdmins = async () => {
     try {
-      const { data, error } = await supabase
-        .from('tbl_admin_users')
-        .select('tau_id, tau_email, tau_full_name, tau_role')
-        .eq('tau_is_active', true)
-        .order('tau_full_name', { ascending: true });
-
-      if (error) throw error;
+      const requestPromise = inFlightAdminUsersRequest ?? adminApi.post<AdminUser[]>('admin-get-admin-users');
+      inFlightAdminUsersRequest = requestPromise;
+      const data = await requestPromise;
       setAdmins(data || []);
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
+    } finally {
+      inFlightAdminUsersRequest = null;
     }
   };
 
   const loadAdminEarnings = async () => {
     setEarningsLoading(true);
     try {
-      let query = supabase
-        .from('tbl_payments')
-        .select(`
-          tp_id,
-          tp_transaction_id,
-          tp_amount,
-          tp_currency,
-          tp_payment_status,
-          tp_created_at,
-          tp_verified_at,
-          tp_gateway_response,
-          tp_processed_by_admin_id,
-          tp_processed_by_admin_email,
-          tp_processed_by_admin_name,
-          user:tp_user_id(tu_email)
-        `)
-        .eq('tp_payment_status', 'completed')
-        .order('tp_verified_at', { ascending: false });
+      const requestPayload = {
+        adminId: earningsAdminFilter,
+        startDate: earningsStartDate || null,
+        endDate: earningsEndDate || null
+      };
+      const requestKey = JSON.stringify(requestPayload);
+      const requestPromise =
+        inFlightAdminEarningsRequest?.key === requestKey
+          ? inFlightAdminEarningsRequest.promise
+          : adminApi.post<AdminEarning[]>('admin-get-admin-earnings', requestPayload);
 
-      if (earningsAdminFilter !== 'all') {
-        query = query.eq('tp_processed_by_admin_id', earningsAdminFilter);
+      if (inFlightAdminEarningsRequest?.key !== requestKey) {
+        inFlightAdminEarningsRequest = {
+          key: requestKey,
+          promise: requestPromise
+        };
       }
 
-      if (earningsStartDate) {
-        query = query.gte('tp_verified_at', `${earningsStartDate}T00:00:00.000Z`);
-      }
-
-      if (earningsEndDate) {
-        query = query.lte('tp_verified_at', `${earningsEndDate}T23:59:59.999Z`);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const data = await requestPromise;
 
       setAdminEarnings(data || []);
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
+      const requestKey = JSON.stringify({
+        adminId: earningsAdminFilter,
+        startDate: earningsStartDate || null,
+        endDate: earningsEndDate || null
+      });
+      if (inFlightAdminEarningsRequest?.key === requestKey) {
+        inFlightAdminEarningsRequest = null;
+      }
       setEarningsLoading(false);
     }
   };
 
   const handleApprovePayment = async (paymentId: string) => {
-    const adminSessionToken = sessionStorage.getItem('admin_session_token');
-    if (!adminSessionToken) {
-      notification.showError('Error', 'Admin session not found');
-      return;
-    }
-
     setProcessing(paymentId);
     try {
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-registration-payment`;
-
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'X-Admin-Session': adminSessionToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ paymentId }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Payment processing failed');
-      }
-
-      const commissionPaid = typeof result.commission_paid === 'number' ? result.commission_paid : 0;
+      const result = await adminApi.post<any>('process-registration-payment', { paymentId });
+      const commissionPaid = typeof result?.commission_paid === 'number' ? result.commission_paid : 0;
       notification.showSuccess(
         'Payment Approved',
         commissionPaid > 0
@@ -228,12 +195,7 @@ const PendingPayments: React.FC = () => {
 
     setProcessing(paymentId);
     try {
-      const { error } = await supabase
-        .from('tbl_payments')
-        .update({ tp_payment_status: 'rejected' })
-        .eq('tp_id', paymentId);
-
-      if (error) throw error;
+      await adminApi.post('admin-reject-payment', { paymentId });
 
       notification.showSuccess('Payment Rejected', 'Payment has been rejected');
       loadPayments();
@@ -245,30 +207,9 @@ const PendingPayments: React.FC = () => {
   };
 
   const handleVerifyPayment = async (paymentId: string) => {
-    const adminSessionToken = sessionStorage.getItem('admin_session_token');
-    if (!adminSessionToken) {
-      notification.showError('Error', 'Admin session not found');
-      return;
-    }
-
     setVerifying(paymentId);
     try {
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-registration-payment-admin`;
-
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'X-Admin-Session': adminSessionToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ paymentId }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Payment verification failed');
-      }
+      await adminApi.post('verify-registration-payment-admin', { paymentId });
 
       notification.showSuccess('Verification Complete', 'Payment verified and updated.');
       loadPayments();
@@ -677,6 +618,7 @@ const PendingPayments: React.FC = () => {
           </table>
         </div>
       </div>
+
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
+import { adminSupabase as storageSupabase } from '../../lib/adminSupabase';
 import { Settings, Upload, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 const GeneralSettings: React.FC = () => {
@@ -38,21 +39,13 @@ const GeneralSettings: React.FC = () => {
                 { key: 'timezone', value: JSON.stringify(formData.timezone) }
             ];
 
-            for (const update of updates) {
-                const { error } = await supabase
-                    .from('tbl_system_settings')
-                    .upsert({
-                        tss_setting_key: update.key,
-                        tss_setting_value: update.value,
-                        tss_description: `${update.key.replace('_', ' ')} setting`
-                    }, {
-                        onConflict: 'tss_setting_key'
-                    });
-
-                if (error) {
-                    throw error;
-                }
-            }
+            await adminApi.post('admin-upsert-settings', {
+                updates: updates.map((update) => ({
+                    key: update.key,
+                    value: update.value,
+                    description: `${update.key.replace('_', ' ')} setting`
+                }))
+            });
 
             // Update context
             updateSettings(formData);
@@ -113,7 +106,7 @@ const GeneralSettings: React.FC = () => {
             const fileName = `logo-${Date.now()}.${fileExt}`;
 
             // Upload to Supabase Storage
-            const { data, error } = await supabase.storage
+            const { data, error } = await storageSupabase.storage
                 .from('logos')
                 .upload(fileName, file, {
                     cacheControl: '3600',
@@ -146,7 +139,7 @@ const GeneralSettings: React.FC = () => {
             }
 
             // Get public URL
-            const { data: { publicUrl } } = supabase.storage
+            const { data: { publicUrl } } = storageSupabase.storage
                 .from('logos')
                 .getPublicUrl(fileName);
 

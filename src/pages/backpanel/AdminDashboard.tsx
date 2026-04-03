@@ -7,6 +7,7 @@ import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
 import PaymentSettings from '../../components/admin/PaymentSettings';
 import PendingPayments from '../../components/admin/PendingPayments';
+import WithdrawalRequests from '../../components/admin/WithdrawalRequests';
 import AdminManagement from '../../components/admin/AdminManagement';
 import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
 import CompanyManagement from '../../components/admin/CompanyManagement';
@@ -115,12 +116,6 @@ const AdminDashboard: React.FC = () => {
       }
     };
   }, [sessionCheckInterval]);
-
-  useEffect(() => {
-    if (activeTab === 'admins' && hasPermission('admins', 'read') && admin) {
-      loadSubAdmins();
-    }
-  }, [activeTab, admin]);
 
   const loadSubAdmins = async () => {
     setLoading(true);
@@ -248,6 +243,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'wallets' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
+    { id: 'withdrawals', label: 'Withdrawals', icon: RefreshCw, permission: 'payments' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
     { id: 'settings', label: 'Settings', icon: Settings, permission: 'settings' }
   ];
@@ -255,6 +251,7 @@ const AdminDashboard: React.FC = () => {
   const visibleTabs = tabs.filter(tab =>
       !tab.permission || hasPermission(tab.permission as any, 'read')
   );
+  const activeTabPermission = tabs.find(tab => tab.id === activeTab)?.permission;
 
   // Settings sub-tabs
   const [settingsTab, setSettingsTab] = useState('general');
@@ -380,6 +377,7 @@ const AdminDashboard: React.FC = () => {
                   {activeTab === 'wallets' && 'Monitor user wallets and transactions'}
                   {activeTab === 'subscriptions' && 'Manage subscription plans and pricing'}
                   {activeTab === 'payments' && 'View payment transactions and history'}
+                  {activeTab === 'withdrawals' && 'Review and manage withdrawal requests'}
                   {activeTab === 'admins' && 'Manage sub-administrators and permissions'}
                   {activeTab === 'settings' && 'Configure system settings and preferences'}
                 </p>
@@ -478,6 +476,10 @@ const AdminDashboard: React.FC = () => {
                 <PendingPayments />
             )}
 
+            {activeTab === 'withdrawals' && hasPermission('payments', 'read') && (
+                <WithdrawalRequests />
+            )}
+
             {activeTab === 'admins' && hasPermission('admins', 'read') && (
                 <AdminManagement />
             )}
@@ -521,7 +523,7 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {/* Access Denied */}
-            {activeTab !== 'overview' && admin && !hasPermission(activeTab as any, 'read') && (
+            {activeTab !== 'overview' && admin && activeTabPermission && !hasPermission(activeTabPermission as any, 'read') && (
                 <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                   <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Shield className="h-8 w-8 text-red-600" />

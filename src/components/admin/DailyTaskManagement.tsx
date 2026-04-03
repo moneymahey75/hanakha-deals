@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { adminSupabase as supabase } from '../../lib/adminSupabase';
+import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { Calendar, Plus, Search, Eye, Trash2, Gift, Video, Share2, Save, X, Link as LinkIcon, Target, Users, Award, CalendarClock, CreditCard as Edit } from 'lucide-react';
+
+let inFlightDailyTasksRequest: {
+  key: string;
+  promise: Promise<any[]>;
+} | null = null;
 
 interface DailyTask {
   tdt_id: string;
@@ -75,15 +80,24 @@ const DailyTaskManagement: React.FC = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.rpc('admin_get_daily_tasks', {
-        p_offset: 0,
-        p_limit: 1000
-      });
+      const requestPayload = {
+        offset: 0,
+        limit: 1000
+      };
+      const requestKey = JSON.stringify(requestPayload);
+      const requestPromise =
+        inFlightDailyTasksRequest?.key === requestKey
+          ? inFlightDailyTasksRequest.promise
+          : adminApi.post<any[]>('admin-get-daily-tasks', requestPayload);
 
-      if (error) {
-        console.error('Load tasks error:', error);
-        throw error;
+      if (inFlightDailyTasksRequest?.key !== requestKey) {
+        inFlightDailyTasksRequest = {
+          key: requestKey,
+          promise: requestPromise
+        };
       }
+
+      const data = await requestPromise;
 
       const formattedTasks = (data || [])
         .filter((task: any) => task.tdt_task_date === selectedDate)
@@ -100,6 +114,13 @@ const DailyTaskManagement: React.FC = () => {
       console.error('Load tasks failed:', error);
       notification.showError('Load Failed', 'Failed to load daily tasks');
     } finally {
+      const requestKey = JSON.stringify({
+        offset: 0,
+        limit: 1000
+      });
+      if (inFlightDailyTasksRequest?.key === requestKey) {
+        inFlightDailyTasksRequest = null;
+      }
       setLoading(false);
     }
   };
@@ -107,34 +128,18 @@ const DailyTaskManagement: React.FC = () => {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Debug: Check what the admin object contains
-    console.log('Admin object:', admin);
-
-    // Get the admin ID - try different possible property names
-    const adminId = admin?.tau_id || admin?.id || admin?.admin_id;
-
-    if (!adminId) {
-      console.error('Admin ID not found. Admin object:', admin);
-      notification.showError('Error', 'Admin not authenticated. Please log in again.');
-      return;
-    }
-
     try {
-      const { data, error } = await supabase.rpc('admin_create_daily_task', {
-        p_created_by: adminId,
-        p_task_type: newTask.task_type,
-        p_title: newTask.title,
-        p_description: newTask.description,
-        p_content_url: newTask.content_url,
-        p_coupon_id: newTask.coupon_id || null,
-        p_reward_amount: newTask.reward_amount,
-        p_task_date: newTask.task_date,
-        p_expires_at: new Date(newTask.expires_at).toISOString(),
-        p_is_active: newTask.is_active
+      await adminApi.post('admin-create-daily-task', {
+        taskType: newTask.task_type,
+        title: newTask.title,
+        description: newTask.description,
+        contentUrl: newTask.content_url,
+        couponId: newTask.coupon_id || null,
+        rewardAmount: newTask.reward_amount,
+        taskDate: newTask.task_date,
+        expiresAt: new Date(newTask.expires_at).toISOString(),
+        isActive: newTask.is_active
       });
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.message || 'Failed to create daily task');
 
       notification.showSuccess('Task Created', 'Daily task has been created successfully');
       setShowCreateModal(false);
@@ -150,22 +155,18 @@ const DailyTaskManagement: React.FC = () => {
     e.preventDefault();
 
     try {
-      const { error } = await supabase
-          .from('tbl_daily_tasks')
-          .update({
-            tdt_task_type: editTask.task_type,
-            tdt_title: editTask.title,
-            tdt_description: editTask.description,
-            tdt_content_url: editTask.content_url,
-            tdt_coupon_id: editTask.coupon_id || null,
-            tdt_reward_amount: editTask.reward_amount,
-            tdt_task_date: editTask.task_date,
-            tdt_expires_at: new Date(editTask.expires_at).toISOString(),
-            tdt_is_active: editTask.is_active
-          })
-          .eq('tdt_id', editTask.id);
-
-      if (error) throw error;
+      await adminApi.post('admin-update-daily-task', {
+        taskId: editTask.id,
+        taskType: editTask.task_type,
+        title: editTask.title,
+        description: editTask.description,
+        contentUrl: editTask.content_url,
+        couponId: editTask.coupon_id || null,
+        rewardAmount: editTask.reward_amount,
+        taskDate: editTask.task_date,
+        expiresAt: new Date(editTask.expires_at).toISOString(),
+        isActive: editTask.is_active
+      });
 
       notification.showSuccess('Task Updated', 'Daily task has been updated successfully');
       setShowEditModal(false);
@@ -179,12 +180,7 @@ const DailyTaskManagement: React.FC = () => {
   const handleDeleteTask = async (taskId: string) => {
     if (!window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) return;
     try {
-      const { error } = await supabase
-          .from('tbl_daily_tasks')
-          .delete()
-          .eq('tdt_id', taskId);
-
-      if (error) throw error;
+      await adminApi.post('admin-delete-daily-task', { taskId });
 
       notification.showSuccess('Task Deleted', 'Daily task has been deleted successfully');
       loadTasks();
