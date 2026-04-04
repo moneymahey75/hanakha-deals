@@ -12,6 +12,7 @@ export interface WalletState {
     balance: string;
     usdtBalance: string;
     walletName: string | null;
+    warning?: string | null;
 }
 
 export interface TransactionState {

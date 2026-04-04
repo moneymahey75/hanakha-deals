@@ -23,24 +23,24 @@ interface RegistrationPlan {
 const PAYMENT_POLL_INTERVAL = 5000;
 const PAYMENT_POLL_ATTEMPTS = 12;
 
+let cachedRegistrationPlan: RegistrationPlan | null = null;
+let inFlightRegistrationPlanRequest: Promise<RegistrationPlan | null> | null = null;
+
 const RegistrationPayment: React.FC = () => {
   const navigate = useNavigate();
   const { user, fetchUserData } = useAuth();
-  const { settings } = useAdmin();
+  const { settings, loading: settingsLoading } = useAdmin();
   const notification = useNotification();
-  const [plan, setPlan] = useState<RegistrationPlan | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [plan, setPlan] = useState<RegistrationPlan | null>(cachedRegistrationPlan);
+  const [loading, setLoading] = useState(!cachedRegistrationPlan);
 
   const [walletService] = useState(() => WalletService.getInstance());
-  const [availableWallets, setAvailableWallets] = useState<WalletInfoType[]>([]);
-  const [walletState, setWalletState] = useState<WalletState>({
-    isConnected: false,
-    address: null,
-    chainId: null,
-    balance: '0',
-    usdtBalance: '0',
-    walletName: null,
-  });
+  const [availableWallets, setAvailableWallets] = useState<WalletInfoType[]>(() =>
+    typeof window === 'undefined' ? [] : WalletService.getInstance().detectWallets()
+  );
+  const [walletState, setWalletState] = useState<WalletState>(() =>
+    WalletService.getInstance().getCurrentWalletState()
+  );
   const [isConnecting, setIsConnecting] = useState(false);
 
   const [transaction, setTransaction] = useState<TransactionState>({
@@ -68,27 +68,43 @@ const RegistrationPayment: React.FC = () => {
 
     const loadRegistrationData = async () => {
       try {
-        const { data, error } = await supabase
-          .from('tbl_subscription_plans')
-          .select('*')
-          .eq('tsp_type', 'registration')
-          .eq('tsp_is_active', true)
-          .maybeSingle();
+        const planRequest =
+          inFlightRegistrationPlanRequest ??
+          supabase
+            .from('tbl_subscription_plans')
+            .select('*')
+            .eq('tsp_type', 'registration')
+            .eq('tsp_is_active', true)
+            .maybeSingle()
+            .then(({ data, error }) => {
+              if (error) throw error;
+              return data as RegistrationPlan | null;
+            });
 
-        if (error) throw error;
+        inFlightRegistrationPlanRequest = planRequest;
+        const data = await planRequest;
+
         if (!data) {
           notification.showError('Error', 'No active registration plan found');
           navigate('/customer/dashboard');
           return;
         }
 
+        cachedRegistrationPlan = data;
         setPlan(data);
       } catch (error: any) {
         notification.showError('Load Failed', error.message);
       } finally {
+        inFlightRegistrationPlanRequest = null;
         setLoading(false);
       }
     };
+
+    if (cachedRegistrationPlan) {
+      setPlan(cachedRegistrationPlan);
+      setLoading(false);
+      return;
+    }
 
     loadRegistrationData();
   }, [user, navigate, notification]);
@@ -152,8 +168,26 @@ const RegistrationPayment: React.FC = () => {
   }, [settings, walletService]);
 
   useEffect(() => {
-    const wallets = walletService.detectWallets();
-    setAvailableWallets(wallets);
+    const refreshDetectedWallets = () => {
+      setAvailableWallets(walletService.detectWallets());
+    };
+
+    refreshDetectedWallets();
+
+    const timeoutIds = [250, 1000, 2500].map((delay) =>
+      window.setTimeout(refreshDetectedWallets, delay)
+    );
+
+    window.addEventListener('load', refreshDetectedWallets);
+    window.addEventListener('focus', refreshDetectedWallets);
+    window.addEventListener('ethereum#initialized', refreshDetectedWallets as EventListener);
+
+    return () => {
+      timeoutIds.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener('load', refreshDetectedWallets);
+      window.removeEventListener('focus', refreshDetectedWallets);
+      window.removeEventListener('ethereum#initialized', refreshDetectedWallets as EventListener);
+    };
   }, [walletService]);
 
   // Restore wallet state from service if the component re-mounts
@@ -181,6 +215,28 @@ const RegistrationPayment: React.FC = () => {
       return false;
     });
   }, [availableWallets, enabledWallets]);
+
+  const adminReceivingWallet = useMemo(() => {
+    return String(settings?.adminPaymentWallet || '').trim();
+  }, [settings?.adminPaymentWallet]);
+
+  const payNowDisabledReason = useMemo(() => {
+    if (settingsLoading) return 'Loading payment settings...';
+    if (parentAccountError) return parentAccountError;
+    if (!walletState.isConnected || !walletState.address) return 'Please connect your wallet to continue.';
+    if (walletState.warning) return walletState.warning;
+    if (transaction.isProcessing) return 'A payment is already being processed.';
+    if (!adminReceivingWallet) return 'Admin receiving wallet is not configured yet.';
+    return null;
+  }, [
+    settingsLoading,
+    parentAccountError,
+    walletState.isConnected,
+    walletState.address,
+    walletState.warning,
+    transaction.isProcessing,
+    adminReceivingWallet
+  ]);
 
   const saveWalletConnection = useCallback(async (address: string, walletName: string, walletType: string, chainId: number | null) => {
     if (!user || !address) return;
@@ -272,6 +328,7 @@ const RegistrationPayment: React.FC = () => {
         balance: '0',
         usdtBalance: '0',
         walletName: null,
+        warning: null,
       });
     } finally {
       setIsConnecting(false);
@@ -287,6 +344,7 @@ const RegistrationPayment: React.FC = () => {
       balance: '0',
       usdtBalance: '0',
       walletName: null,
+      warning: null,
     });
     setTransaction({
       isProcessing: false,
@@ -407,7 +465,7 @@ const RegistrationPayment: React.FC = () => {
       return;
     }
 
-    if (!settings.adminPaymentWallet) {
+    if (!adminReceivingWallet) {
       notification.showError('Error', 'Admin wallet not configured');
       return;
     }
@@ -438,7 +496,7 @@ const RegistrationPayment: React.FC = () => {
     setStatusMessage('Awaiting wallet confirmation...');
 
     try {
-      const { hash, steps } = await walletService.sendUSDTTransfer(settings.adminPaymentWallet, plan.tsp_price);
+      const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, plan.tsp_price);
 
       setTransaction({
         isProcessing: true,
@@ -683,9 +741,9 @@ const RegistrationPayment: React.FC = () => {
 
               <button
                 onClick={handlePayment}
-                disabled={!walletState.isConnected || transaction.isProcessing || !settings?.adminPaymentWallet || !!parentAccountError}
+                disabled={!!payNowDisabledReason}
                 className={`w-full py-3 rounded-lg font-medium flex items-center justify-center space-x-2 ${
-                  walletState.isConnected && !transaction.isProcessing && settings?.adminPaymentWallet && !parentAccountError
+                  !payNowDisabledReason
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
@@ -702,6 +760,12 @@ const RegistrationPayment: React.FC = () => {
                   </>
                 )}
               </button>
+
+              {payNowDisabledReason && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                  {payNowDisabledReason}
+                </p>
+              )}
 
               <p className="text-xs text-gray-500 text-center mt-4">
                 By proceeding, you agree to our terms and conditions

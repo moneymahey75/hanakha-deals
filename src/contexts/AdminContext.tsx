@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { adminApi } from '../lib/adminApi';
+import { supabase } from '../lib/supabase';
 
 let inFlightAdminSettingsRequest: Promise<any[]> | null = null;
 
@@ -210,6 +211,25 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   ]);
 
+  const fetchSettingsRows = useCallback(async (): Promise<any[]> => {
+    const adminSessionToken =
+      typeof window !== 'undefined' ? sessionStorage.getItem('admin_session_token') : null;
+
+    if (adminSessionToken) {
+      return await adminApi.post<any[]>('admin-get-settings', {});
+    }
+
+    const { data, error } = await supabase
+      .from('tbl_system_settings')
+      .select('tss_setting_key, tss_setting_value');
+
+    if (error) {
+      throw error;
+    }
+
+    return data || [];
+  }, []);
+
   // Function to load settings from database
   const loadSettings = useCallback(async () => {
     try {
@@ -220,7 +240,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
-      const fetchPromise = inFlightAdminSettingsRequest ?? adminApi.post<any[]>('admin-get-settings', {});
+      const fetchPromise = inFlightAdminSettingsRequest ?? fetchSettingsRows();
       inFlightAdminSettingsRequest = fetchPromise;
       const settingsData = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
@@ -474,7 +494,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       inFlightAdminSettingsRequest = null;
       setLoading(false);
     }
-  }, []);
+  }, [fetchSettingsRows]);
 
   // Load settings on component mount
   useEffect(() => {

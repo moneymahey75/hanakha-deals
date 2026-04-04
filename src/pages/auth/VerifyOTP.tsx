@@ -67,6 +67,7 @@ const VerifyOTP: React.FC = () => {
 
   // Initialize refs
   useEffect(() => {
+    mountedRef.current = true;
     otpRefs.current = otpRefs.current.slice(0, 6);
     return () => {
       mountedRef.current = false;

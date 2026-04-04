@@ -104,15 +104,26 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect }) 
               </div>
             </div>
 
+            {wallet.warning && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-sm font-medium text-amber-800">
+                  Wallet connected, but balance sync is unavailable.
+                </p>
+                <p className="text-xs text-amber-700 mt-1">
+                  {wallet.warning}
+                </p>
+              </div>
+            )}
+
             {/* Connection Status Indicator */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <div className={`${wallet.warning ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-lg p-3`}>
               <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-green-800">
-                Connected to {getNetworkName()}
+                <div className={`w-2 h-2 rounded-full animate-pulse ${wallet.warning ? 'bg-amber-400' : 'bg-green-400'}`}></div>
+                <span className={`text-sm font-medium ${wallet.warning ? 'text-amber-800' : 'text-green-800'}`}>
+                {wallet.warning ? 'Connected, but RPC needs attention' : `Connected to ${getNetworkName()}`}
               </span>
               </div>
-              <p className="text-xs text-green-600 mt-1">
+              <p className={`text-xs mt-1 ${wallet.warning ? 'text-amber-700' : 'text-green-600'}`}>
                 Chain ID: {wallet.chainId || 'Unknown'} • Ready for transactions
               </p>
             </div>

@@ -50,6 +50,7 @@ const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const MIN_REQUEST_INTERVAL = 30000; // 30 seconds between requests
 const MAX_ATTEMPTS = 5;
 const REQUEST_TIMEOUT = 15000; // 15 seconds timeout for requests
+const SEND_OPERATION_TIMEOUT = 15000; // Keep per-channel send timeouts aligned with the overall request timeout
 const TEST_OTP_CACHE_DURATION = 60000; // 1 minute cache for test OTP settings
 
 export class OTPService {
@@ -290,14 +291,14 @@ export class OTPService {
         if (otpType === 'email') {
           sendResult = await this.withTimeout(
               this.sendEmailOTP(userId, contactInfo, otpCode),
-              10000,
+              SEND_OPERATION_TIMEOUT,
               'Email OTP send'
           );
         } else {
           console.log('Sending mobile OTP...');
           sendResult = await this.withTimeout(
               this.sendMobileOTP(userId, contactInfo, otpCode),
-              10000,
+              SEND_OPERATION_TIMEOUT,
               'Mobile OTP send'
           );
         }

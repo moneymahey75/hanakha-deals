@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import { WalletInfo, WalletState } from '../types/wallet';
 
+const WALLET_STATE_STORAGE_KEY = 'registration_payment_wallet_state';
+
 // BSC Network Configurations
 const BSC_TESTNET_CONFIG = {
   chainId: '0x61', // 97 in decimal
@@ -10,7 +12,10 @@ const BSC_TESTNET_CONFIG = {
     symbol: 'BNB',
     decimals: 18,
   },
-  rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
+  rpcUrls: [
+    'https://data-seed-prebsc-1-s1.binance.org:8545/',
+    'https://data-seed-prebsc-2-s1.binance.org:8545/'
+  ],
   blockExplorerUrls: ['https://testnet.bscscan.com/'],
 };
 
@@ -65,6 +70,7 @@ export class WalletService {
     balance: '0',
     usdtBalance: '0',
     walletName: null,
+    warning: null,
   };
 
   // Singleton pattern
@@ -78,6 +84,30 @@ export class WalletService {
   // Private constructor to enforce singleton
   private constructor() {
     console.log('WalletService instance created');
+    if (typeof window !== 'undefined') {
+      try {
+        const persistedState = sessionStorage.getItem(WALLET_STATE_STORAGE_KEY);
+        if (persistedState) {
+          this.currentWalletState = JSON.parse(persistedState) as WalletState;
+        }
+      } catch (error) {
+        console.warn('Failed to restore persisted wallet state:', error);
+      }
+    }
+  }
+
+  private persistCurrentWalletState(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+      if (this.currentWalletState.isConnected) {
+        sessionStorage.setItem(WALLET_STATE_STORAGE_KEY, JSON.stringify(this.currentWalletState));
+      } else {
+        sessionStorage.removeItem(WALLET_STATE_STORAGE_KEY);
+      }
+    } catch (error) {
+      console.warn('Failed to persist wallet state:', error);
+    }
   }
 
   // Method to set admin settings from context
@@ -106,6 +136,21 @@ export class WalletService {
   private getNetworkConfig() {
     const isLive = this.adminSettings?.paymentMode === '1';
     return isLive ? BSC_MAINNET_CONFIG : BSC_TESTNET_CONFIG;
+  }
+
+  private buildRpcUnavailableMessage(): string {
+    const networkConfig = this.getNetworkConfig();
+    return `${networkConfig.chainName} RPC is not responding in your wallet. Please update the network RPC URL in MetaMask and reconnect.`;
+  }
+
+  private isRpcFetchError(error: any): boolean {
+    const message = String(error?.message || error?.error?.message || '').toLowerCase();
+    const nestedMessage = String(error?.data?.cause?.message || '').toLowerCase();
+    return (
+      message.includes('failed to fetch') ||
+      nestedMessage.includes('failed to fetch') ||
+      (error?.code === -32603 && (message.includes('fetch') || nestedMessage.includes('fetch')))
+    );
   }
 
   // Get USDT contract address from settings
@@ -238,15 +283,27 @@ export class WalletService {
       console.log('Switching to correct network...');
       await this.switchToCorrectNetwork(walletProvider);
 
+      // Recreate the provider after a chain switch so subsequent reads use the active network.
+      await new Promise(resolve => setTimeout(resolve, 150));
+      this.provider = new ethers.BrowserProvider(walletProvider);
+
       // Get signer and address
       this.signer = await this.provider.getSigner();
       const address = await this.signer.getAddress();
       const network = await this.provider.getNetwork();
 
       console.log('Getting balances...');
-      // Get balances
-      const balance = await this.getBNBBalance(address);
-      const usdtBalance = await this.getUSDTBalance(address);
+      const [bnbBalanceResult, usdtBalanceResult] = await Promise.allSettled([
+        this.readBNBBalance(address),
+        this.readUSDTBalance(address)
+      ]);
+
+      const balance = bnbBalanceResult.status === 'fulfilled' ? bnbBalanceResult.value : '0.00';
+      const usdtBalance = usdtBalanceResult.status === 'fulfilled' ? usdtBalanceResult.value : '0.00';
+      const hasRpcWarning =
+        (bnbBalanceResult.status === 'rejected' && this.isRpcFetchError(bnbBalanceResult.reason)) ||
+        (usdtBalanceResult.status === 'rejected' && this.isRpcFetchError(usdtBalanceResult.reason));
+      const warning = hasRpcWarning ? this.buildRpcUnavailableMessage() : null;
 
       const newWalletState: WalletState = {
         isConnected: true,
@@ -255,15 +312,18 @@ export class WalletService {
         balance,
         usdtBalance,
         walletName: this.getWalletName(walletProvider),
+        warning,
       };
 
       this.currentWalletState = newWalletState; // Update internal state
+      this.persistCurrentWalletState();
 
       console.log('Wallet connected successfully:', {
         address: address.substring(0, 10) + '...',
         network: Number(network.chainId),
         balance: balance.substring(0, 8),
-        usdtBalance: usdtBalance.substring(0, 8)
+        usdtBalance: usdtBalance.substring(0, 8),
+        warning,
       });
 
       return newWalletState;
@@ -285,7 +345,8 @@ export class WalletService {
       // Ensure internal state is cleared on failure
       this.provider = null;
       this.signer = null;
-      this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null };
+      this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null, warning: null };
+      this.persistCurrentWalletState();
 
 
       throw new Error(`Connection failed: ${error.message}`);
@@ -337,14 +398,18 @@ export class WalletService {
   }
 
   // Get BNB balance
-  async getBNBBalance(address: string): Promise<string> {
+  private async readBNBBalance(address: string): Promise<string> {
     if (!this.provider) {
       throw new Error('Provider not initialized');
     }
 
+    const balance = await this.provider.getBalance(address);
+    return ethers.formatEther(balance);
+  }
+
+  async getBNBBalance(address: string): Promise<string> {
     try {
-      const balance = await this.provider.getBalance(address);
-      return ethers.formatEther(balance);
+      return await this.readBNBBalance(address);
     } catch (error) {
       console.error('Error fetching BNB balance:', error);
       return '0.00';
@@ -352,27 +417,28 @@ export class WalletService {
   }
 
   // Get USDT balance
-  async getUSDTBalance(address: string): Promise<string> {
+  private async readUSDTBalance(address: string): Promise<string> {
     if (!this.provider) {
       throw new Error('Provider not initialized');
     }
 
+    const usdtContractAddress = this.getUSDTContractAddress();
+    console.log('Fetching USDT balance from:', usdtContractAddress);
+
+    const contract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.provider);
+    const balance = await contract.balanceOf(address);
+    const decimals = await contract.decimals();
+
+    const formattedBalance = ethers.formatUnits(balance, decimals);
+    console.log('USDT balance:', formattedBalance);
+
+    return formattedBalance;
+  }
+
+  async getUSDTBalance(address: string): Promise<string> {
     try {
-      const usdtContractAddress = this.getUSDTContractAddress();
-      console.log('Fetching USDT balance from:', usdtContractAddress);
-
-      // FIX: Ensure we're using a proper Provider instance for the view call and catch contract errors
-      const contract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.provider);
-
-      const balance = await contract.balanceOf(address);
-      const decimals = await contract.decimals();
-
-      const formattedBalance = ethers.formatUnits(balance, decimals);
-      console.log('USDT balance:', formattedBalance);
-
-      return formattedBalance;
+      return await this.readUSDTBalance(address);
     } catch (error: any) {
-      // FIX: Log the full error details to identify the cause of the CALL_EXCEPTION
       console.error('❌ Critical Error fetching USDT balance:', error);
 
       if (error.code === 'CALL_EXCEPTION') {
@@ -592,7 +658,8 @@ export class WalletService {
     this.adminSettings = null;
     this.isConnecting = false;
     // Clear internal state on disconnect
-    this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null };
+    this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null, warning: null };
+    this.persistCurrentWalletState();
   }
 
   // Get wallet name from provider
