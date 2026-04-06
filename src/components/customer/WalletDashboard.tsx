@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
+import { processingIndicator } from '../../lib/processingIndicator';
 import {
   Wallet,
   DollarSign,
@@ -87,9 +88,10 @@ interface DailyTask {
   tdt_is_active: boolean;
   coupon_info?: {
     title: string;
-    coupon_code: string;
+    coupon_code?: string | null;
     image_url?: string;
     website_url?: string;
+    description?: string | null;
   };
   user_task?: {
     completion_status: 'assigned' | 'in_progress' | 'completed' | 'verified' | 'expired' | 'failed';
@@ -98,6 +100,57 @@ interface DailyTask {
     user_note?: string;
   };
 }
+
+const getCustomerFriendlyWithdrawalMessage = (reason?: string | null) => {
+  if (!reason) return null;
+
+  const normalizedReason = reason.toLowerCase();
+
+  if (normalizedReason.includes('insufficient') && normalizedReason.includes('balance')) {
+    return 'This withdrawal could not be completed because the payout wallet has insufficient balance. Please try again later or contact support.';
+  }
+
+  if (normalizedReason.includes('wallet') || normalizedReason.includes('address')) {
+    return 'This withdrawal could not be completed due to a wallet verification issue. Please review your default wallet or contact support.';
+  }
+
+  if (
+    normalizedReason.includes('network') ||
+    normalizedReason.includes('timeout') ||
+    normalizedReason.includes('rpc') ||
+    normalizedReason.includes('blockchain') ||
+    normalizedReason.includes('transfer')
+  ) {
+    return 'This withdrawal could not be completed because of a temporary processing issue. Please try again later or contact support.';
+  }
+
+  if (normalizedReason.includes('reject')) {
+    return 'This withdrawal request was not approved. Please contact support if you need more details.';
+  }
+
+  return 'This withdrawal could not be completed. Please contact support if you need more details.';
+};
+
+const renderDescriptionWithBullets = (description?: string | null) => {
+  if (!description) return null;
+
+  const items = description
+    .split(/\r?\n+/)
+    .map((item) => item.replace(/^[\s\-*•\d.]+/, '').trim())
+    .filter(Boolean);
+
+  if (items.length <= 1) {
+    return <p className="text-gray-600 text-sm mb-4">{description}</p>;
+  }
+
+  return (
+    <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-gray-600">
+      {items.map((item, index) => (
+        <li key={`${item}-${index}`}>{item}</li>
+      ))}
+    </ul>
+  );
+};
 
 const WalletDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -188,7 +241,7 @@ const WalletDashboard: React.FC = () => {
           .from('tbl_daily_tasks')
           .select(`
           *,
-          tbl_coupons(tc_title, tc_coupon_code, tc_image_url, tc_website_url),
+          tbl_coupons(tc_title, tc_coupon_code, tc_image_url, tc_website_url, tc_description),
           tbl_user_tasks(tut_completion_status, tut_completed_at, tut_user_feedback, tut_user_note)
         `)
           .eq('tdt_task_date', today)
@@ -204,7 +257,8 @@ const WalletDashboard: React.FC = () => {
           title: task.tbl_coupons.tc_title,
           coupon_code: task.tbl_coupons.tc_coupon_code,
           image_url: task.tbl_coupons.tc_image_url,
-          website_url: task.tbl_coupons.tc_website_url
+          website_url: task.tbl_coupons.tc_website_url,
+          description: task.tbl_coupons.tc_description
         } : undefined,
         user_task: task.tbl_user_tasks?.[0] ? {
           completion_status: task.tbl_user_tasks[0].tut_completion_status,
@@ -346,18 +400,20 @@ const WalletDashboard: React.FC = () => {
         throw new Error('Missing user session');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-withdrawal`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: withdrawalAmount
-        })
-      });
+      const result = await processingIndicator.track(async () => {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-withdrawal`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            amount: withdrawalAmount
+          })
+        });
 
-      const result = await response.json();
+        return response.json();
+      }, 'Submitting withdrawal...');
 
       if (!result.success) {
         throw new Error(result.error || 'Withdrawal request failed');
@@ -391,16 +447,18 @@ const WalletDashboard: React.FC = () => {
         throw new Error('Missing user session');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-withdrawal`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ withdrawalId })
-      });
+      const result = await processingIndicator.track(async () => {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-withdrawal`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ withdrawalId })
+        });
 
-      const result = await response.json();
+        return response.json();
+      }, 'Cancelling withdrawal...');
       if (!result.success) {
         throw new Error(result.error || 'Cancellation failed');
       }
@@ -447,12 +505,14 @@ const WalletDashboard: React.FC = () => {
     }
   };
 
-  const handleUseCoupon = async () => {
-    if (!selectedTask || !user?.id) return;
+  const handleUseCoupon = async (task = selectedTask) => {
+    if (!task || !user?.id) return;
+
+    setSelectedTask(task);
 
     // Open the coupon website in a new tab
-    if (selectedTask.coupon_info?.website_url) {
-      window.open(selectedTask.coupon_info.website_url, '_blank');
+    if (task.coupon_info?.website_url) {
+      window.open(task.coupon_info.website_url, '_blank', 'noopener,noreferrer');
     }
 
     setShowConfirmationModal(true);
@@ -485,6 +545,30 @@ const WalletDashboard: React.FC = () => {
     } catch (error: any) {
       console.error('Failed to complete task:', error);
       notification.showError('Task Failed', error.message || 'Failed to complete task');
+    }
+  };
+
+  const handleCouponNotUsed = async () => {
+    if (!selectedTask || !user?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('tbl_user_tasks')
+        .upsert({
+          tut_user_id: user.id,
+          tut_task_id: selectedTask.tdt_id,
+          tut_completion_status: 'in_progress',
+          tut_user_feedback: 'disliked',
+          tut_user_note: 'Coupon was not used'
+        });
+
+      if (error) throw error;
+
+      notification.showInfo('Noted', 'We marked this coupon as not used.');
+      setShowConfirmationModal(false);
+      setSelectedTask(null);
+    } catch (error: any) {
+      notification.showError('Update Failed', error.message || 'Failed to update coupon usage');
     }
   };
 
@@ -793,7 +877,7 @@ const WalletDashboard: React.FC = () => {
                         </span>
                             </div>
 
-                            <p className="text-gray-600 text-sm mb-4">{task.tdt_description}</p>
+                            {renderDescriptionWithBullets(task.coupon_info?.description || task.tdt_description)}
 
                             {task.coupon_info && (
                                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
@@ -804,7 +888,7 @@ const WalletDashboard: React.FC = () => {
                             </span>
                                   </div>
                                   <p className="text-xs text-orange-600 font-mono mt-1">
-                                    Code: {task.coupon_info.coupon_code}
+                                    Code: {task.coupon_info.coupon_code || 'No code required'}
                                   </p>
                                 </div>
                             )}
@@ -853,7 +937,7 @@ const WalletDashboard: React.FC = () => {
                                         <button
                                             onClick={() => {
                                               setSelectedTask(task);
-                                              handleUseCoupon();
+                                              handleUseCoupon(task);
                                             }}
                                             className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
                                         >
@@ -1032,9 +1116,12 @@ const WalletDashboard: React.FC = () => {
                             </div>
                           </div>
                           {request.twr_failure_reason && (
-                            <p className="text-xs text-red-600 mt-2">
-                              {request.twr_failure_reason}
-                            </p>
+                            <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                              <p className="text-xs font-medium text-red-700">Update</p>
+                              <p className="text-xs text-red-600 mt-1">
+                                {getCustomerFriendlyWithdrawalMessage(request.twr_failure_reason)}
+                              </p>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -1132,13 +1219,10 @@ const WalletDashboard: React.FC = () => {
                 <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
                   <button
                       type="button"
-                      onClick={() => {
-                        setShowConfirmationModal(false);
-                        setSelectedTask(null);
-                      }}
-                      className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    No, I didn't use it
+                                onClick={handleCouponNotUsed}
+                                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                            >
+                                No, I didn't use it
                   </button>
                   <button
                       onClick={confirmCouponUsage}

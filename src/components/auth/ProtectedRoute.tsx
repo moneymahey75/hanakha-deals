@@ -21,6 +21,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
+  const [hasValidSession, setHasValidSession] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<{
     needsVerification: boolean;
     settings: any;
@@ -35,18 +36,51 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         // Wait a bit for auth context to initialize
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Check if we have a valid session
         const sessionInfo = sessionUtils.getSessionInfo();
+        let liveSession = null;
+
+        if (sessionInfo.isValid) {
+          setHasValidSession(true);
+        }
 
         if (!sessionInfo.isValid && !loading) {
-          console.log('🔒 No valid session found in ProtectedRoute');
-          // Session will be cleared by sessionUtils, no need to clear here
+          console.log('🔍 Cached session is invalid, checking live Supabase session');
+          try {
+            const sessionResult = await Promise.race([
+              supabase.auth.getSession(),
+              new Promise<never>((_, reject) => {
+                window.setTimeout(() => reject(new Error('ProtectedRoute session check timed out')), 8000);
+              })
+            ]);
+
+            liveSession = sessionResult.data.session;
+
+            if (!liveSession) {
+              console.log('🔄 No live session, attempting restore');
+              liveSession = await Promise.race([
+                import('../../lib/supabase').then(({ sessionManager }) => sessionManager.restoreSession()),
+                new Promise<never>((_, reject) => {
+                  window.setTimeout(() => reject(new Error('ProtectedRoute session restore timed out')), 10000);
+                })
+              ]);
+            }
+
+            setHasValidSession(!!liveSession);
+          } catch (error) {
+            console.error('❌ Live session check failed in ProtectedRoute:', error);
+            setHasValidSession(false);
+          }
         }
 
         // If user exists and verification is required, check verification status
         if (user && requiresVerification) {
           console.log('🔍 Checking verification status for user:', user.id);
-          const status = await checkVerificationStatus(user.id);
+          const status = await Promise.race([
+            checkVerificationStatus(user.id),
+            new Promise<{ needsVerification: boolean; settings: any }>((resolve) => {
+              window.setTimeout(() => resolve({ needsVerification: false, settings: null }), 10000);
+            })
+          ]);
           setVerificationStatus(status);
           console.log('📋 Verification status:', status);
         }
@@ -86,9 +120,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/" replace />;
   }
 
-  // Additional session validity check
-  const sessionInfo = sessionUtils.getSessionInfo();
-  if (!sessionInfo.isValid) {
+  // Use the result of the route-level live session check instead of relying only on local cache.
+  if (!hasValidSession) {
     console.log('🔒 Invalid session detected, redirecting to login');
     sessionUtils.clearAllSessions();
     return <Navigate to={`/${userType}/login`} replace state={{ from: location }} />;

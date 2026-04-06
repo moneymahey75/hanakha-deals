@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase.ts';
 import { useAuth } from '../../contexts/AuthContext.tsx';
 import { useNotification } from '../ui/NotificationProvider';
+import { processingIndicator } from '../../lib/processingIndicator';
 import {
     Calendar,
     Gift,
@@ -24,7 +25,7 @@ interface CouponTask {
     tc_id: string;
     tc_title: string;
     tc_description?: string;
-    tc_coupon_code: string;
+    tc_coupon_code?: string | null;
     tc_image_url?: string;
     tc_website_url?: string;
     tc_valid_from: string;
@@ -46,6 +47,27 @@ interface SocialTask {
 }
 
 type DailyTask = CouponTask | SocialTask;
+
+const renderDescriptionWithBullets = (description?: string | null) => {
+    if (!description) return null;
+
+    const items = description
+        .split(/\r?\n+/)
+        .map((item) => item.replace(/^[\s\-*•\d.]+/, '').trim())
+        .filter(Boolean);
+
+    if (items.length <= 1) {
+        return <p className="text-gray-600 text-sm mb-4">{description}</p>;
+    }
+
+    return (
+        <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-gray-600">
+            {items.map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+            ))}
+        </ul>
+    );
+};
 
 interface TaskViewState {
     [key: string]: {
@@ -272,11 +294,13 @@ const DailyTasksDashboard: React.FC = () => {
         }
     };
 
-    const handleUseCoupon = async () => {
-        if (!selectedTask || !user?.id || !('tc_id' in selectedTask)) return;
+    const handleUseCoupon = async (task = selectedTask) => {
+        if (!task || !user?.id || !('tc_id' in task)) return;
 
-        if (selectedTask.tc_website_url) {
-            window.open(selectedTask.tc_website_url, '_blank');
+        setSelectedTask(task);
+
+        if (task.tc_website_url) {
+            window.open(task.tc_website_url, '_blank', 'noopener,noreferrer');
         }
 
         setShowConfirmationModal(true);
@@ -286,7 +310,10 @@ const DailyTasksDashboard: React.FC = () => {
         if (!selectedTask || !user?.id || !('tc_id' in selectedTask)) return;
 
         try {
-            await saveCouponInteraction(selectedTask.tc_id, 'used');
+            await processingIndicator.track(
+                () => saveCouponInteraction(selectedTask.tc_id, 'used'),
+                'Saving coupon usage...'
+            );
 
             notification.showSuccess(
                 'Coupon Used!',
@@ -295,10 +322,29 @@ const DailyTasksDashboard: React.FC = () => {
 
             setShowConfirmationModal(false);
             setSelectedTask(null);
+            loadDailyTasks();
 
         } catch (error: any) {
             console.error('Failed to complete task:', error);
             notification.showError('Task Failed', 'Failed to complete task');
+        }
+    };
+
+    const handleCouponNotUsed = async () => {
+        if (!selectedTask || !user?.id || !('tc_id' in selectedTask)) return;
+
+        try {
+            await processingIndicator.track(
+                () => saveCouponInteraction(selectedTask.tc_id, 'unused'),
+                'Updating coupon status...'
+            );
+
+            notification.showInfo('Noted', `We marked "${selectedTask.tc_title}" as not used.`);
+            setShowConfirmationModal(false);
+            setSelectedTask(null);
+        } catch (error: any) {
+            console.error('Failed to save coupon interaction:', error);
+            notification.showError('Update Failed', 'Failed to update coupon usage');
         }
     };
 
@@ -396,9 +442,7 @@ const DailyTasksDashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            <p className="text-gray-600 text-sm mb-4">
-                                {isCouponTask(task) ? task.tc_description : task.tdt_description}
-                            </p>
+                            {renderDescriptionWithBullets(isCouponTask(task) ? task.tc_description : task.tdt_description)}
 
                             {isCouponTask(task) && (
                                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
@@ -412,7 +456,7 @@ const DailyTasksDashboard: React.FC = () => {
                                     {viewState.isCodeVisible ? (
                                         <>
                                             <p className="text-xs text-orange-600 font-mono mt-1">
-                                                Code: {task.tc_coupon_code}
+                                                Code: {task.tc_coupon_code || 'No code required'}
                                             </p>
                                             {task.tc_website_url && (
                                                 <div className="mt-2">
@@ -500,7 +544,7 @@ const DailyTasksDashboard: React.FC = () => {
                                     <button
                                         onClick={() => {
                                             setSelectedTask(task);
-                                            handleUseCoupon();
+                                            handleUseCoupon(task);
                                         }}
                                         className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors mt-2"
                                     >
@@ -558,7 +602,7 @@ const DailyTasksDashboard: React.FC = () => {
 
                         <div className="mb-6 p-4 bg-blue-50 rounded-lg">
                             <h4 className="font-medium text-blue-900">{selectedTask.tc_title}</h4>
-                            <p className="text-sm text-blue-700 mt-1">Coupon Code: {selectedTask.tc_coupon_code}</p>
+                            <p className="text-sm text-blue-700 mt-1">Coupon Code: {selectedTask.tc_coupon_code || 'No code required'}</p>
                         </div>
 
                         <div className="space-y-4">
@@ -625,10 +669,7 @@ const DailyTasksDashboard: React.FC = () => {
                         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setShowConfirmationModal(false);
-                                    setSelectedTask(null);
-                                }}
+                                onClick={handleCouponNotUsed}
                                 className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
                             >
                                 No, I didn't use it

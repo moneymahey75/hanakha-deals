@@ -1,5 +1,5 @@
 // Session utility functions for enhanced session management
-import { sessionManager } from '../lib/supabase';
+import { supabase, sessionManager } from '../lib/supabase';
 import { adminSessionManager } from '../lib/adminSupabase';
 
 export interface SessionInfo {
@@ -122,9 +122,11 @@ export const sessionUtils = {
             // For customer area, check Supabase session
             if (!sessionInfo.isValid) {
               if (!sessionUtils.isPublicPage()) {
-                console.log('🔒 No valid user session, redirecting to customer login');
-                sessionUtils.clearAllSessions();
-                window.location.href = '/customer/login';
+                console.log('⚠️ Cached user session is invalid, attempting recovery...');
+                const restored = await sessionUtils.refreshSession();
+                if (!restored) {
+                  console.log('ℹ️ Session recovery was not possible, leaving route handling to auth guards');
+                }
               }
             } else {
               // FIX: Manually refresh Supabase token if session is expiring soon
@@ -190,6 +192,13 @@ export const sessionUtils = {
   refreshSession: async (): Promise<boolean> => {
     try {
       console.log('🔄 Manually refreshing session...');
+
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!error && session?.user) {
+        sessionManager.saveSession(session);
+        return true;
+      }
+
       const restoredSession = await sessionManager.restoreSession();
       return !!restoredSession;
     } catch (error) {

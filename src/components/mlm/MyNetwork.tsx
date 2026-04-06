@@ -132,9 +132,6 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                   Name
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Sponsorship
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -170,7 +167,6 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                     <td className="px-4 py-3 text-sm text-gray-700">
                       {renderName(ref)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{ref.userData?.email || ''}</td>
                     <td className="px-4 py-3 text-sm text-gray-700 font-mono">{ref.sponsorshipNumber}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">Level {ref.level}</td>
                     <td className="px-4 py-3 text-sm">

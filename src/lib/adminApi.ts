@@ -1,3 +1,5 @@
+import { processingIndicator } from './processingIndicator';
+
 type AdminApiResponse<T> = {
   success: boolean;
   error?: string;
@@ -19,28 +21,30 @@ const getAdminSessionToken = (): string | null => {
 
 export const adminApi = {
   async post<T = any>(path: string, body?: Record<string, any>): Promise<T> {
-    const token = getAdminSessionToken();
-    if (!token) {
-      throw new Error('Admin session not found');
-    }
+    return processingIndicator.track(async () => {
+      const token = getAdminSessionToken();
+      if (!token) {
+        throw new Error('Admin session not found');
+      }
 
-    const baseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const response = await fetch(`${baseUrl}/functions/v1/${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${anonKey}`,
-        apikey: anonKey,
-        'X-Admin-Session': token
-      },
-      body: JSON.stringify(body || {})
-    });
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const response = await fetch(`${baseUrl}/functions/v1/${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey,
+          'X-Admin-Session': token
+        },
+        body: JSON.stringify(body || {})
+      });
 
-    const result = (await response.json()) as AdminApiResponse<T>;
-    if (!response.ok || !result?.success) {
-      throw new Error(result?.error || 'Request failed');
-    }
-    return (result.data ?? result) as T;
+      const result = (await response.json()) as AdminApiResponse<T>;
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || 'Request failed');
+      }
+      return (result.data ?? result) as T;
+    }, 'Processing request...');
   }
 };

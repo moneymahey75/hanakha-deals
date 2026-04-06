@@ -27,7 +27,7 @@ interface CouponInteraction {
     coupon_info: {
         tc_id: string;
         tc_title: string;
-        tc_coupon_code: string;
+        tc_coupon_code?: string | null;
         tc_description: string;
         tc_image_url: string;
         tc_website_url: string;
@@ -36,6 +36,27 @@ interface CouponInteraction {
         tc_share_reward_amount: number;
     };
 }
+
+const renderDescriptionWithBullets = (description?: string | null) => {
+    if (!description) return null;
+
+    const items = description
+        .split(/\r?\n+/)
+        .map((item) => item.replace(/^[\s\-*•\d.]+/, '').trim())
+        .filter(Boolean);
+
+    if (items.length <= 1) {
+        return <p className="text-sm text-gray-500 mt-1">{description}</p>;
+    }
+
+    return (
+        <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-500">
+            {items.map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+            ))}
+        </ul>
+    );
+};
 
 const CouponInteractionsList: React.FC = () => {
     const { user } = useAuth();
@@ -301,7 +322,7 @@ const CouponInteractionsList: React.FC = () => {
                                     </div>
                                     <div className="flex-grow">
                                         <h4 className="font-semibold text-gray-900">{interaction.coupon_info.tc_title}</h4>
-                                        <p className="text-sm text-gray-500 mt-1">{interaction.coupon_info.tc_description}</p>
+                                        {renderDescriptionWithBullets(interaction.coupon_info.tc_description)}
                                         <div className="flex items-center space-x-4 mt-2">
                                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                                 interaction.tci_interaction_type === 'liked' ? 'bg-green-100 text-green-800' :
@@ -330,7 +351,7 @@ const CouponInteractionsList: React.FC = () => {
                                 <div>
                                     <span className="text-sm font-medium text-gray-700">Coupon Code:</span>
                                     <p className="text-sm font-mono text-gray-900 bg-gray-100 px-2 py-1 rounded mt-1">
-                                        {interaction.coupon_info.tc_coupon_code}
+                                        {interaction.coupon_info.tc_coupon_code || 'No code required'}
                                     </p>
                                 </div>
                                 <div>

@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { CheckCircle, XCircle, AlertCircle, Info, X, Loader2 } from 'lucide-react';
+import { processingIndicator } from '../../lib/processingIndicator';
 
 interface Notification {
   id: string;
@@ -29,6 +30,11 @@ export const useNotification = () => {
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [processingState, setProcessingState] = useState({ activeCount: 0, message: 'Processing...' });
+
+  useEffect(() => {
+    return processingIndicator.subscribe(setProcessingState);
+  }, []);
 
   const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(notification => notification.id !== id));
@@ -103,6 +109,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   return (
     <NotificationContext.Provider value={value}>
       {children}
+
+      {processingState.activeCount > 0 && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/35 backdrop-blur-[2px]">
+          <div className="mx-4 flex min-w-[260px] items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-2xl">
+            <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+            <div>
+              <p className="text-sm font-semibold text-gray-900">{processingState.message}</p>
+              <p className="text-xs text-gray-500">Please wait while we complete your request.</p>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Notification Container */}
       <div className="fixed top-20 right-4 z-50 space-y-3 max-w-sm w-full">

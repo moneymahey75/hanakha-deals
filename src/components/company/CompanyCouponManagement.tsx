@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
+import { processingIndicator } from '../../lib/processingIndicator';
 import {
   Gift,
   Plus,
@@ -28,14 +29,14 @@ interface Coupon {
   tc_id: string;
   tc_title: string;
   tc_description?: string;
-  tc_coupon_code: string;
-  tc_discount_type: 'percentage' | 'fixed_amount';
-  tc_discount_value: number;
+  tc_coupon_code?: string | null;
+  tc_discount_type?: 'percentage' | 'fixed_amount' | null;
+  tc_discount_value?: number | null;
   tc_image_url?: string;
   tc_terms_conditions?: string;
   tc_valid_from: string;
   tc_valid_until: string;
-  tc_usage_limit: number;
+  tc_usage_limit?: number | null;
   tc_used_count: number;
   tc_share_reward_amount: number;
   tc_status: 'pending' | 'approved' | 'declined' | 'cancelled' | 'expired';
@@ -55,17 +56,33 @@ const CompanyCouponManagement: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const notification = useNotification();
 
+  const toLocalISODate = (date: Date) => date.toLocaleDateString('en-CA');
+  const addDays = (date: Date, days: number) => {
+    const copy = new Date(date);
+    copy.setDate(copy.getDate() + days);
+    return copy;
+  };
+  const normalizeDateToIso = (value: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T00:00:00`).toISOString();
+    return new Date(value).toISOString();
+  };
+  const formatDateForInput = (value: string) => {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    return new Date(value).toLocaleDateString('en-CA');
+  };
+
   const [newCoupon, setNewCoupon] = useState({
     title: '',
     description: '',
     coupon_code: '',
-    discount_type: 'percentage' as 'percentage' | 'fixed_amount',
-    discount_value: 0,
+    discount_type: '' as '' | 'percentage' | 'fixed_amount',
+    discount_value: '',
     image_url: '',
     terms_conditions: '',
-    valid_from: new Date().toISOString().split('T')[0],
-    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    usage_limit: 1000,
+    valid_from: toLocalISODate(new Date()),
+    valid_until: toLocalISODate(addDays(new Date(), 30)),
+    usage_limit: '',
     share_reward_amount: 0.5,
     is_active: true
   });
@@ -109,36 +126,39 @@ const CompanyCouponManagement: React.FC = () => {
     if (!user?.id) return;
 
     try {
-      // Get company ID
-      const { data: companyData, error: companyError } = await supabase
-        .from('tbl_companies')
-        .select('tc_id')
-        .eq('tc_user_id', user.id)
-        .single();
+      await processingIndicator.track(async () => {
+        const { data: companyData, error: companyError } = await supabase
+          .from('tbl_companies')
+          .select('tc_id')
+          .eq('tc_user_id', user.id)
+          .single();
 
-      if (companyError) throw companyError;
+        if (companyError) throw companyError;
 
-      const { error } = await supabase
-        .from('tbl_coupons')
-        .insert({
+        const payload = {
           tc_created_by: user.id,
           tc_company_id: companyData.tc_id,
           tc_title: newCoupon.title,
-          tc_description: newCoupon.description,
-          tc_coupon_code: newCoupon.coupon_code,
-          tc_discount_type: newCoupon.discount_type,
-          tc_discount_value: newCoupon.discount_value,
-          tc_image_url: newCoupon.image_url,
-          tc_terms_conditions: newCoupon.terms_conditions,
-          tc_valid_from: new Date(newCoupon.valid_from).toISOString(),
-          tc_valid_until: new Date(newCoupon.valid_until).toISOString(),
-          tc_usage_limit: newCoupon.usage_limit,
+          tc_description: newCoupon.description || null,
+          tc_coupon_code: newCoupon.coupon_code || null,
+          tc_discount_type: (newCoupon.discount_type || null) as 'percentage' | 'fixed_amount' | null,
+          tc_discount_value: newCoupon.discount_value === '' ? null : Number(newCoupon.discount_value),
+          tc_image_url: newCoupon.image_url || null,
+          tc_terms_conditions: newCoupon.terms_conditions || null,
+          tc_valid_from: normalizeDateToIso(newCoupon.valid_from),
+          tc_valid_until: normalizeDateToIso(newCoupon.valid_until),
+          ...(newCoupon.usage_limit === '' ? {} : { tc_usage_limit: Number(newCoupon.usage_limit) }),
           tc_share_reward_amount: newCoupon.share_reward_amount,
-          tc_status: 'pending', // Companies submit for approval
+          tc_status: 'pending' as const,
           tc_is_active: newCoupon.is_active
-        });
+        };
 
-      if (error) throw error;
+        const { error } = await supabase
+          .from('tbl_coupons')
+          .insert(payload);
+
+        if (error) throw error;
+      }, 'Creating coupon...');
 
       notification.showSuccess('Coupon Created', 'Coupon submitted for admin approval');
       setShowCreateModal(false);
@@ -155,26 +175,28 @@ const CompanyCouponManagement: React.FC = () => {
     if (!selectedCoupon) return;
 
     try {
-      const { error } = await supabase
-        .from('tbl_coupons')
-        .update({
-          tc_title: newCoupon.title,
-          tc_description: newCoupon.description,
-          tc_coupon_code: newCoupon.coupon_code,
-          tc_discount_type: newCoupon.discount_type,
-          tc_discount_value: newCoupon.discount_value,
-          tc_image_url: newCoupon.image_url,
-          tc_terms_conditions: newCoupon.terms_conditions,
-          tc_valid_from: new Date(newCoupon.valid_from).toISOString(),
-          tc_valid_until: new Date(newCoupon.valid_until).toISOString(),
-          tc_usage_limit: newCoupon.usage_limit,
-          tc_share_reward_amount: newCoupon.share_reward_amount,
-          tc_is_active: newCoupon.is_active,
-          tc_status: 'pending' // Reset to pending after edit
-        })
-        .eq('tc_id', selectedCoupon.tc_id);
+      await processingIndicator.track(async () => {
+        const { error } = await supabase
+          .from('tbl_coupons')
+          .update({
+            tc_title: newCoupon.title,
+            tc_description: newCoupon.description || null,
+            tc_coupon_code: newCoupon.coupon_code || null,
+            tc_discount_type: (newCoupon.discount_type || null) as 'percentage' | 'fixed_amount' | null,
+            tc_discount_value: newCoupon.discount_value === '' ? null : Number(newCoupon.discount_value),
+            tc_image_url: newCoupon.image_url || null,
+            tc_terms_conditions: newCoupon.terms_conditions || null,
+            tc_valid_from: normalizeDateToIso(newCoupon.valid_from),
+            tc_valid_until: normalizeDateToIso(newCoupon.valid_until),
+            tc_usage_limit: newCoupon.usage_limit === '' ? null : Number(newCoupon.usage_limit),
+            tc_share_reward_amount: newCoupon.share_reward_amount,
+            tc_is_active: newCoupon.is_active,
+            tc_status: 'pending'
+          })
+          .eq('tc_id', selectedCoupon.tc_id);
 
-      if (error) throw error;
+        if (error) throw error;
+      }, 'Updating coupon...');
 
       notification.showSuccess('Coupon Updated', 'Coupon updated and resubmitted for approval');
       setShowEditModal(false);
@@ -191,12 +213,14 @@ const CompanyCouponManagement: React.FC = () => {
     if (!confirm('Are you sure you want to delete this coupon?')) return;
 
     try {
-      const { error } = await supabase
-        .from('tbl_coupons')
-        .delete()
-        .eq('tc_id', couponId);
+      await processingIndicator.track(async () => {
+        const { error } = await supabase
+          .from('tbl_coupons')
+          .delete()
+          .eq('tc_id', couponId);
 
-      if (error) throw error;
+        if (error) throw error;
+      }, 'Deleting coupon...');
 
       notification.showSuccess('Coupon Deleted', 'Coupon has been deleted');
       loadCoupons();
@@ -211,13 +235,13 @@ const CompanyCouponManagement: React.FC = () => {
       title: '',
       description: '',
       coupon_code: '',
-      discount_type: 'percentage',
-      discount_value: 0,
+      discount_type: '',
+      discount_value: '',
       image_url: '',
       terms_conditions: '',
-      valid_from: new Date().toISOString().split('T')[0],
-      valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      usage_limit: 1000,
+      valid_from: toLocalISODate(new Date()),
+      valid_until: toLocalISODate(addDays(new Date(), 30)),
+      usage_limit: '',
       share_reward_amount: 0.5,
       is_active: true
     });
@@ -233,14 +257,14 @@ const CompanyCouponManagement: React.FC = () => {
     setNewCoupon({
       title: coupon.tc_title,
       description: coupon.tc_description || '',
-      coupon_code: coupon.tc_coupon_code,
-      discount_type: coupon.tc_discount_type,
-      discount_value: coupon.tc_discount_value,
+      coupon_code: coupon.tc_coupon_code || '',
+      discount_type: (coupon.tc_discount_type || '') as '' | 'percentage' | 'fixed_amount',
+      discount_value: coupon.tc_discount_value == null ? '' : String(coupon.tc_discount_value),
       image_url: coupon.tc_image_url || '',
       terms_conditions: coupon.tc_terms_conditions || '',
-      valid_from: coupon.tc_valid_from.split('T')[0],
-      valid_until: coupon.tc_valid_until.split('T')[0],
-      usage_limit: coupon.tc_usage_limit,
+      valid_from: formatDateForInput(coupon.tc_valid_from),
+      valid_until: formatDateForInput(coupon.tc_valid_until),
+      usage_limit: coupon.tc_usage_limit == null ? '' : String(coupon.tc_usage_limit),
       share_reward_amount: coupon.tc_share_reward_amount,
       is_active: coupon.tc_is_active
     });
@@ -250,7 +274,7 @@ const CompanyCouponManagement: React.FC = () => {
   const filteredCoupons = coupons.filter(coupon => {
     const matchesSearch = 
       coupon.tc_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      coupon.tc_coupon_code.toLowerCase().includes(searchTerm.toLowerCase());
+      (coupon.tc_coupon_code ?? '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = 
       statusFilter === 'all' || coupon.tc_status === statusFilter;
@@ -370,13 +394,17 @@ const CompanyCouponManagement: React.FC = () => {
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-bold text-lg">{coupon.tc_title}</h4>
                     <span className="bg-white text-orange-600 px-2 py-1 rounded-full text-xs font-bold">
-                      {coupon.tc_discount_type === 'percentage' ? `${coupon.tc_discount_value}%` : `$${coupon.tc_discount_value}`} OFF
+                      {coupon.tc_discount_type
+                        ? coupon.tc_discount_type === 'percentage'
+                          ? `${coupon.tc_discount_value ?? '—'}% OFF`
+                          : `$${coupon.tc_discount_value ?? '—'} OFF`
+                        : 'No discount'}
                     </span>
                   </div>
                   <p className="text-orange-100 text-sm mb-3">{coupon.tc_description}</p>
                   <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
                     <p className="text-xs font-medium">Code:</p>
-                    <p className="font-bold font-mono">{coupon.tc_coupon_code}</p>
+                    <p className="font-bold font-mono">{coupon.tc_coupon_code || 'No code required'}</p>
                   </div>
                 </div>
 
@@ -402,12 +430,12 @@ const CompanyCouponManagement: React.FC = () => {
                   <div className="space-y-2 mb-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Usage:</span>
-                      <span>{coupon.tc_used_count} / {coupon.tc_usage_limit}</span>
+                      <span>{coupon.tc_used_count} / {coupon.tc_usage_limit ?? 'Unlimited'}</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
                         className="bg-orange-600 h-2 rounded-full" 
-                        style={{ width: `${(coupon.tc_used_count / coupon.tc_usage_limit) * 100}%` }}
+                        style={{ width: `${(coupon.tc_usage_limit != null && coupon.tc_usage_limit > 0) ? Math.min((coupon.tc_used_count / coupon.tc_usage_limit) * 100, 100) : 0}%` }}
                       ></div>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -502,16 +530,15 @@ const CompanyCouponManagement: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Coupon Code *
+                    Coupon Code
                   </label>
                   <div className="flex space-x-2">
                     <input
                       type="text"
-                      required
                       value={newCoupon.coupon_code}
                       onChange={(e) => setNewCoupon(prev => ({ ...prev, coupon_code: e.target.value.toUpperCase() }))}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      placeholder="SUMMER50"
+                      placeholder="Optional coupon code"
                     />
                     <button
                       type="button"
@@ -533,20 +560,21 @@ const CompanyCouponManagement: React.FC = () => {
                   onChange={(e) => setNewCoupon(prev => ({ ...prev, description: e.target.value }))}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  placeholder="Describe your coupon offer..."
+                  placeholder="Add details (new lines or “-” bullets show as bullet points to customers)..."
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Discount Type *
+                    Discount Type
                   </label>
                   <select
                     value={newCoupon.discount_type}
                     onChange={(e) => setNewCoupon(prev => ({ ...prev, discount_type: e.target.value as any }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   >
+                    <option value="">Not specified</option>
                     <option value="percentage">Percentage</option>
                     <option value="fixed_amount">Fixed Amount</option>
                   </select>
@@ -554,17 +582,16 @@ const CompanyCouponManagement: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Discount Value *
+                    Discount Value
                   </label>
                   <input
                     type="number"
-                    required
                     min="0"
                     step="0.01"
                     value={newCoupon.discount_value}
-                    onChange={(e) => setNewCoupon(prev => ({ ...prev, discount_value: parseFloat(e.target.value) || 0 }))}
+                    onChange={(e) => setNewCoupon(prev => ({ ...prev, discount_value: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                    placeholder={newCoupon.discount_type === 'percentage' ? '50' : '10.00'}
+                    placeholder={newCoupon.discount_type === 'percentage' ? '50' : newCoupon.discount_type === 'fixed_amount' ? '10.00' : 'Optional value'}
                   />
                 </div>
 
@@ -615,16 +642,15 @@ const CompanyCouponManagement: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Usage Limit *
+                  Usage Limit
                 </label>
                 <input
                   type="number"
-                  required
                   min="1"
                   value={newCoupon.usage_limit}
-                  onChange={(e) => setNewCoupon(prev => ({ ...prev, usage_limit: parseInt(e.target.value) || 1000 }))}
+                  onChange={(e) => setNewCoupon(prev => ({ ...prev, usage_limit: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  placeholder="1000"
+                  placeholder="Optional. Defaults to 1000"
                 />
               </div>
 

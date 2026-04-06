@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
+import { processingIndicator } from '../../lib/processingIndicator';
 import { ArrowDownLeft, ArrowUpRight, Clock, RefreshCw } from 'lucide-react';
 
 interface Transaction {
@@ -40,6 +41,36 @@ interface DefaultWalletConnection {
   tuwc_wallet_type: string;
   tuwc_chain_id: number;
 }
+
+const getCustomerFriendlyWithdrawalMessage = (reason?: string | null) => {
+  if (!reason) return null;
+
+  const normalizedReason = reason.toLowerCase();
+
+  if (normalizedReason.includes('insufficient') && normalizedReason.includes('balance')) {
+    return 'This withdrawal could not be completed because the payout wallet has insufficient balance. Please try again later or contact support.';
+  }
+
+  if (normalizedReason.includes('wallet') || normalizedReason.includes('address')) {
+    return 'This withdrawal could not be completed due to a wallet verification issue. Please review your default wallet or contact support.';
+  }
+
+  if (
+    normalizedReason.includes('network') ||
+    normalizedReason.includes('timeout') ||
+    normalizedReason.includes('rpc') ||
+    normalizedReason.includes('blockchain') ||
+    normalizedReason.includes('transfer')
+  ) {
+    return 'This withdrawal could not be completed because of a temporary processing issue. Please try again later or contact support.';
+  }
+
+  if (normalizedReason.includes('reject')) {
+    return 'This withdrawal request was not approved. Please contact support if you need more details.';
+  }
+
+  return 'This withdrawal could not be completed. Please contact support if you need more details.';
+};
 
 const EarningsDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -276,18 +307,20 @@ const EarningsDashboard: React.FC = () => {
         throw new Error('Missing user session');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-withdrawal`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: parsedWithdrawalAmount
-        })
-      });
+      const result = await processingIndicator.track(async () => {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-withdrawal`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            amount: parsedWithdrawalAmount
+          })
+        });
 
-      const result = await response.json();
+        return response.json();
+      }, 'Submitting withdrawal...');
 
       if (!result.success) {
         throw new Error(result.error || 'Withdrawal request failed');
@@ -322,16 +355,18 @@ const EarningsDashboard: React.FC = () => {
         throw new Error('Missing user session');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-withdrawal`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ withdrawalId })
-      });
+      const result = await processingIndicator.track(async () => {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-withdrawal`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ withdrawalId })
+        });
 
-      const result = await response.json();
+        return response.json();
+      }, 'Cancelling withdrawal...');
       if (!result.success) {
         throw new Error(result.error || 'Cancellation failed');
       }
@@ -685,9 +720,12 @@ const EarningsDashboard: React.FC = () => {
                     </div>
                   </div>
                   {request.twr_failure_reason && (
-                    <p className="text-xs text-red-600 mt-2">
-                      {request.twr_failure_reason}
-                    </p>
+                    <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                      <p className="text-xs font-medium text-red-700">Update</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        {getCustomerFriendlyWithdrawalMessage(request.twr_failure_reason)}
+                      </p>
+                    </div>
                   )}
                 </div>
               ))}

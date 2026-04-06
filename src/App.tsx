@@ -34,6 +34,7 @@ import JoinAsCustomer from './pages/JoinAsCustomer';
 import JoinAsCompany from './pages/JoinAsCompany';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
+import GuestRoute from './components/auth/GuestRoute';
 
 // Scroll to top component
 function ScrollToTop() {
@@ -64,7 +65,11 @@ function App() {
                   <ScrollToTop />
                   <Routes>
                     {/* Backpanel Routes (No Navbar/Footer) */}
-                    <Route path="/backpanel/login" element={<BackpanelLogin />} />
+                    <Route path="/backpanel/login" element={
+                      <GuestRoute>
+                        <BackpanelLogin />
+                      </GuestRoute>
+                    } />
                     <Route path="/backpanel/dashboard" element={
                       <AdminProtectedRoute>
                         <BackpanelDashboard />
@@ -88,8 +93,16 @@ function App() {
                             <Route path="/join-company" element={<JoinAsCompany />} />
                             
                             {/* Customer Routes */}
-                            <Route path="/customer/login" element={<CustomerLogin />} />
-                            <Route path="/customer/register" element={<CustomerRegister />} />
+                            <Route path="/customer/login" element={
+                              <GuestRoute>
+                                <CustomerLogin />
+                              </GuestRoute>
+                            } />
+                            <Route path="/customer/register" element={
+                              <GuestRoute>
+                                <CustomerRegister />
+                              </GuestRoute>
+                            } />
                             <Route path="/registration-payment" element={
                               <ProtectedRoute userType="customer">
                                 <RegistrationPayment />
@@ -107,8 +120,16 @@ function App() {
                             } />
                             
                             {/* Company Routes */}
-                            <Route path="/company/login" element={<CompanyLogin />} />
-                            <Route path="/company/register" element={<CompanyRegister />} />
+                            <Route path="/company/login" element={
+                              <GuestRoute>
+                                <CompanyLogin />
+                              </GuestRoute>
+                            } />
+                            <Route path="/company/register" element={
+                              <GuestRoute>
+                                <CompanyRegister />
+                              </GuestRoute>
+                            } />
                             <Route path="/company/dashboard" element={
                               <ProtectedRoute userType="company">
                                 <CompanyDashboard />

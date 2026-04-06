@@ -33,11 +33,13 @@ const CompanyManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [verificationFilter, setVerificationFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [showCompanyDetails, setShowCompanyDetails] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const notification = useNotification();
+  const itemsPerPage = 10;
 
   const [newCompany, setNewCompany] = useState({
     company_name: '',
@@ -57,6 +59,10 @@ const CompanyManagement: React.FC = () => {
   useEffect(() => {
     loadCompanies();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, verificationFilter]);
 
   const loadCompanies = async () => {
     try {
@@ -257,6 +263,34 @@ const CompanyManagement: React.FC = () => {
     return matchesSearch && matchesStatus && matchesVerification;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredCompanies.length / itemsPerPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedCompanies = filteredCompanies.slice(
+    (safeCurrentPage - 1) * itemsPerPage,
+    safeCurrentPage * itemsPerPage
+  );
+
+  const getPageNumbers = () => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages: Array<number | string> = [1];
+    const startPage = Math.max(2, safeCurrentPage - 1);
+    const endPage = Math.min(totalPages - 1, safeCurrentPage + 1);
+
+    if (startPage > 2) pages.push('...');
+
+    for (let page = startPage; page <= endPage; page += 1) {
+      pages.push(page);
+    }
+
+    if (endPage < totalPages - 1) pages.push('...');
+
+    pages.push(totalPages);
+    return pages;
+  };
+
   if (loading) {
     return (
         <div className="bg-white rounded-xl shadow-sm p-6">
@@ -405,7 +439,7 @@ const CompanyManagement: React.FC = () => {
                 </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                {filteredCompanies.map((company) => (
+                {paginatedCompanies.map((company) => (
                     <tr key={company.tc_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -508,6 +542,62 @@ const CompanyManagement: React.FC = () => {
                 ))}
                 </tbody>
               </table>
+
+              {filteredCompanies.length > 0 && (
+                <div className="flex flex-col gap-4 border-t border-gray-200 px-6 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="text-sm text-gray-600">
+                    Showing <span className="font-medium">{(safeCurrentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                    <span className="font-medium">{Math.min(safeCurrentPage * itemsPerPage, filteredCompanies.length)}</span> of{' '}
+                    <span className="font-medium">{filteredCompanies.length}</span> companies
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={safeCurrentPage === 1}
+                      className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                    >
+                      First
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={safeCurrentPage === 1}
+                      className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                    >
+                      Previous
+                    </button>
+                    {getPageNumbers().map((page, index) => (
+                      <button
+                        key={`${page}-${index}`}
+                        onClick={() => typeof page === 'number' && setCurrentPage(page)}
+                        disabled={page === '...'}
+                        className={`px-3 py-1 rounded-md text-sm ${
+                          page === safeCurrentPage
+                            ? 'bg-green-600 text-white'
+                            : page === '...'
+                              ? 'bg-transparent text-gray-500 cursor-default'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                      disabled={safeCurrentPage === totalPages}
+                      className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                    >
+                      Next
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={safeCurrentPage === totalPages}
+                      className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                    >
+                      Last
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
         ) : (
             <div className="text-center py-12">

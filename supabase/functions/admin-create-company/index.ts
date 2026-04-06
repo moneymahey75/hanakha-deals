@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
 
     const { error: userError } = await supabase
       .from('tbl_users')
-      .insert({
+      .upsert({
         tu_id: userId,
         tu_email: String(userEmail).trim(),
         tu_user_type: 'company',
@@ -104,6 +104,8 @@ Deno.serve(async (req: Request) => {
         tu_email_verified: true,
         tu_mobile_verified: true,
         tu_is_active: true
+      }, {
+        onConflict: 'tu_id'
       });
 
     if (userError) {
@@ -111,21 +113,41 @@ Deno.serve(async (req: Request) => {
       throw userError;
     }
 
-    const { error: companyError } = await supabase
+    const companyPayload = {
+      tc_user_id: userId,
+      tc_company_name: companyName,
+      tc_brand_name: brandName || null,
+      tc_business_type: businessType || null,
+      tc_business_category: businessCategory || null,
+      tc_registration_number: registrationNumber,
+      tc_gstin: gstin,
+      tc_website_url: websiteUrl || null,
+      tc_official_email: officialEmail,
+      tc_affiliate_code: affiliateCode || null,
+      tc_verification_status: verificationStatus || 'verified'
+    };
+
+    const { data: existingCompany, error: existingCompanyError } = await supabase
       .from('tbl_companies')
-      .insert({
-        tc_user_id: userId,
-        tc_company_name: companyName,
-        tc_brand_name: brandName || null,
-        tc_business_type: businessType || null,
-        tc_business_category: businessCategory || null,
-        tc_registration_number: registrationNumber,
-        tc_gstin: gstin,
-        tc_website_url: websiteUrl || null,
-        tc_official_email: officialEmail,
-        tc_affiliate_code: affiliateCode || null,
-        tc_verification_status: verificationStatus || 'verified'
-      });
+      .select('tc_id')
+      .eq('tc_user_id', userId)
+      .maybeSingle();
+
+    if (existingCompanyError) {
+      await supabase.auth.admin.deleteUser(userId);
+      throw existingCompanyError;
+    }
+
+    const companyMutation = existingCompany
+      ? supabase
+          .from('tbl_companies')
+          .update(companyPayload)
+          .eq('tc_id', existingCompany.tc_id)
+      : supabase
+          .from('tbl_companies')
+          .insert(companyPayload);
+
+    const { error: companyError } = await companyMutation;
 
     if (companyError) {
       await supabase.auth.admin.deleteUser(userId);

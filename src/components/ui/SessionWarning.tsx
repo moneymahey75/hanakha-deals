@@ -35,8 +35,6 @@ const SessionWarning: React.FC = () => {
       const { data, error } = await supabase.auth.refreshSession();
       if (error) {
         console.error('Failed to refresh session:', error);
-        // If refresh fails, clear the session
-        const currentUserId = sessionStorage.getItem('current-user-id');
         sessionUtils.clearAllSessions();
       } else if (data.session) {
         // Save the refreshed session

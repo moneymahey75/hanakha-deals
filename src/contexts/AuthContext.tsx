@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, supabaseBatch, sessionManager } from '../lib/supabase';
 import { adminSessionManager } from '../lib/adminSupabase';
 import { OTPService, verifyOTPAPI } from '../services/otpService';
@@ -63,152 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  useEffect(() => {
-    // Initialize session from sessionStorage
-    const initializeSession = async () => {
-      if (isInitialized) return; // Prevent multiple initializations
-
-      setLoading(true);
-      try {
-        console.log('🔍 Initializing authentication...');
-
-        // Check session type - if it's admin, don't initialize customer session
-        const sessionType = sessionStorage.getItem('session_type');
-        if (sessionType === 'admin') {
-          console.log('⚠️ Admin session active, skipping customer session initialization');
-          setUser(null);
-          setLoading(false);
-          setIsInitialized(true);
-          return;
-        }
-
-        // First, check if there's an existing Supabase session
-        const { data: { session: existingSession } } = await supabase.auth.getSession();
-
-        if (existingSession?.user) {
-          console.log('✅ Found existing Supabase session:', existingSession.user.id);
-
-          // Check if this session belongs to an admin (skip if adminSessionToken exists)
-          // This check only happens if there's a Supabase session but no admin session token
-          try {
-            const { data: adminCheck, error: adminCheckError } = await supabase
-              .from('tbl_admin_users')
-              .select('tau_id')
-              .eq('tau_auth_uid', existingSession.user.id)
-              .maybeSingle();
-
-            // If there's an error checking admin, just proceed (might be permission issue)
-            if (!adminCheckError && adminCheck) {
-              console.log('⚠️ Session belongs to admin user, clearing for frontend');
-              sessionStorage.removeItem('session_type');
-              await supabase.auth.signOut();
-              setUser(null);
-            } else {
-              // Save to sessionStorage if not already saved
-              sessionManager.saveSession(existingSession);
-              await fetchUserData(existingSession.user.id);
-            }
-          } catch (error) {
-            // If admin check fails, assume it's a regular user and proceed
-            console.log('ℹ️ Admin check failed, assuming regular user:', error);
-            sessionManager.saveSession(existingSession);
-            await fetchUserData(existingSession.user.id);
-          }
-        } else {
-          // Try to restore from sessionStorage
-          console.log('🔍 Checking sessionStorage for saved session...');
-          const restoredSession = await sessionManager.restoreSession();
-
-          if (restoredSession?.user) {
-            console.log('✅ Session restored from sessionStorage:', restoredSession.user.id);
-            await fetchUserData(restoredSession.user.id);
-          } else {
-            console.log('ℹ️ No existing session found');
-            setUser(null);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Failed to initialize session:', error);
-        // Clear any corrupted session data
-        sessionManager.removeSession();
-        setUser(null);
-      } finally {
-        setLoading(false);
-        setIsInitialized(true);
-      }
-    };
-
-    initializeSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isInitialized) return; // Don't process auth changes until initialized
-
-      console.log('🔄 Auth state change:', event, session?.user?.id);
-
-      try {
-        if (event === 'SIGNED_IN' && session?.user) {
-          console.log('✅ User signed in, saving session');
-          sessionManager.saveSession(session);
-          await fetchUserData(session.user.id);
-        }
-        // FIX: Only clear session and user state on explicit SIGNED_OUT event.
-        else if (event === 'SIGNED_OUT') {
-          console.log('👋 User signed out, clearing session');
-          const currentUserId = user?.id;
-          sessionManager.removeSession(currentUserId);
-          setUser(null);
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          console.log('🔄 Token refreshed, updating session');
-          sessionManager.saveSession(session);
-          // Optionally refresh user data if needed
-          if (!user || user.id !== session.user.id) {
-            await fetchUserData(session.user.id);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error handling auth state change:', error);
-        sessionManager.removeSession();
-        setUser(null);
-      }
-    });
-
-    // Handle tab visibility changes to refresh session
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && isInitialized && user) {
-        console.log('👁️ Tab became visible, checking session validity');
-        try {
-          const { data: { session }, error } = await supabase.auth.getSession();
-          if (error) {
-            console.error('❌ Error checking session:', error);
-            return;
-          }
-
-          if (!session) {
-            console.warn('⚠️ No valid session found, logging out');
-            logout();
-          } else {
-            console.log('✅ Session is valid');
-            // Optionally refresh user data to ensure it's up to date
-            if (session.user.id === user.id) {
-              sessionManager.saveSession(session);
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error handling visibility change:', error);
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [isInitialized, user?.id]);
-
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = useCallback(async (userId: string) => {
     if (!userId) {
       console.warn('⚠️ No userId provided to fetchUserData');
       return;
@@ -333,7 +188,215 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Don't throw error, just set user to null
       setUser(null);
     }
-  };
+  }, []);
+
+  const logout = useCallback(() => {
+    setLoading(true);
+    const currentUserId = user?.id;
+
+    try {
+      // Log logout activity before signing out
+      if (user) {
+        supabase
+            .from('tbl_user_activity_logs')
+            .insert({
+              tual_user_id: user.id,
+              tual_activity_type: 'logout',
+              tual_ip_address: 'unknown',
+              tual_user_agent: navigator.userAgent,
+              tual_logout_time: new Date().toISOString()
+            })
+            .then(({ error }) => {
+              if (error) console.warn('Failed to log logout activity:', error);
+            });
+      }
+
+      // Clear all session data
+      console.log('🧹 Clearing all session data during logout...');
+      sessionManager.removeSession(currentUserId);
+      sessionStorage.removeItem('session_type');
+
+      // Sign out from Supabase
+      supabase.auth.signOut();
+
+      // Clear user state
+      setUser(null);
+
+      notification.showInfo('Logged Out', 'You have been successfully logged out.');
+    } catch (error) {
+      console.error('❌ Error during logout:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [notification, user]);
+
+  useEffect(() => {
+    if (isInitialized) return;
+
+    let mounted = true;
+
+    const initializeSession = async () => {
+      setLoading(true);
+      try {
+        console.log('🔍 Initializing authentication...');
+
+        const sessionType = sessionStorage.getItem('session_type');
+        if (sessionType === 'admin') {
+          console.log('⚠️ Admin session active, skipping customer session initialization');
+          if (mounted) setUser(null);
+          return;
+        }
+
+        const { data: { session: existingSession } } = await withTimeout(
+          supabase.auth.getSession(),
+          8000,
+          'Initial getSession'
+        );
+
+        if (existingSession?.user) {
+          console.log('✅ Found existing Supabase session:', existingSession.user.id);
+
+          try {
+            const { data: adminCheck, error: adminCheckError } = await withTimeout(
+              supabase
+                .from('tbl_admin_users')
+                .select('tau_id')
+                .eq('tau_auth_uid', existingSession.user.id)
+                .maybeSingle(),
+              8000,
+              'Admin session check'
+            );
+
+            if (!adminCheckError && adminCheck) {
+              console.log('⚠️ Session belongs to admin user, clearing for frontend');
+              sessionStorage.removeItem('session_type');
+              await supabase.auth.signOut();
+              if (mounted) setUser(null);
+            } else {
+              sessionManager.saveSession(existingSession);
+              await withTimeout(fetchUserData(existingSession.user.id), 15000, 'Initial user data load');
+            }
+          } catch (error) {
+            console.log('ℹ️ Admin check failed, assuming regular user:', error);
+            sessionManager.saveSession(existingSession);
+            await withTimeout(fetchUserData(existingSession.user.id), 15000, 'Initial user data load');
+          }
+        } else {
+          console.log('🔍 Checking sessionStorage for saved session...');
+          const restoredSession = await withTimeout(
+            sessionManager.restoreSession(),
+            10000,
+            'Restore saved session'
+          );
+
+          if (restoredSession?.user) {
+            console.log('✅ Session restored from sessionStorage:', restoredSession.user.id);
+            await withTimeout(fetchUserData(restoredSession.user.id), 15000, 'Restored user data load');
+          } else if (mounted) {
+            console.log('ℹ️ No existing session found');
+            setUser(null);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Failed to initialize session:', error);
+        sessionManager.removeSession();
+        if (mounted) setUser(null);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    initializeSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, [fetchUserData, isInitialized]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state change:', event, session?.user?.id);
+
+      try {
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('✅ User signed in, saving session');
+          sessionManager.saveSession(session);
+          await withTimeout(fetchUserData(session.user.id), 15000, 'Auth change user load');
+        } else if (event === 'SIGNED_OUT') {
+          console.log('👋 User signed out, clearing session');
+          sessionManager.removeSession(user?.id);
+          setUser(null);
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          console.log('🔄 Token refreshed, updating session');
+          sessionManager.saveSession(session);
+          if (!user || user.id !== session.user.id) {
+            await withTimeout(fetchUserData(session.user.id), 15000, 'Token refresh user load');
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error handling auth state change:', error);
+        sessionManager.removeSession();
+        setUser(null);
+      }
+    });
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== 'visible' || !user) return;
+
+      console.log('👁️ Tab became visible, checking session validity');
+      try {
+        const { data: { session }, error } = await withTimeout(
+          supabase.auth.getSession(),
+          8000,
+          'Visibility getSession'
+        );
+
+        if (error) {
+          console.error('❌ Error checking session:', error);
+          return;
+        }
+
+        if (session?.user) {
+          console.log('✅ Session is valid');
+          sessionManager.saveSession(session);
+          return;
+        }
+
+        console.warn('⚠️ No live session found, attempting restore');
+        const restoredSession = await withTimeout(
+          sessionManager.restoreSession(),
+          10000,
+          'Visibility restore session'
+        );
+
+        if (restoredSession?.user) {
+          console.log('✅ Session restored after tab became visible');
+          sessionManager.saveSession(restoredSession);
+          if (restoredSession.user.id !== user.id) {
+            await withTimeout(fetchUserData(restoredSession.user.id), 15000, 'Visibility user reload');
+          }
+          return;
+        }
+
+        console.warn('⚠️ Unable to restore session, logging out');
+        logout();
+      } catch (error) {
+        console.error('❌ Error handling visibility change:', error);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchUserData, isInitialized, logout, user]);
 
   const login = async (emailOrUsername: string, password: string, userType: string) => {
     setLoading(true);
@@ -567,8 +630,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Log registration activity
-      await supabase
+      // Registration should not fail if activity logging is unavailable.
+      try {
+        const { error: activityLogError } = await supabase
           .from('tbl_user_activity_logs')
           .insert({
             tual_user_id: authData.user.id,
@@ -577,6 +641,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             tual_user_agent: navigator.userAgent,
             tual_login_time: new Date().toISOString()
           });
+
+        if (activityLogError) {
+          console.warn('Failed to log registration activity:', activityLogError);
+        }
+      } catch (activityLogError) {
+        console.warn('Failed to log registration activity:', activityLogError);
+      }
 
       console.log('✅ Registration completed successfully');
       notification.showSuccess('Registration Successful!', 'Your account has been created successfully.');
@@ -598,46 +669,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
 
       throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = () => {
-    setLoading(true);
-    const currentUserId = user?.id;
-
-    try {
-      // Log logout activity before signing out
-      if (user) {
-        supabase
-            .from('tbl_user_activity_logs')
-            .insert({
-              tual_user_id: user.id,
-              tual_activity_type: 'logout',
-              tual_ip_address: 'unknown',
-              tual_user_agent: navigator.userAgent,
-              tual_logout_time: new Date().toISOString()
-            })
-            .then(({ error }) => {
-              if (error) console.warn('Failed to log logout activity:', error);
-            });
-      }
-
-      // Clear all session data
-      console.log('🧹 Clearing all session data during logout...');
-      sessionManager.removeSession(currentUserId);
-      sessionStorage.removeItem('session_type');
-
-      // Sign out from Supabase
-      supabase.auth.signOut();
-
-      // Clear user state
-      setUser(null);
-
-      notification.showInfo('Logged Out', 'You have been successfully logged out.');
-    } catch (error) {
-      console.error('❌ Error during logout:', error);
     } finally {
       setLoading(false);
     }
@@ -726,7 +757,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const checkVerificationStatus = async (userId: string) => {
+  const checkVerificationStatus = useCallback(async (userId: string) => {
     try {
       console.log('🔍 Checking verification status for user:', userId);
 
@@ -810,7 +841,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error checking verification status:', error);
       return { needsVerification: false, settings: null };
     }
-  };
+  }, []);
 
   const impersonateCustomer = async (customerId: string) => {
     try {
