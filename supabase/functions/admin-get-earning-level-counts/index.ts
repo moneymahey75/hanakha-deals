@@ -59,16 +59,93 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data, error } = await supabase
+    const body = await req.json().catch(() => ({}));
+    const recompute = body?.recompute === true;
+    if (recompute) {
+      // Rebuild counts to ensure the admin sees up-to-date and consistent results.
+      await supabase.rpc('recompute_all_mlm_level_counts');
+    }
+
+    const searchTerm = typeof body?.searchTerm === 'string' ? body.searchTerm.trim() : '';
+    const offset = Number.isFinite(Number(body?.offset)) ? Number(body.offset) : 0;
+    const limitRaw = Number.isFinite(Number(body?.limit)) ? Number(body.limit) : 25;
+    const limit = Math.min(200, Math.max(1, limitRaw));
+    const extraLevelRaw = body?.extraLevel;
+    const extraLevel = Number.isFinite(Number(extraLevelRaw)) ? Number(extraLevelRaw) : null;
+    const requestedExtraLevel = extraLevel && extraLevel >= 1 && extraLevel <= 50 ? extraLevel : null;
+
+    let query = supabase
       .from('tbl_mlm_level_counts')
-      .select('*')
-      .order('tmlc_level1_count', { ascending: false });
+      .select('*', { count: 'exact' })
+      .order('tmlc_level1_count', { ascending: false })
+      .order('tmlc_updated_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (searchTerm) {
+      query = query.ilike('tmlc_sponsorship_number', `%${searchTerm}%`);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) {
       throw error;
     }
 
-    return new Response(JSON.stringify({ success: true, data }), {
+    const totalCount = count || 0;
+    const rows = (data || []) as any[];
+
+    let extraCountsMap = new Map<string, number>();
+    let extraCountsAvailable = true;
+    if (requestedExtraLevel && requestedExtraLevel > 3 && rows.length > 0) {
+      const sponsorships = rows
+        .map((row) => String(row?.tmlc_sponsorship_number || '').trim())
+        .filter(Boolean);
+
+      if (sponsorships.length > 0) {
+        const { data: extraCounts, error: extraCountsError } = await supabase.rpc(
+          'get_mlm_level_counts_for_sponsors_at_level',
+          { p_level: requestedExtraLevel, p_sponsorship_numbers: sponsorships }
+        );
+        if (extraCountsError) {
+          const message = String((extraCountsError as any)?.message || '').toLowerCase();
+          // If the DB migration wasn't applied yet (or PostgREST schema cache hasn't refreshed),
+          // don't fail the whole endpoint; return base counts and let the UI show a warning.
+          if (message.includes('schema cache') || message.includes('could not find the function')) {
+            extraCountsAvailable = false;
+          } else {
+            throw extraCountsError;
+          }
+        }
+        for (const item of extraCounts || []) {
+          const key = String((item as any)?.sponsorship_number || '').trim().toLowerCase();
+          if (!key) continue;
+          extraCountsMap.set(key, Number((item as any)?.level_count || 0));
+        }
+      }
+    }
+
+    const withTotal = rows.map((row: any) => {
+      const sponsorship = String(row?.tmlc_sponsorship_number || '').trim();
+      const sponsorshipKey = sponsorship.toLowerCase();
+      const extraLevelCount = requestedExtraLevel
+        ? (requestedExtraLevel === 1
+          ? Number(row?.tmlc_level1_count || 0)
+          : requestedExtraLevel === 2
+            ? Number(row?.tmlc_level2_count || 0)
+            : requestedExtraLevel === 3
+              ? Number(row?.tmlc_level3_count || 0)
+              : (extraCountsAvailable ? (extraCountsMap.get(sponsorshipKey) ?? 0) : null))
+        : null;
+
+      return {
+        ...row,
+        total_count: totalCount,
+        extra_level: requestedExtraLevel,
+        extra_level_count: extraLevelCount
+      };
+    });
+
+    return new Response(JSON.stringify({ success: true, data: withTotal }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -29,6 +29,9 @@ const parseSetting = (raw: any) => {
   }
 };
 
+const isLocalSupabaseUrl = (supabaseUrl: string) =>
+  supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1') || supabaseUrl.includes('0.0.0.0');
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -83,7 +86,7 @@ Deno.serve(async (req: Request) => {
     const { data: settingsRows, error: settingsError } = await supabase
       .from('tbl_system_settings')
       .select('tss_setting_key, tss_setting_value')
-      .in('tss_setting_key', ['admin_payment_wallet', 'payment_mode', 'usdt_address']);
+      .in('tss_setting_key', ['admin_payment_wallet', 'payment_mode', 'usdt_address', 'wallet_unique_per_customer']);
 
     if (settingsError) {
       throw settingsError;
@@ -97,6 +100,7 @@ Deno.serve(async (req: Request) => {
     const adminWallet = String(settingsMap.admin_payment_wallet || '').trim();
     const usdtAddress = String(settingsMap.usdt_address || '').trim();
     const paymentMode = settingsMap.payment_mode;
+    const walletUniqueSetting = settingsMap.wallet_unique_per_customer;
 
     if (!ethers.isAddress(adminWallet)) {
       return new Response(JSON.stringify({ success: false, error: 'Admin payment wallet not configured' }), {
@@ -130,6 +134,30 @@ Deno.serve(async (req: Request) => {
     const txFrom = normalizeAddress(tx.from);
     const txTo = normalizeAddress(tx.to);
     const expectedTokenAddress = normalizeAddress(usdtAddress);
+
+    const enforceUniqueWallet = walletUniqueSetting === undefined || walletUniqueSetting === null
+      ? !isLocalSupabaseUrl(supabaseUrl)
+      : Boolean(walletUniqueSetting);
+
+    if (enforceUniqueWallet && txFrom) {
+      const { data: existingOtherUserWallet } = await supabase
+        .from('tbl_user_wallet_connections')
+        .select('tuwc_id')
+        .ilike('tuwc_wallet_address', txFrom)
+        .neq('tuwc_user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingOtherUserWallet?.tuwc_id) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'This wallet address is already linked to another customer.'
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     if (txTo !== expectedTokenAddress) {
       return new Response(JSON.stringify({

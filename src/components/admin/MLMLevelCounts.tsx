@@ -1,0 +1,242 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { RefreshCw, Search } from 'lucide-react';
+import { adminApi } from '../../lib/adminApi';
+import { useNotification } from '../ui/NotificationProvider';
+
+interface LevelCountRow {
+  tmlc_user_id: string;
+  tmlc_sponsorship_number: string;
+  tmlc_level1_count: number;
+  tmlc_level2_count: number;
+  tmlc_level3_count: number;
+  tmlc_updated_at: string;
+  total_count?: number;
+  extra_level?: number | null;
+  extra_level_count?: number | null;
+}
+
+const MLMLevelCounts: React.FC = () => {
+  const notification = useNotification();
+  const [rows, setRows] = useState<LevelCountRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [extraLevel, setExtraLevel] = useState(4);
+
+  const totalCount = rows[0]?.total_count ?? 0;
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(totalCount / pageSize)), [totalCount, pageSize]);
+
+  const loadCounts = async () => {
+    setLoading(true);
+    try {
+      const offset = (page - 1) * pageSize;
+      const data = await adminApi.post<LevelCountRow[]>('admin-get-earning-level-counts', {
+        searchTerm: searchTerm.trim() || null,
+        offset,
+        limit: pageSize,
+        extraLevel,
+      });
+      setRows(data || []);
+    } catch (error: any) {
+      notification.showError('Load Failed', error.message || 'Failed to load level counts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const recomputeCounts = async () => {
+    if (!confirm('Recompute level counts for all sponsors? This can take time on large datasets.')) return;
+    setLoading(true);
+    try {
+      const offset = (page - 1) * pageSize;
+      const data = await adminApi.post<LevelCountRow[]>('admin-get-earning-level-counts', {
+        recompute: true,
+        searchTerm: searchTerm.trim() || null,
+        offset,
+        limit: pageSize,
+        extraLevel,
+      });
+      setRows(data || []);
+      notification.showSuccess('Recomputed', 'Level counts recomputed successfully');
+    } catch (error: any) {
+      notification.showError('Recompute Failed', error.message || 'Failed to recompute level counts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, extraLevel]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, pageSize, extraLevel]);
+
+  useEffect(() => {
+    loadCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
+
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+  const extraLevelUnavailable = useMemo(() => {
+    if (extraLevel <= 3) return false;
+    if (!rows || rows.length === 0) return false;
+    return rows.every((row) => row.extra_level_count === null || row.extra_level_count === undefined);
+  }, [extraLevel, rows]);
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Level Counts</h3>
+          <p className="text-sm text-gray-600">Paginated MLM level counts for sponsors</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={recomputeCounts}
+            className="flex items-center space-x-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
+            disabled={loading}
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>Recompute</span>
+          </button>
+          <button
+            onClick={loadCounts}
+            className="flex items-center space-x-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100"
+            disabled={loading}
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-3">
+        <div className="w-full lg:w-60">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
+            </div>
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by sponsor id..."
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+        <div className="w-full lg:w-28">
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
+        <div className="w-full lg:w-36">
+          <select
+            value={extraLevel}
+            onChange={(e) => setExtraLevel(Number(e.target.value))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            title="Select a level to display its count"
+          >
+            {Array.from({ length: 47 }).map((_, idx) => {
+              const level = idx + 4;
+              return (
+                <option key={level} value={level}>
+                  Level {level}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <div className="flex items-center justify-end gap-2 lg:ml-auto">
+          <button
+            onClick={() => setPage(1)}
+            className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+            disabled={loading || !canPrev}
+          >
+            First
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+            disabled={loading || !canPrev}
+          >
+            Prev
+          </button>
+          <div className="text-sm text-gray-600 px-2">
+            Page {page} / {totalPages}
+          </div>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+            disabled={loading || !canNext}
+          >
+            Next
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+            disabled={loading || !canNext}
+          >
+            Last
+          </button>
+        </div>
+      </div>
+
+      {extraLevelUnavailable && (
+        <div className="border border-yellow-200 bg-yellow-50 text-yellow-800 rounded-lg px-4 py-2 text-sm">
+          Level {extraLevel} values are not available from the API yet. Deploy the latest DB migration and edge function updates, then refresh.
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsor ID</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 1</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 2</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 3</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level {extraLevel}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {loading ? (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">Loading...</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">No counts found.</td></tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.tmlc_user_id}>
+                  <td className="px-4 py-3 text-sm text-gray-700 font-mono">{row.tmlc_sponsorship_number}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level1_count}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level2_count}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level3_count}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{row.extra_level_count ?? '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{new Date(row.tmlc_updated_at).toLocaleString()}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-xs text-gray-500">
+        Total: {totalCount} sponsor{totalCount === 1 ? '' : 's'}
+      </div>
+    </div>
+  );
+};
+
+export default MLMLevelCounts;

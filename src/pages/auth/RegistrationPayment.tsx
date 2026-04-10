@@ -9,6 +9,7 @@ import { getSponsorStatusBySponsorshipNumber } from '../../lib/supabase';
 import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../../types/wallet';
 import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
 import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink } from 'lucide-react';
+import { extractEdgeFunctionErrorMessage } from '../../utils/edgeFunctionError';
 
 interface RegistrationPlan {
   tsp_id: string;
@@ -192,12 +193,13 @@ const RegistrationPayment: React.FC = () => {
 
   // Restore wallet state from service if the component re-mounts
   useEffect(() => {
+    if (isConnecting) return;
     const currentWalletState = walletService.getCurrentWalletState();
     if (currentWalletState.isConnected && !walletState.isConnected) {
       setWalletState(currentWalletState);
       console.log('Restored wallet state from WalletService:', currentWalletState.address);
     }
-  }, [walletService, walletState.isConnected]);
+  }, [walletService, walletState.isConnected, isConnecting]);
 
   const enabledWallets = useMemo(() => {
     return settings?.paymentWalletsEnabled || {
@@ -238,93 +240,66 @@ const RegistrationPayment: React.FC = () => {
     adminReceivingWallet
   ]);
 
-  const saveWalletConnection = useCallback(async (address: string, walletName: string, walletType: string, chainId: number | null) => {
-    if (!user || !address) return;
+	  const saveWalletConnection = useCallback(async (address: string, walletName: string, walletType: string, chainId: number | null) => {
+	    if (!user || !address) return;
 
-    try {
-      await supabase
-        .from('tbl_user_wallet_connections')
-        .update({
-          tuwc_is_active: false,
-          tuwc_updated_at: new Date().toISOString()
-        })
-        .eq('tuwc_user_id', user.id)
-        .eq('tuwc_is_active', true);
+	    try {
+	      const { data, error } = await supabase.functions.invoke('upsert-wallet-connection', {
+	        body: {
+	          wallet_address: address,
+	          wallet_name: walletName,
+	          wallet_type: walletType,
+	          chain_id: chainId
+	        }
+	      });
 
-      const { data: existingWallet, error: existingWalletError } = await supabase
-        .from('tbl_user_wallet_connections')
-        .select('tuwc_id')
-        .eq('tuwc_user_id', user.id)
-        .eq('tuwc_wallet_address', address)
-        .maybeSingle();
+		      if (error) {
+		        const message = await extractEdgeFunctionErrorMessage(error);
+		        throw new Error(message || 'Failed to save wallet connection');
+		      }
 
-      if (existingWalletError) {
-        throw existingWalletError;
-      }
-
-      if (existingWallet) {
-        await supabase
-          .from('tbl_user_wallet_connections')
-          .update({
-            tuwc_is_active: true,
-            tuwc_last_connected_at: new Date().toISOString(),
-            tuwc_updated_at: new Date().toISOString()
-          })
-          .eq('tuwc_id', existingWallet.tuwc_id);
-      } else {
-        await supabase
-          .from('tbl_user_wallet_connections')
-          .insert({
-            tuwc_user_id: user.id,
-            tuwc_wallet_address: address,
-            tuwc_wallet_name: walletName,
-            tuwc_wallet_type: walletType,
-            tuwc_chain_id: chainId,
-            tuwc_is_active: true,
-            tuwc_last_connected_at: new Date().toISOString()
-          });
-      }
-    } catch (error) {
-      console.error('Error saving wallet connection:', error);
-    }
-  }, [user]);
+	      if (!data?.success) {
+	        throw new Error(data?.error || 'Failed to save wallet connection');
+	      }
+	    } catch (error) {
+	      console.error('Error saving wallet connection:', error);
+	      throw error;
+	    }
+	  }, [user]);
 
   const handleWalletConnect = useCallback(async (provider: any) => {
     if (isConnecting) return;
 
-    setIsConnecting(true);
-    try {
-      if (!settings) {
-        throw new Error('Payment settings not configured');
-      }
-
-      const wallet = await walletService.connectWallet(provider);
-      setWalletState(wallet);
-
-      if (wallet.address) {
-        const walletType = provider.isMetaMask
-          ? 'metamask'
-          : provider.isTrust
+		    setIsConnecting(true);
+		    try {
+		      const wallet = await walletService.connectWallet(provider);
+	      if (wallet.address) {
+	        const walletType = provider.isMetaMask
+	          ? 'metamask'
+	          : provider.isTrust
             ? 'trust'
             : provider.isSafePal
               ? 'safepal'
               : 'web3';
 
-        await saveWalletConnection(
-          wallet.address,
-          wallet.walletName || 'Unknown Wallet',
-          walletType,
-          wallet.chainId
-        );
-      }
+	        await saveWalletConnection(
+	          wallet.address,
+	          wallet.walletName || 'Unknown Wallet',
+	          walletType,
+	          wallet.chainId
+	        );
+	      }
+	
+		      setWalletState(wallet);
 
-      notification.showSuccess('Wallet Connected', `Connected to ${wallet.walletName}`);
-    } catch (error: any) {
-      notification.showError('Connection Failed', error.message || 'Unable to connect wallet');
-      setWalletState({
-        isConnected: false,
-        address: null,
-        chainId: null,
+	      notification.showSuccess('Wallet Connected', `Connected to ${wallet.walletName}`);
+	    } catch (error: any) {
+	      notification.showError('Connection Failed', error.message || 'Unable to connect wallet');
+	      walletService.disconnect();
+	      setWalletState({
+	        isConnected: false,
+	        address: null,
+	        chainId: null,
         balance: '0',
         usdtBalance: '0',
         walletName: null,

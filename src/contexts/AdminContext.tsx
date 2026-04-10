@@ -13,6 +13,7 @@ interface GeneralSettings {
   mobileVerificationRequired: boolean;
   eitherVerificationRequired: boolean;
   referralMandatory: boolean;
+  walletUniquePerCustomer: boolean;
   jobSeekerVideoUrl?: string;
   jobProviderVideoUrl?: string;
   paymentMode?: boolean;
@@ -120,6 +121,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     mobileVerificationRequired: true,
     eitherVerificationRequired: true,
     referralMandatory: false,
+    walletUniquePerCustomer: import.meta.env.PROD,
     jobSeekerVideoUrl: '',
     jobProviderVideoUrl: '',
     paymentMode: false,
@@ -283,6 +285,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'referral_mandatory':
                 loadedSettings.referralMandatory = value;
+                break;
+              case 'wallet_unique_per_customer':
+                loadedSettings.walletUniquePerCustomer = Boolean(value);
                 break;
               case 'job_seeker_video_url':
                 loadedSettings.jobSeekerVideoUrl = value;

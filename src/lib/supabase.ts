@@ -691,6 +691,56 @@ export const getMLMTreeStructure = async (userId: string, maxLevels: number = 5)
   }
 }
 
+export const getReferralNetwork = async (userId: string, maxLevels: number = 10) => {
+  try {
+    const { data, error } = await supabase.rpc('get_referral_network_v1', {
+      p_user_id: userId,
+      p_max_levels: maxLevels
+    });
+
+    if (error) {
+      console.warn('Failed to get referral network:', error);
+      return [];
+    }
+
+    return data;
+  } catch (error) {
+    console.warn('Failed to get referral network:', error);
+    return [];
+  }
+};
+
+export const getReferralNetworkPage = async (params: {
+  userId: string;
+  maxLevels?: number;
+  level?: number | null;
+  searchTerm?: string | null;
+  offset?: number;
+  limit?: number;
+}) => {
+  try {
+    const { userId, maxLevels = 10, level = null, searchTerm = null, offset = 0, limit = 50 } = params;
+    const { data, error } = await supabase.rpc('get_referral_network_page_v1', {
+      p_user_id: userId,
+      p_max_levels: maxLevels,
+      p_level: level,
+      p_search_term: searchTerm,
+      p_offset: offset,
+      p_limit: limit
+    });
+
+    if (error) {
+      console.warn('Failed to get referral network page:', error);
+      return [];
+    }
+
+    return data;
+  } catch (error) {
+    console.warn('Failed to get referral network page:', error);
+    return [];
+  }
+};
+
 export const getTreeStatistics = async (userId: string) => {
   try {
     const { data, error } = await supabase.rpc('get_tree_statistics_v2', {

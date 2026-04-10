@@ -15,6 +15,7 @@ import CouponManagement from '../../components/admin/CouponManagement';
 import DailyTaskManagement from '../../components/admin/DailyTaskManagement';
 import WalletManagement from '../../components/admin/WalletManagement';
 import EarningDistributionSettings from '../../components/admin/EarningDistributionSettings';
+import MLMLevelCounts from '../../components/admin/MLMLevelCounts';
 import {
   Users,
   Building,
@@ -259,7 +260,8 @@ const AdminDashboard: React.FC = () => {
     { id: 'general', label: 'General Settings', icon: Globe },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck },
     { id: 'payment', label: 'Payment Settings', icon: FileText },
-    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp }
+    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp },
+    { id: 'level_counts', label: 'Level Counts', icon: BarChart3 }
   ];
 
   // =========================================================
@@ -513,11 +515,12 @@ const AdminDashboard: React.FC = () => {
 
                     {/* Settings Content */}
                     <div className="flex-1 p-6">
-                      {settingsTab === 'general' && <GeneralSettings />}
-                      {settingsTab === 'registration' && <RegistrationSettings />}
-                      {settingsTab === 'payment' && <PaymentSettings />}
-                      {settingsTab === 'earning' && <EarningDistributionSettings />}
-                    </div>
+	                      {settingsTab === 'general' && <GeneralSettings />}
+	                      {settingsTab === 'registration' && <RegistrationSettings />}
+	                      {settingsTab === 'payment' && <PaymentSettings />}
+	                      {settingsTab === 'earning' && <EarningDistributionSettings />}
+	                      {settingsTab === 'level_counts' && <MLMLevelCounts />}
+	                    </div>
                   </div>
                 </div>
             )}

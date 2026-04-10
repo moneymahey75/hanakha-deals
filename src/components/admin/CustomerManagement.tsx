@@ -23,6 +23,7 @@ interface Customer {
     tu_mobile_verified: boolean;
     tu_is_active: boolean;
     tu_created_at: string;
+    downline_level?: number;
     tbl_user_profiles: {
         tup_first_name: string;
         tup_last_name: string;
@@ -30,6 +31,7 @@ interface Customer {
         tup_mobile: string;
         tup_sponsorship_number: string;
         tup_gender: string;
+        tup_parent_account?: string;
     } | null;
 }
 
@@ -107,6 +109,8 @@ const CustomerManagement: React.FC = () => {
     const [listLoading, setListLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [parentAccountFilter, setParentAccountFilter] = useState('');
+    const [levelFilter, setLevelFilter] = useState<'all' | string>('all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [verificationFilter, setVerificationFilter] = useState('all');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -131,6 +135,8 @@ const CustomerManagement: React.FC = () => {
             const offset = (currentPage - 1) * itemsPerPage;
             const requestPayload = {
                 searchTerm: searchTerm || null,
+                parentAccount: parentAccountFilter.trim() || null,
+                levelFilter: levelFilter === 'all' ? null : Number(levelFilter),
                 statusFilter,
                 verificationFilter,
                 offset,
@@ -162,6 +168,7 @@ const CustomerManagement: React.FC = () => {
                     tu_mobile_verified: row.tu_mobile_verified,
                     tu_is_active: row.tu_is_active,
                     tu_created_at: row.tu_created_at,
+                    downline_level: row.downline_level ?? row.level ?? null,
                     tbl_user_profiles: row.profile_data
                 }));
                 setCustomers(formattedCustomers);
@@ -178,6 +185,8 @@ const CustomerManagement: React.FC = () => {
             const offset = (currentPage - 1) * itemsPerPage;
             const requestKey = JSON.stringify({
                 searchTerm: searchTerm || null,
+                parentAccount: parentAccountFilter.trim() || null,
+                levelFilter: levelFilter === 'all' ? null : Number(levelFilter),
                 statusFilter,
                 verificationFilter,
                 offset,
@@ -193,11 +202,11 @@ const CustomerManagement: React.FC = () => {
 
     useEffect(() => {
         loadCustomers();
-    }, [searchTerm, statusFilter, verificationFilter, currentPage, itemsPerPage]);
+    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, currentPage, itemsPerPage]);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, statusFilter, verificationFilter]);
+    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter]);
 
     const handleViewCustomer = (customer: Customer) => {
         setSelectedCustomer(customer);
@@ -396,7 +405,7 @@ const CustomerManagement: React.FC = () => {
                 </div>
 
                 {/* Search and Filters */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                     <div className="md:col-span-2">
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -410,6 +419,29 @@ const CustomerManagement: React.FC = () => {
                                 placeholder="Search by name, email, username, or sponsorship number..."
                             />
                         </div>
+                    </div>
+                    <div className="md:col-span-2">
+                        <input
+                            type="text"
+                            value={parentAccountFilter}
+                            onChange={(e) => setParentAccountFilter(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Filter by Parent Account (Sponsor ID)"
+                        />
+                    </div>
+                    <div>
+                        <select
+                            value={levelFilter}
+                            onChange={(e) => setLevelFilter(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            disabled={!parentAccountFilter.trim()}
+                            title={!parentAccountFilter.trim() ? 'Enter a Parent Account to filter by level' : 'Filter by level'}
+                        >
+                            <option value="all">All Levels</option>
+                            {Array.from({ length: 50 }).map((_, i) => (
+                                <option key={i + 1} value={String(i + 1)}>Level {i + 1}</option>
+                            ))}
+                        </select>
                     </div>
                     <div>
                         <select
@@ -434,6 +466,15 @@ const CustomerManagement: React.FC = () => {
                         </select>
                     </div>
                 </div>
+
+                {(parentAccountFilter.trim() || (levelFilter !== 'all' && parentAccountFilter.trim())) && (
+                    <div className="mt-3 text-sm text-gray-600">
+                        Showing downline for sponsor <span className="font-mono">{parentAccountFilter.trim() || '—'}</span>
+                        {parentAccountFilter.trim() && levelFilter !== 'all' ? (
+                            <> • Level <span className="font-medium">{levelFilter}</span></>
+                        ) : null}
+                    </div>
+                )}
             </div>
 
             {/* Customer List */}
@@ -442,6 +483,9 @@ const CustomerManagement: React.FC = () => {
                     <thead className="bg-gray-50">
                     <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                        {parentAccountFilter.trim() && (
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                        )}
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -473,6 +517,13 @@ const CustomerManagement: React.FC = () => {
                                         </div>
                                     </div>
                                 </td>
+                                {parentAccountFilter.trim() && (
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                            Level {customer.downline_level ?? '—'}
+                                        </span>
+                                    </td>
+                                )}
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="text-sm text-gray-900">{customer.tu_email}</div>
                                     <div className="text-sm text-gray-500">{customer.tbl_user_profiles?.tup_mobile}</div>

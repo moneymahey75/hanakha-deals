@@ -4,7 +4,6 @@ import { useNotification } from '../ui/NotificationProvider';
 import { Plus, Save, Edit2, Trash2, RefreshCw } from 'lucide-react';
 
 let inFlightMilestonesRequest: Promise<Milestone[]> | null = null;
-let inFlightLevelCountsRequest: Promise<LevelCountRow[]> | null = null;
 
 interface Milestone {
   tmm_id: string;
@@ -17,21 +16,10 @@ interface Milestone {
   tmm_is_active: boolean;
 }
 
-interface LevelCountRow {
-  tmlc_user_id: string;
-  tmlc_sponsorship_number: string;
-  tmlc_level1_count: number;
-  tmlc_level2_count: number;
-  tmlc_level3_count: number;
-  tmlc_updated_at: string;
-}
-
 const EarningDistributionSettings: React.FC = () => {
   const notification = useNotification();
   const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [counts, setCounts] = useState<LevelCountRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [countsLoading, setCountsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
@@ -69,24 +57,8 @@ const EarningDistributionSettings: React.FC = () => {
     }
   };
 
-  const loadCounts = async () => {
-    setCountsLoading(true);
-    try {
-      const requestPromise = inFlightLevelCountsRequest ?? adminApi.post<LevelCountRow[]>('admin-get-earning-level-counts');
-      inFlightLevelCountsRequest = requestPromise;
-      const data = await requestPromise;
-      setCounts((data || []) as LevelCountRow[]);
-    } catch (error: any) {
-      notification.showError('Load Failed', error.message || 'Failed to load level counts');
-    } finally {
-      inFlightLevelCountsRequest = null;
-      setCountsLoading(false);
-    }
-  };
-
   useEffect(() => {
     loadMilestones();
-    loadCounts();
   }, []);
 
   const saveMilestone = async () => {
@@ -267,54 +239,8 @@ const EarningDistributionSettings: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Level Counts</h3>
-            <p className="text-sm text-gray-600">Current level counts for sponsors</p>
-          </div>
-          <button
-            onClick={loadCounts}
-            className="flex items-center space-x-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsor ID</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 1</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 2</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 3</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {countsLoading ? (
-                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">Loading...</td></tr>
-              ) : counts.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">No counts available.</td></tr>
-              ) : (
-                counts.map((row) => (
-                  <tr key={row.tmlc_user_id}>
-                    <td className="px-4 py-3 text-sm text-gray-700 font-mono">{row.tmlc_sponsorship_number}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level1_count}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level2_count}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level3_count}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{new Date(row.tmlc_updated_at).toLocaleDateString()}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+	    </div>
+	  );
 };
 
 export default EarningDistributionSettings;

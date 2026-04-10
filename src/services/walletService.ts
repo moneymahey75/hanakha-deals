@@ -254,11 +254,6 @@ export class WalletService {
     console.log('Connecting to wallet...');
 
     try {
-      // Validate admin settings before connecting
-      if (!this.adminSettings) {
-        throw new Error('Admin settings not configured. Please contact support.');
-      }
-
       // Add delay to prevent rapid successive requests
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -655,7 +650,6 @@ export class WalletService {
     console.log('Disconnecting wallet...');
     this.provider = null;
     this.signer = null;
-    this.adminSettings = null;
     this.isConnecting = false;
     // Clear internal state on disconnect
     this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null, warning: null };

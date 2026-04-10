@@ -8,16 +8,17 @@ let inFlightRegistrationSettingsRequest: {
 } | null = null;
 
 const RegistrationSettings: React.FC = () => {
-    const [formData, setFormData] = useState({
-        emailVerificationRequired: true,
-        mobileVerificationRequired: true,
-        referralMandatory: false,
-        eitherVerificationRequired: false,
-        testOtpEnabled: false,
-        testOtpCode: '123456',
-        registrationPaymentAutoApprove: true,
-        // Username validation settings
-        usernameMinLength: 8,
+	    const [formData, setFormData] = useState({
+	        emailVerificationRequired: true,
+	        mobileVerificationRequired: true,
+	        referralMandatory: false,
+	        eitherVerificationRequired: false,
+	        walletUniquePerCustomer: import.meta.env.PROD,
+	        testOtpEnabled: false,
+	        testOtpCode: '123456',
+	        registrationPaymentAutoApprove: true,
+	        // Username validation settings
+	        usernameMinLength: 8,
         usernameMaxLength: 30,
         usernameAllowSpaces: false,
         usernameAllowSpecialChars: true,
@@ -52,17 +53,18 @@ const RegistrationSettings: React.FC = () => {
 
     const loadSettings = async () => {
         try {
-            const requestPayload = {
-                keys: [
-                    'email_verification_required',
-                    'mobile_verification_required',
-                    'referral_mandatory',
-                    'either_verification_required',
-                    'test_otp_enabled',
-                    'test_otp_code',
-                    'registration_payment_auto_approve',
-                    // Username settings
-                    'username_min_length',
+	            const requestPayload = {
+	                keys: [
+	                    'email_verification_required',
+	                    'mobile_verification_required',
+	                    'referral_mandatory',
+	                    'either_verification_required',
+	                    'wallet_unique_per_customer',
+	                    'test_otp_enabled',
+	                    'test_otp_code',
+	                    'registration_payment_auto_approve',
+	                    // Username settings
+	                    'username_min_length',
                     'username_max_length',
                     'username_allow_spaces',
                     'username_allow_special_chars',
@@ -116,15 +118,16 @@ const RegistrationSettings: React.FC = () => {
                     return acc;
                 }, {}) || {};
 
-                setFormData({
-                    emailVerificationRequired: settingsMap.email_verification_required ?? true,
-                    mobileVerificationRequired: settingsMap.mobile_verification_required ?? true,
-                    referralMandatory: settingsMap.referral_mandatory ?? false,
-                    eitherVerificationRequired: settingsMap.either_verification_required ?? false,
-                    testOtpEnabled: settingsMap.test_otp_enabled ?? false,
-                    testOtpCode: settingsMap.test_otp_code ?? '123456',
-                    registrationPaymentAutoApprove: settingsMap.registration_payment_auto_approve ?? true,
-                    // Username settings with defaults
+	                setFormData({
+	                    emailVerificationRequired: settingsMap.email_verification_required ?? true,
+	                    mobileVerificationRequired: settingsMap.mobile_verification_required ?? true,
+	                    referralMandatory: settingsMap.referral_mandatory ?? false,
+	                    eitherVerificationRequired: settingsMap.either_verification_required ?? false,
+	                    walletUniquePerCustomer: settingsMap.wallet_unique_per_customer ?? import.meta.env.PROD,
+	                    testOtpEnabled: settingsMap.test_otp_enabled ?? false,
+	                    testOtpCode: settingsMap.test_otp_code ?? '123456',
+	                    registrationPaymentAutoApprove: settingsMap.registration_payment_auto_approve ?? true,
+	                    // Username settings with defaults
                     usernameMinLength: settingsMap.username_min_length ?? 8,
                     usernameMaxLength: settingsMap.username_max_length ?? 30,
                     usernameAllowSpaces: settingsMap.username_allow_spaces ?? false,
@@ -155,17 +158,18 @@ const RegistrationSettings: React.FC = () => {
             console.error('Unexpected error loading settings:', error);
             setDefaultSettings();
         } finally {
-            const requestKey = JSON.stringify({
-                keys: [
-                    'email_verification_required',
-                    'mobile_verification_required',
-                    'referral_mandatory',
-                    'either_verification_required',
-                    'test_otp_enabled',
-                    'test_otp_code',
-                    'registration_payment_auto_approve',
-                    'username_min_length',
-                    'username_max_length',
+	            const requestKey = JSON.stringify({
+	                keys: [
+	                    'email_verification_required',
+	                    'mobile_verification_required',
+	                    'referral_mandatory',
+	                    'either_verification_required',
+	                    'wallet_unique_per_customer',
+	                    'test_otp_enabled',
+	                    'test_otp_code',
+	                    'registration_payment_auto_approve',
+	                    'username_min_length',
+	                    'username_max_length',
                     'username_allow_spaces',
                     'username_allow_special_chars',
                     'username_allowed_special_chars',
@@ -197,15 +201,16 @@ const RegistrationSettings: React.FC = () => {
     };
 
     const setDefaultSettings = () => {
-        setFormData({
-            emailVerificationRequired: true,
-            mobileVerificationRequired: true,
-            referralMandatory: false,
-            eitherVerificationRequired: false,
-            testOtpEnabled: false,
-            testOtpCode: '123456',
-            registrationPaymentAutoApprove: true,
-            usernameMinLength: 8,
+	        setFormData({
+	            emailVerificationRequired: true,
+	            mobileVerificationRequired: true,
+	            referralMandatory: false,
+	            eitherVerificationRequired: false,
+	            walletUniquePerCustomer: import.meta.env.PROD,
+	            testOtpEnabled: false,
+	            testOtpCode: '123456',
+	            registrationPaymentAutoApprove: true,
+	            usernameMinLength: 8,
             usernameMaxLength: 30,
             usernameAllowSpaces: false,
             usernameAllowSpecialChars: true,
@@ -254,16 +259,21 @@ const RegistrationSettings: React.FC = () => {
                     tss_setting_value: JSON.stringify(formData.referralMandatory),
                     tss_description: 'Make referral code mandatory for registration'
                 },
-                {
-                    tss_setting_key: 'either_verification_required',
-                    tss_setting_value: JSON.stringify(formData.eitherVerificationRequired),
-                    tss_description: 'Allow users to verify either email or mobile (but not both)'
-                },
-                {
-                    tss_setting_key: 'test_otp_enabled',
-                    tss_setting_value: JSON.stringify(formData.testOtpEnabled),
-                    tss_description: 'Enable test OTP for development/testing purposes'
-                },
+	                {
+	                    tss_setting_key: 'either_verification_required',
+	                    tss_setting_value: JSON.stringify(formData.eitherVerificationRequired),
+	                    tss_description: 'Allow users to verify either email or mobile (but not both)'
+	                },
+	                {
+	                    tss_setting_key: 'wallet_unique_per_customer',
+	                    tss_setting_value: JSON.stringify(formData.walletUniquePerCustomer),
+	                    tss_description: 'Require a wallet address to be linked to only one customer account'
+	                },
+	                {
+	                    tss_setting_key: 'test_otp_enabled',
+	                    tss_setting_value: JSON.stringify(formData.testOtpEnabled),
+	                    tss_description: 'Enable test OTP for development/testing purposes'
+	                },
                 {
                     tss_setting_key: 'registration_payment_auto_approve',
                     tss_setting_value: JSON.stringify(formData.registrationPaymentAutoApprove),
@@ -884,42 +894,78 @@ const RegistrationSettings: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Registration Payment Approval */}
-                    <div className="border border-indigo-200 rounded-lg p-6 bg-indigo-50">
-                        <div className="flex items-start space-x-4">
-                            <div className="bg-indigo-100 p-2 rounded-lg mt-1">
-                                <CheckCircle className="h-5 w-5 text-indigo-600" />
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h4 className="text-lg font-medium text-gray-900">Auto-Approve Registration Payments</h4>
-                                        <p className="text-sm text-gray-600 mt-1">
-                                            Activate the subscription immediately after payment submission
-                                        </p>
-                                    </div>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            name="registrationPaymentAutoApprove"
-                                            checked={formData.registrationPaymentAutoApprove}
-                                            onChange={handleChange}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                    </label>
-                                </div>
-                                <div className="mt-3 text-sm text-gray-500">
-                                    {formData.registrationPaymentAutoApprove ? (
-                                        <span className="text-indigo-600">✓ Payments are auto-approved and subscriptions activate immediately</span>
-                                    ) : (
-                                        <span className="text-gray-500">Payments require admin approval before activation</span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+	                    {/* Registration Payment Approval */}
+	                    <div className="border border-indigo-200 rounded-lg p-6 bg-indigo-50">
+	                        <div className="flex items-start space-x-4">
+	                            <div className="bg-indigo-100 p-2 rounded-lg mt-1">
+	                                <CheckCircle className="h-5 w-5 text-indigo-600" />
+	                            </div>
+	                            <div className="flex-1">
+	                                <div className="flex items-center justify-between">
+	                                    <div>
+	                                        <h4 className="text-lg font-medium text-gray-900">Auto-Approve Registration Payments</h4>
+	                                        <p className="text-sm text-gray-600 mt-1">
+	                                            Activate the subscription immediately after payment submission
+	                                        </p>
+	                                    </div>
+	                                    <label className="relative inline-flex items-center cursor-pointer">
+	                                        <input
+	                                            type="checkbox"
+	                                            name="registrationPaymentAutoApprove"
+	                                            checked={formData.registrationPaymentAutoApprove}
+	                                            onChange={handleChange}
+	                                            className="sr-only peer"
+	                                        />
+	                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+	                                    </label>
+	                                </div>
+	                                <div className="mt-3 text-sm text-gray-500">
+	                                    {formData.registrationPaymentAutoApprove ? (
+	                                        <span className="text-indigo-600">✓ Payments are auto-approved and subscriptions activate immediately</span>
+	                                    ) : (
+	                                        <span className="text-gray-500">Payments require admin approval before activation</span>
+	                                    )}
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+
+	                    {/* Wallet Uniqueness */}
+	                    <div className="border border-emerald-200 rounded-lg p-6 bg-emerald-50">
+	                        <div className="flex items-start space-x-4">
+	                            <div className="bg-emerald-100 p-2 rounded-lg mt-1">
+	                                <Lock className="h-5 w-5 text-emerald-600" />
+	                            </div>
+	                            <div className="flex-1">
+	                                <div className="flex items-center justify-between">
+	                                    <div>
+	                                        <h4 className="text-lg font-medium text-gray-900">Unique Wallet Per Customer</h4>
+	                                        <p className="text-sm text-gray-600 mt-1">
+	                                            Prevent the same wallet address from being linked to multiple customer accounts
+	                                        </p>
+	                                    </div>
+	                                    <label className="relative inline-flex items-center cursor-pointer">
+	                                        <input
+	                                            type="checkbox"
+	                                            name="walletUniquePerCustomer"
+	                                            checked={formData.walletUniquePerCustomer}
+	                                            onChange={handleChange}
+	                                            className="sr-only peer"
+	                                        />
+	                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+	                                    </label>
+	                                </div>
+	                                <div className="mt-3 text-sm text-gray-500">
+	                                    {formData.walletUniquePerCustomer ? (
+	                                        <span className="text-emerald-600">✓ A wallet can be used by only one customer</span>
+	                                    ) : (
+	                                        <span className="text-gray-500">Wallet addresses may be shared across multiple customers (development only)</span>
+	                                    )}
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                </div>
 
                 {/* Username Validation Settings */}
                 <div className="border border-blue-200 rounded-lg p-6 bg-blue-50">

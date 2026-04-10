@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { getMLMTreeStructure } from '../lib/supabase';
+import { getReferralNetwork } from '../lib/supabase';
 
 interface TreeNode {
   id: string;
@@ -86,42 +86,28 @@ export const MLMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       console.log('🔍 Loading full referral network for user:', userId);
 
-      // Prefer RPC-based tree structure (works even when RLS blocks direct table reads)
+      // Prefer RPC-based referral network (works even when RLS blocks direct table reads)
       try {
-        const rpcData = await getMLMTreeStructure(userId, 10);
-        if (Array.isArray(rpcData)) {
-          const rpcNodes: TreeNode[] = rpcData
-            .map((row: any) => {
-              const resolvedUserId =
-                row.tmt_user_id ||
-                row.user_id ||
-                row.userId ||
-                row.tup_user_id ||
-                row.id;
-              const resolvedSponsorship =
-                row.tmt_sponsorship_number ||
-                row.sponsorship_number ||
-                row.sponsorshipNumber ||
-                row.tup_sponsorship_number;
+	        const rpcData = await getReferralNetwork(userId, 50);
+	        if (Array.isArray(rpcData)) {
+	          const rpcNodes: TreeNode[] = rpcData
+	            .map((row: any) => {
+              const resolvedUserId = row.user_id || row.tup_user_id || row.userId || row.id;
+              const resolvedSponsorship = row.sponsorship_number || row.tup_sponsorship_number || row.sponsorshipNumber;
               if (!resolvedUserId || !resolvedSponsorship) return null;
 
-              const resolvedParentId =
-                row.tmt_parent_id ||
-                row.parent_id ||
-                row.parentId ||
-                row.parent_user_id ||
-                null;
+              const resolvedParentId = row.parent_user_id || row.parentId || row.parent_id || null;
 
               return {
                 id: row.id || resolvedUserId,
                 userId: resolvedUserId,
                 parentId: resolvedParentId,
-                leftChildId: row.tmt_left_child_id || row.left_child_id || null,
-                rightChildId: row.tmt_right_child_id || row.right_child_id || null,
-                level: row.tmt_level ?? row.level ?? row.node_level ?? 0,
-                position: row.tmt_position || row.position || 'direct',
+                leftChildId: null,
+                rightChildId: null,
+                level: row.level ?? row.node_level ?? 0,
+                position: 'direct',
                 sponsorshipNumber: resolvedSponsorship,
-                isActive: row.tmt_is_active ?? row.is_active ?? row.tu_is_active ?? false,
+                isActive: row.is_active ?? row.tu_is_active ?? false,
                 userData: {
                   firstName: row.first_name || row.tup_first_name || row.firstName || '',
                   lastName: row.last_name || row.tup_last_name || row.lastName || '',
@@ -130,17 +116,19 @@ export const MLMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
               } as TreeNode;
             })
-            .filter(Boolean) as TreeNode[];
+	            .filter(Boolean) as TreeNode[];
 
-          if (rpcNodes.length > 0 || rpcData.length === 0) {
-            setTreeData(rpcNodes);
-            console.log('✅ Network loaded via RPC:', rpcNodes.length);
-            return rpcNodes;
-          }
-        }
-      } catch (rpcError) {
-        console.warn('RPC tree load failed, falling back to direct queries:', rpcError);
-      }
+	          const normalizedNodes = rpcNodes
+	            .filter((node) => node.userId !== userId)
+	            .map((node) => ({ ...node, level: Math.max(1, Number(node.level) || 1) }));
+
+	          setTreeData(normalizedNodes);
+	          console.log('✅ Referral network loaded via RPC:', normalizedNodes.length);
+	          return normalizedNodes;
+	        }
+	      } catch (rpcError) {
+	        console.warn('RPC referral network load failed, falling back to direct queries:', rpcError);
+	      }
 
       const { data: profileData, error: profileError } = await supabase
         .from('tbl_user_profiles')
