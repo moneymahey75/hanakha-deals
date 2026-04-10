@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -33,6 +34,8 @@ const TransactionsDashboard: React.FC = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [walletBalance, setWalletBalance] = useState(0);
+    const [pendingWithdrawalTotal, setPendingWithdrawalTotal] = useState(0);
     const [dateFrom, setDateFrom] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 6);
@@ -41,27 +44,74 @@ const TransactionsDashboard: React.FC = () => {
     const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+    const [totalCount, setTotalCount] = useState(0);
     const notification = useNotification();
+    const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
 
     useEffect(() => {
         if (user?.id) {
-            loadTransactions();
+            loadWalletBalance();
+            loadPendingWithdrawals();
         }
     }, [user?.id]);
+
+    const loadWalletBalance = async () => {
+        if (!user?.id) return;
+        try {
+            const { data, error } = await supabase
+                .from('tbl_wallets')
+                .select('tw_balance')
+                .eq('tw_user_id', user.id)
+                .eq('tw_currency', 'USDT')
+                .maybeSingle();
+            if (error) throw error;
+            setWalletBalance(Number(data?.tw_balance ?? 0));
+        } catch (error) {
+            console.error('Failed to load wallet balance:', error);
+        }
+    };
+
+    const loadPendingWithdrawals = async () => {
+        if (!user?.id) return;
+        try {
+            const { data, error } = await supabase
+                .from('tbl_withdrawal_requests')
+                .select('twr_amount, twr_status')
+                .eq('twr_user_id', user.id)
+                .in('twr_status', ['pending', 'processing', 'approved']);
+            if (error) throw error;
+            const total = (data || []).reduce((sum: number, row: any) => sum + Number(row.twr_amount || 0), 0);
+            setPendingWithdrawalTotal(total);
+        } catch (error) {
+            console.error('Failed to load pending withdrawals:', error);
+        }
+    };
 
     const loadTransactions = async () => {
         if (!user?.id) return;
 
         try {
-            const { data, error } = await supabase
+            const from = (currentPage - 1) * pageSize;
+            const to = from + pageSize - 1;
+
+            let query = supabase
                 .from('tbl_wallet_transactions')
-                .select('*')
+                .select('*', { count: 'exact' })
                 .eq('twt_user_id', user.id)
-                .order('twt_created_at', { ascending: false })
-                .limit(1000);
+                .order('twt_created_at', { ascending: false });
+
+            if (dateFrom) {
+                query = query.gte('twt_created_at', new Date(`${dateFrom}T00:00:00`).toISOString());
+            }
+            if (dateTo) {
+                query = query.lte('twt_created_at', new Date(`${dateTo}T23:59:59.999`).toISOString());
+            }
+
+            const { data, error, count } = await query.range(from, to);
 
             if (error) throw error;
             setTransactions(data || []);
+            setTotalCount(Number(count || 0));
         } catch (error) {
             console.error('Failed to load transactions:', error);
             notification.showError('Error', 'Failed to load transactions');
@@ -73,7 +123,7 @@ const TransactionsDashboard: React.FC = () => {
 
     const handleRefresh = async () => {
         setRefreshing(true);
-        await loadTransactions();
+        await Promise.all([loadTransactions(), loadWalletBalance(), loadPendingWithdrawals()]);
     };
 
     useEffect(() => {
@@ -86,22 +136,24 @@ const TransactionsDashboard: React.FC = () => {
         setCurrentPage(1);
     }, [dateFrom, dateTo, pageSize]);
 
-    const filteredTransactions = useMemo(() => {
-        const start = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
-        const end = dateTo ? new Date(`${dateTo}T23:59:59.999`) : null;
-        return transactions.filter(tx => {
-            const txDate = new Date(tx.twt_created_at);
-            if (start && txDate < start) return false;
-            if (end && txDate > end) return false;
-            return true;
-        });
-    }, [transactions, dateFrom, dateTo]);
+    useEffect(() => {
+        if (!user?.id) return;
+        setLoading(true);
+        loadTransactions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id, currentPage, pageSize, dateFrom, dateTo]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const clampedPage = Math.min(currentPage, totalPages);
     const pageStart = (clampedPage - 1) * pageSize;
-    const pageEnd = pageStart + pageSize;
-    const pagedTransactions = filteredTransactions.slice(pageStart, pageEnd);
+    const pageEnd = Math.min(pageStart + pageSize, totalCount);
+    const pagedTransactions = transactions;
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     const handleDownloadPdf = () => {
         try {
@@ -115,7 +167,7 @@ const TransactionsDashboard: React.FC = () => {
             doc.setTextColor(100);
             doc.text(`Date range: ${rangeLabel}`, 40, 60);
 
-            const tableBody = filteredTransactions.map(tx => ([
+            const tableBody = pagedTransactions.map(tx => ([
                 new Date(tx.twt_created_at).toLocaleDateString(),
                 new Date(tx.twt_created_at).toLocaleTimeString(),
                 tx.twt_description,
@@ -160,22 +212,19 @@ const TransactionsDashboard: React.FC = () => {
         return type === 'credit' ? ArrowUpRight : ArrowDownLeft;
     };
 
-    // Group transactions by date
-    const groupTransactionsByDate = () => {
-        const grouped: { [key: string]: Transaction[] } = {};
-
-        pagedTransactions.forEach(transaction => {
-            const date = new Date(transaction.twt_created_at).toLocaleDateString();
-            if (!grouped[date]) {
-                grouped[date] = [];
-            }
-            grouped[date].push(transaction);
-        });
-
-        return grouped;
-    };
-
-    const groupedTransactions = groupTransactionsByDate();
+    const groupedTransactions = useMemo(() => {
+        const map = new Map<string, Transaction[]>();
+        for (const transaction of pagedTransactions) {
+            const dateKey = new Date(transaction.twt_created_at).toLocaleDateString();
+            const list = map.get(dateKey) || [];
+            list.push(transaction);
+            map.set(dateKey, list);
+        }
+        return Array.from(map.entries());
+    }, [pagedTransactions]);
+    const withdrawableBalance = useMemo(() => {
+        return Math.max(0, Number(walletBalance || 0) - Number(pendingWithdrawalTotal || 0));
+    }, [walletBalance, pendingWithdrawalTotal]);
 
     if (loading) {
         return (
@@ -192,9 +241,21 @@ const TransactionsDashboard: React.FC = () => {
 
     return (
         <div className="space-y-6">
+            <div ref={topRef} />
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Transaction History</h3>
+                <div className="flex flex-col">
+                    <h3 className="text-lg font-semibold text-gray-900">Transaction History</h3>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                            Available: {withdrawableBalance.toFixed(2)} USDT
+                        </span>
+                        <span className="text-xs text-gray-500">Total: {walletBalance.toFixed(2)} USDT</span>
+                        {pendingWithdrawalTotal > 0 && (
+                            <span className="text-xs text-gray-500">Reserved: {pendingWithdrawalTotal.toFixed(2)} USDT</span>
+                        )}
+                    </div>
+                </div>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleDownloadPdf}
@@ -279,41 +340,9 @@ const TransactionsDashboard: React.FC = () => {
                             </select>
                         </div>
                         <div className="text-sm text-gray-500">
-                            Showing {filteredTransactions.length} transaction{filteredTransactions.length === 1 ? '' : 's'}
+                            Total: {totalCount} transaction{totalCount === 1 ? '' : 's'}
                         </div>
                     </div>
-                </div>
-            </div>
-
-            {/* Recent Transactions Overview */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-                <h4 className="text-lg font-semibold text-gray-900 mb-4">Recent Transactions</h4>
-                <div className="space-y-3">
-                    {filteredTransactions.slice(0, 5).map((transaction) => {
-                        const Icon = getTransactionIcon(transaction.twt_transaction_type, transaction.twt_reference_type);
-                        return (
-                            <div key={transaction.twt_id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <div className={`p-2 rounded-full ${
-                                    transaction.twt_transaction_type === 'credit' ? 'bg-green-100' : 'bg-red-100'
-                                }`}>
-                                    <Icon className={`h-4 w-4 ${
-                                        transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
-                                    }`} />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-900">{transaction.twt_description}</p>
-                                    <p className="text-xs text-gray-500">
-                                        {new Date(transaction.twt_created_at).toLocaleDateString()}
-                                    </p>
-                                </div>
-                                <div className={`text-sm font-medium ${
-                                    transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
-                                }`}>
-                                    {transaction.twt_transaction_type === 'credit' ? '+' : '-'}{transaction.twt_amount} USDT
-                                </div>
-                            </div>
-                        );
-                    })}
                 </div>
             </div>
 
@@ -321,9 +350,9 @@ const TransactionsDashboard: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4">All Transactions</h4>
 
-                {Object.entries(groupedTransactions).length > 0 ? (
+                {groupedTransactions.length > 0 ? (
                     <div className="space-y-6">
-                        {Object.entries(groupedTransactions).map(([date, dateTransactions]) => (
+                        {groupedTransactions.map(([date, dateTransactions]) => (
                             <div key={date}>
                                 <div className="flex items-center space-x-2 mb-4">
                                     <Calendar className="h-4 w-4 text-gray-400" />
@@ -347,8 +376,8 @@ const TransactionsDashboard: React.FC = () => {
                                                         <div>
                                                             <h5 className="font-medium text-gray-900">{transaction.twt_description}</h5>
                                                             <div className="flex items-center space-x-4 mt-1">
-                                <span className="text-sm text-gray-500">
-                                  {new Date(transaction.twt_created_at).toLocaleTimeString()}
+                                                                <span className="text-sm text-gray-500">
+                                  {new Date(transaction.twt_created_at).toLocaleString()}
                                 </span>
                                                                 {transaction.twt_reference_type && (
                                                                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
@@ -397,7 +426,7 @@ const TransactionsDashboard: React.FC = () => {
                         ))}
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4 border-t border-gray-200">
                             <div className="text-sm text-gray-500">
-                                Page {clampedPage} of {totalPages} • Showing {pageStart + 1}–{Math.min(pageEnd, filteredTransactions.length)} of {filteredTransactions.length}
+                                Page {clampedPage} of {totalPages} • Showing {totalCount === 0 ? 0 : pageStart + 1}–{pageEnd} of {totalCount}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button

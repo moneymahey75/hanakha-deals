@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 import {
   Wallet,
   DollarSign,
@@ -177,6 +178,7 @@ const WalletManagement: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const notification = useNotification();
+  const topRef = useScrollToTopOnChange([activeTab, currentPage], { smooth: true });
 
   useEffect(() => {
     if (activeTab === 'wallets') {
@@ -526,6 +528,7 @@ const WalletManagement: React.FC = () => {
 
   return (
       <div className="bg-white rounded-xl shadow-sm">
+        <div ref={topRef} />
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">

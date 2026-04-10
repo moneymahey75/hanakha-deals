@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 
 interface LevelCountRow {
   tmlc_user_id: string;
@@ -23,6 +24,7 @@ const MLMLevelCounts: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [extraLevel, setExtraLevel] = useState(4);
+  const topRef = useScrollToTopOnChange([page], { smooth: true });
 
   const totalCount = rows[0]?.total_count ?? 0;
   const totalPages = useMemo(() => Math.max(1, Math.ceil(totalCount / pageSize)), [totalCount, pageSize]);
@@ -90,6 +92,7 @@ const MLMLevelCounts: React.FC = () => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
+      <div ref={topRef} />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Level Counts</h3>

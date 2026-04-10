@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMLM } from '../../contexts/MLMContext';
+import { supabase } from '../../lib/supabase';
 import ReferralLinkGenerator from '../../components/mlm/ReferralLinkGenerator';
 import TransactionsDashboard from '../../components/customer/TransactionsDashboard';
 import DailyTasksDashboard from '../../components/customer/DailyTasksDashboard';
@@ -8,11 +9,13 @@ import CouponInteractionsList from '../../components/customer/CouponInteractions
 import WalletList from '../../components/customer/WalletList';
 import PaymentHistory from '../../components/customer/PaymentHistory';
 import EarningsDashboard from '../../components/customer/EarningsDashboard';
+import WithdrawalsDashboard from '../../components/customer/WithdrawalsDashboard';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
   TrendingUp,
   DollarSign,
+  ArrowUpRight,
   Award,
   UserPlus,
   BarChart3,
@@ -29,6 +32,7 @@ import {
   Wallet as WalletIcon,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
+import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
 
 interface DashboardStats {
   totalReferrals: number;
@@ -45,6 +49,26 @@ interface RecentActivity {
   timestamp: string;
   amount?: number;
 }
+
+type WalletTxRow = {
+  twt_id: string;
+  twt_transaction_type: 'credit' | 'debit' | 'transfer';
+  twt_amount: number;
+  twt_currency?: string | null;
+  twt_description?: string | null;
+  twt_reference_type?: string | null;
+  twt_status?: string | null;
+  twt_created_at: string;
+};
+
+type WithdrawalRow = {
+  twr_id: string;
+  twr_amount: number;
+  twr_status: string;
+  twr_requested_at?: string | null;
+  twr_processed_at?: string | null;
+  twr_failure_reason?: string | null;
+};
 
 
 const CustomerDashboard: React.FC = () => {
@@ -67,12 +91,13 @@ const CustomerDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'interactions', label: 'My Coupons', icon: Ticket },
-    { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare },
+    { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
+    { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
     { id: 'network', label: 'My Network', icon: Users },
     { id: 'payments', label: 'Payment History', icon: CreditCard },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
+    { id: 'withdrawals', label: 'Withdrawals', icon: ArrowUpRight },
     { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
   ];
@@ -95,6 +120,7 @@ const CustomerDashboard: React.FC = () => {
         const loadPromises = [
           loadTreeStats(),
           loadRecentActivities(),
+          loadEarningsStats(),
           // Earnings handled in Earnings tab
         ];
 
@@ -162,47 +188,124 @@ const CustomerDashboard: React.FC = () => {
     try {
       console.log('📋 Loading recent activities...');
 
-      // Simulate API call - replace with actual API endpoint
-      const activities: RecentActivity[] = [
-        {
-          id: '1',
-          type: 'referral',
-          message: 'New referral joined your network',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '2',
-          type: 'earning',
-          message: 'Commission earned',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          amount: 125
-        },
-        {
-          id: '3',
-          type: 'level',
-          message: 'Congratulations! Level up achieved',
-          timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        }
-      ];
+      if (!user?.id) {
+        setRecentActivities([]);
+        return;
+      }
 
-      setRecentActivities(activities);
+      const [txRes, wdRes] = await Promise.all([
+        supabase
+          .from('tbl_wallet_transactions')
+          .select('twt_id, twt_transaction_type, twt_amount, twt_currency, twt_description, twt_reference_type, twt_status, twt_created_at')
+          .eq('twt_user_id', user.id)
+          .order('twt_created_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('tbl_withdrawal_requests')
+          .select('twr_id, twr_amount, twr_status, twr_requested_at, twr_processed_at, twr_failure_reason')
+          .eq('twr_user_id', user.id)
+          .order('twr_requested_at', { ascending: false })
+          .limit(10)
+      ]);
+
+      if (txRes.error) throw txRes.error;
+      if (wdRes.error) throw wdRes.error;
+
+      const txActivities: RecentActivity[] = (txRes.data || []).map((row: WalletTxRow) => {
+        const amount = Number(row.twt_amount || 0);
+        const isCredit = row.twt_transaction_type === 'credit';
+        const isWithdrawal = String(row.twt_reference_type || '').toLowerCase() === 'withdrawal';
+        const status = String(row.twt_status || '').toLowerCase();
+        const baseMessage = String(row.twt_description || (isCredit ? 'Wallet credited' : 'Wallet debited'));
+
+        return {
+          id: row.twt_id,
+          type: isWithdrawal ? 'withdrawal' : isCredit ? 'earning' : 'transaction',
+          message: status && status !== 'completed' ? `${baseMessage} (${status})` : baseMessage,
+          timestamp: row.twt_created_at,
+          amount: Number.isFinite(amount) ? amount : undefined
+        };
+      });
+
+      const wdActivities: RecentActivity[] = (wdRes.data || []).map((row: WithdrawalRow) => {
+        const status = String(row.twr_status || '').toLowerCase();
+        const amount = Number(row.twr_amount || 0);
+        const ts = row.twr_processed_at || row.twr_requested_at || new Date().toISOString();
+        const failureShort = formatWithdrawalFailureShort(row.twr_failure_reason);
+        const effectiveStatus = (status === 'completed' && row.twr_failure_reason) ? 'failed' : status;
+        const message =
+          effectiveStatus === 'pending' ? 'Withdrawal requested' :
+            effectiveStatus === 'processing' ? 'Withdrawal processing' :
+              effectiveStatus === 'completed' ? 'Withdrawal completed' :
+                effectiveStatus === 'rejected' ? 'Withdrawal rejected' :
+                  effectiveStatus === 'failed' ? 'Withdrawal failed' :
+                    `Withdrawal ${effectiveStatus}`;
+
+        return {
+          id: row.twr_id,
+          type: 'withdrawal',
+          message: failureShort ? `${message} (${failureShort})` : message,
+          timestamp: ts,
+          amount: Number.isFinite(amount) ? amount : undefined
+        };
+      });
+
+      const merged = [...txActivities, ...wdActivities]
+        .filter((a) => a.timestamp)
+        .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+        .slice(0, 6);
+
+      setRecentActivities(merged);
       console.log('✅ Recent activities loaded');
     } catch (error) {
       console.error('❌ Failed to load recent activities:', error);
     }
   };
 
+  const loadEarningsStats = async () => {
+    if (!user?.id) return;
+    try {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startIso = start.toISOString();
+
+      const { data, error } = await supabase
+        .from('tbl_wallet_transactions')
+        .select('twt_amount, twt_transaction_type, twt_status, twt_created_at')
+        .eq('twt_user_id', user.id)
+        .eq('twt_currency', 'USDT')
+        .eq('twt_status', 'completed')
+        .gte('twt_created_at', startIso)
+        .limit(5000);
+
+      if (error) throw error;
+
+      const monthlyCredits = (data || [])
+        .filter((row: any) => row.twt_transaction_type === 'credit')
+        .reduce((sum: number, row: any) => sum + Number(row.twt_amount || 0), 0);
+
+      setDashboardStats((prev) => ({
+        ...prev,
+        monthlyEarnings: Number(monthlyCredits.toFixed(2))
+      }));
+    } catch (error) {
+      console.error('❌ Failed to load earnings stats:', error);
+    }
+  };
+
   const handleInviteMembers = () => {
     setActiveTab('referrals');
+    setIsSidebarOpen(false);
     notification.showInfo('Invite Members', 'Use your referral links to invite new members!');
   };
 
   const handleViewEarningsReport = () => {
     setActiveTab('earnings');
+    setIsSidebarOpen(false);
   };
 
   const handleUpgradePlan = () => {
-    notification.showInfo('Upgrade Plan', 'Plan upgrade functionality would be implemented here.');
+    notification.showInfo('Upcoming Feature', 'Upgrade Plan is coming soon.');
   };
 
   const formatTimeAgo = (timestamp: string) => {
@@ -221,6 +324,8 @@ const CustomerDashboard: React.FC = () => {
       case 'referral': return UserPlus;
       case 'earning': return DollarSign;
       case 'level': return Award;
+      case 'withdrawal': return ArrowUpRight;
+      case 'transaction': return CreditCard;
       default: return UserPlus;
     }
   };
@@ -231,7 +336,7 @@ const CustomerDashboard: React.FC = () => {
       value: dashboardStats.totalReferrals,
       icon: Users,
       color: 'bg-blue-500',
-      change: '+12%'
+      change: 'All levels'
     },
     {
       title: 'Direct Referrals',
@@ -249,10 +354,10 @@ const CustomerDashboard: React.FC = () => {
     },
     {
       title: 'Monthly Earnings',
-      value: `$${dashboardStats.monthlyEarnings.toLocaleString()}`,
+      value: `${dashboardStats.monthlyEarnings.toFixed(2)} USDT`,
       icon: DollarSign,
       color: 'bg-yellow-500',
-      change: '+8%'
+      change: 'This month'
     }
   ];
 
@@ -326,14 +431,21 @@ const CustomerDashboard: React.FC = () => {
                               ? 'bg-indigo-50 text-indigo-700 border-r-2 border-indigo-600'
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
-                  >
-                    <Icon className="h-5 w-5 flex-shrink-0" />
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-              );
-            })}
-          </nav>
-        </div>
+	                  >
+	                    <Icon className="h-5 w-5 flex-shrink-0" />
+	                    <div className="flex-1 flex items-center justify-between min-w-0">
+	                      <span className="font-medium truncate">{item.label}</span>
+	                      {item.badge && (
+	                        <span className="ml-2 inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold text-yellow-800">
+	                          {item.badge}
+	                        </span>
+	                      )}
+	                    </div>
+	                  </button>
+	              );
+	            })}
+	          </nav>
+	        </div>
 
         {/* Overlay for mobile */}
         {isSidebarOpen && (
@@ -467,6 +579,12 @@ const CustomerDashboard: React.FC = () => {
                 {activeTab === 'earnings' && (
                     <div>
                       <EarningsDashboard />
+                    </div>
+                )}
+
+                {activeTab === 'withdrawals' && (
+                    <div>
+                      <WithdrawalsDashboard />
                     </div>
                 )}
 

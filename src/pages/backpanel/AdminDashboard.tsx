@@ -84,7 +84,9 @@ const AdminDashboard: React.FC = () => {
       wallets: { read: false, write: false, delete: false },
       subscriptions: { read: false, write: false, delete: false },
       payments: { read: false, write: false, delete: false },
+      withdrawals: { read: false, write: false, delete: false },
       settings: { read: false, write: false, delete: false },
+      mlm: { read: false, write: false, delete: false },
       admins: { read: false, write: false, delete: false },
     }
   });
@@ -146,7 +148,9 @@ const AdminDashboard: React.FC = () => {
           wallets: { read: false, write: false, delete: false },
           subscriptions: { read: false, write: false, delete: false },
           payments: { read: false, write: false, delete: false },
+          withdrawals: { read: false, write: false, delete: false },
           settings: { read: false, write: false, delete: false },
+          mlm: { read: false, write: false, delete: false },
           admins: { read: false, write: false, delete: false },
         }
       });
@@ -244,25 +248,39 @@ const AdminDashboard: React.FC = () => {
     { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'wallets' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
-    { id: 'withdrawals', label: 'Withdrawals', icon: RefreshCw, permission: 'payments' },
+    { id: 'withdrawals', label: 'Withdrawals', icon: RefreshCw, permission: 'withdrawals' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
     { id: 'settings', label: 'Settings', icon: Settings, permission: 'settings' }
   ];
 
-  const visibleTabs = tabs.filter(tab =>
-      !tab.permission || hasPermission(tab.permission as any, 'read')
-  );
+  const visibleTabs = tabs.filter(tab => {
+      if (tab.id === 'settings') {
+        return hasPermission('settings' as any, 'read') || hasPermission('mlm' as any, 'read');
+      }
+      return !tab.permission || hasPermission(tab.permission as any, 'read');
+  });
   const activeTabPermission = tabs.find(tab => tab.id === activeTab)?.permission;
 
   // Settings sub-tabs
   const [settingsTab, setSettingsTab] = useState('general');
   const settingsTabs = [
-    { id: 'general', label: 'General Settings', icon: Globe },
-    { id: 'registration', label: 'Registration Settings', icon: UserCheck },
-    { id: 'payment', label: 'Payment Settings', icon: FileText },
-    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp },
-    { id: 'level_counts', label: 'Level Counts', icon: BarChart3 }
+    { id: 'general', label: 'General Settings', icon: Globe, permission: 'settings' },
+    { id: 'registration', label: 'Registration Settings', icon: UserCheck, permission: 'settings' },
+    { id: 'payment', label: 'Payment Settings', icon: FileText, permission: 'settings' },
+    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp, permission: 'mlm' },
+    { id: 'level_counts', label: 'Level Counts', icon: BarChart3, permission: 'mlm' }
   ];
+
+  const visibleSettingsTabs = settingsTabs.filter((tab: any) => hasPermission(tab.permission as any, 'read'));
+
+  useEffect(() => {
+    if (activeTab !== 'settings') return;
+    if (visibleSettingsTabs.length === 0) return;
+    if (!visibleSettingsTabs.some((t: any) => t.id === settingsTab)) {
+      setSettingsTab(visibleSettingsTabs[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, settingsTab, visibleSettingsTabs.length]);
 
   // =========================================================
   // CRITICAL LOADING/AUTH CHECK
@@ -478,7 +496,7 @@ const AdminDashboard: React.FC = () => {
                 <PendingPayments />
             )}
 
-            {activeTab === 'withdrawals' && hasPermission('payments', 'read') && (
+            {activeTab === 'withdrawals' && hasPermission('withdrawals' as any, 'read') && (
                 <WithdrawalRequests />
             )}
 
@@ -486,7 +504,7 @@ const AdminDashboard: React.FC = () => {
                 <AdminManagement />
             )}
 
-            {activeTab === 'settings' && hasPermission('settings', 'read') && (
+            {activeTab === 'settings' && (hasPermission('settings' as any, 'read') || hasPermission('mlm' as any, 'read')) && (
                 <div className="bg-white rounded-xl shadow-sm">
                   {/* Vertical Settings Navigation */}
                   <div className="flex">
@@ -496,7 +514,7 @@ const AdminDashboard: React.FC = () => {
                         <p className="text-sm text-gray-600">Configure system preferences</p>
                       </div>
                       <nav className="p-4 space-y-2">
-                        {settingsTabs.map((tab) => (
+                        {visibleSettingsTabs.map((tab: any) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setSettingsTab(tab.id)}
@@ -515,18 +533,68 @@ const AdminDashboard: React.FC = () => {
 
                     {/* Settings Content */}
                     <div className="flex-1 p-6">
-	                      {settingsTab === 'general' && <GeneralSettings />}
-	                      {settingsTab === 'registration' && <RegistrationSettings />}
-	                      {settingsTab === 'payment' && <PaymentSettings />}
-	                      {settingsTab === 'earning' && <EarningDistributionSettings />}
-	                      {settingsTab === 'level_counts' && <MLMLevelCounts />}
+	                      {settingsTab === 'general' && hasPermission('settings' as any, 'read') && <GeneralSettings />}
+	                      {settingsTab === 'registration' && hasPermission('settings' as any, 'read') && <RegistrationSettings />}
+	                      {settingsTab === 'payment' && hasPermission('settings' as any, 'read') && <PaymentSettings />}
+	                      {settingsTab === 'earning' && hasPermission('mlm' as any, 'read') && <EarningDistributionSettings />}
+	                      {settingsTab === 'level_counts' && hasPermission('mlm' as any, 'read') && <MLMLevelCounts />}
+                        {settingsTab === 'general' && !hasPermission('settings' as any, 'read') && (
+                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Shield className="h-8 w-8 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                            <p className="text-gray-600">You don't have permission to access this section.</p>
+                          </div>
+                        )}
+                        {settingsTab === 'registration' && !hasPermission('settings' as any, 'read') && (
+                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Shield className="h-8 w-8 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                            <p className="text-gray-600">You don't have permission to access this section.</p>
+                          </div>
+                        )}
+                        {settingsTab === 'payment' && !hasPermission('settings' as any, 'read') && (
+                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Shield className="h-8 w-8 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                            <p className="text-gray-600">You don't have permission to access this section.</p>
+                          </div>
+                        )}
+                        {settingsTab === 'earning' && !hasPermission('mlm' as any, 'read') && (
+                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Shield className="h-8 w-8 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                            <p className="text-gray-600">You don't have permission to access this section.</p>
+                          </div>
+                        )}
+                        {settingsTab === 'level_counts' && !hasPermission('mlm' as any, 'read') && (
+                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Shield className="h-8 w-8 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                            <p className="text-gray-600">You don't have permission to access this section.</p>
+                          </div>
+                        )}
 	                    </div>
                   </div>
                 </div>
             )}
 
             {/* Access Denied */}
-            {activeTab !== 'overview' && admin && activeTabPermission && !hasPermission(activeTabPermission as any, 'read') && (
+            {activeTab !== 'overview' && admin && (
+              (activeTab === 'settings'
+                ? !(hasPermission('settings' as any, 'read') || hasPermission('mlm' as any, 'read'))
+                : !!activeTabPermission && !hasPermission(activeTabPermission as any, 'read')
+              )
+            ) && (
                 <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                   <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Shield className="h-8 w-8 text-red-600" />

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdminAuth } from '../../contexts/AdminAuthContext';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 import {
     Users, Search, Eye, CreditCard as Edit, UserCheck, UserX, Mail, Phone,
     Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle,
     CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft,
-    ChevronsRight, MoreHorizontal, Key, LogIn
+    ChevronsRight, MoreHorizontal, Key, LogIn, Wallet, Activity, ArrowDownLeft, ArrowUpRight
 } from 'lucide-react';
 
 let inFlightCustomersRequest: {
@@ -43,10 +45,60 @@ interface Transaction {
     tp_payment_status: string;
     tp_created_at: string;
     tp_gateway_response?: any;
-    tbl_subscription_plans?: {
-        tsp_name?: string;
-        tsp_price?: number;
+    subscription?: {
+        tus_id?: string;
+        plan?: {
+            tsp_name?: string;
+            tsp_price?: number;
+        };
     };
+}
+
+interface WalletConnection {
+    tuwc_id: string;
+    tuwc_wallet_address: string;
+    tuwc_wallet_name?: string;
+    tuwc_wallet_type?: string;
+    tuwc_chain_id?: number | null;
+    tuwc_is_default?: boolean;
+    tuwc_is_active?: boolean;
+    tuwc_last_connected_at?: string | null;
+}
+
+interface WalletTotals {
+    walletBalance: number;
+    withdrawableBalance: number;
+    reservedWithdrawals: number;
+    totalEarned: number;
+    totalDebited: number;
+}
+
+interface WalletDetailsResponse {
+    wallet: null | {
+        tw_id: string;
+        tw_balance: number;
+        tw_currency: string;
+        tw_created_at: string;
+        tw_updated_at: string;
+        tw_is_active: boolean;
+    };
+    walletConnections: WalletConnection[];
+    totals: WalletTotals;
+}
+
+interface WalletTxn {
+    twt_id: string;
+    twt_wallet_id: string;
+    twt_user_id: string;
+    twt_transaction_type: 'credit' | 'debit' | 'transfer';
+    twt_amount: number;
+    twt_currency: string;
+    twt_description: string;
+    twt_reference_type?: string | null;
+    twt_reference_id?: string | null;
+    twt_status: string;
+    twt_created_at: string;
+    twt_blockchain_hash?: string | null;
 }
 
 // Skeleton Loader for Table Rows
@@ -125,6 +177,7 @@ const CustomerManagement: React.FC = () => {
 
     const notification = useNotification();
     const { impersonateCustomer } = useAuth();
+    const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
 
     const loadCustomers = async () => {
         try {
@@ -372,9 +425,10 @@ const CustomerManagement: React.FC = () => {
         );
     }
 
-    return (
-        <div className="bg-white rounded-xl shadow-sm">
-            <div className="p-6 border-b border-gray-200">
+	    return (
+	        <div className="bg-white rounded-xl shadow-sm">
+            <div ref={topRef} />
+	            <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center space-x-3">
                         <div className="bg-blue-100 p-3 rounded-lg">
@@ -659,12 +713,19 @@ const CustomerDetails: React.FC<{
     activeTab: string;
     setActiveTab: (tab: string) => void;
 }> = ({ customer: initialCustomer, onBack, onUpdate, onCustomerUpdated, editMode, setEditMode, activeTab, setActiveTab }) => {
+    const { hasPermission } = useAdminAuth();
 
     // ✅ Local customer state — decoupled from parent prop
     const [customer, setCustomer] = useState<Customer>(initialCustomer);
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [walletDetails, setWalletDetails] = useState<WalletDetailsResponse | null>(null);
+    const [walletTransactions, setWalletTransactions] = useState<WalletTxn[]>([]);
+    const [walletTxPage, setWalletTxPage] = useState(1);
+    const [walletTxPageSize, setWalletTxPageSize] = useState(10);
+    const [walletTxTotalCount, setWalletTxTotalCount] = useState(0);
     const [loading, setLoading] = useState(false);
+    const walletTxTopRef = useScrollToTopOnChange([walletTxPage], { smooth: true });
     const [editData, setEditData] = useState({
         first_name: customer.tbl_user_profiles?.tup_first_name || '',
         last_name: customer.tbl_user_profiles?.tup_last_name || '',
@@ -682,7 +743,19 @@ const CustomerDetails: React.FC<{
         if (activeTab === 'transactions') {
             loadTransactions();
         }
+        if (activeTab === 'wallets' || activeTab === 'earnings') {
+            loadWalletDetails();
+        }
+        if (activeTab === 'wallet_transactions') {
+            setWalletTxPage(1);
+        }
     }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab !== 'wallet_transactions') return;
+        loadWalletTransactions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, walletTxPage, walletTxPageSize]);
 
     const loadTransactions = async () => {
         setLoading(true);
@@ -694,6 +767,40 @@ const CustomerDetails: React.FC<{
         } catch (error) {
             console.error('Failed to load payments:', error);
             setTransactions([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadWalletDetails = async () => {
+        setLoading(true);
+        try {
+            const details = await adminApi.post<WalletDetailsResponse>('admin-get-customer-wallet-details', {
+                userId: customer.tu_id
+            });
+            setWalletDetails(details || null);
+        } catch (error) {
+            console.error('Failed to load wallet details:', error);
+            setWalletDetails(null);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadWalletTransactions = async () => {
+        setLoading(true);
+        try {
+            const result = await adminApi.post<{ rows: WalletTxn[]; count: number }>('admin-get-user-wallet-transactions-paged', {
+                userId: customer.tu_id,
+                page: walletTxPage,
+                pageSize: walletTxPageSize
+            });
+            setWalletTransactions(result?.rows || []);
+            setWalletTxTotalCount(Number(result?.count || 0));
+        } catch (error) {
+            console.error('Failed to load wallet transactions:', error);
+            setWalletTransactions([]);
+            setWalletTxTotalCount(0);
         } finally {
             setLoading(false);
         }
@@ -761,8 +868,29 @@ const CustomerDetails: React.FC<{
 
     const tabs = [
         { id: 'profile', label: 'Profile Details', icon: User },
-        { id: 'transactions', label: 'Payment Transactions', icon: CreditCard }
+        { id: 'transactions', label: 'Payment Transactions', icon: CreditCard },
+        { id: 'wallets', label: 'Wallets', icon: Wallet },
+        { id: 'wallet_transactions', label: 'Wallet Transactions', icon: Activity },
+        { id: 'earnings', label: 'Earnings', icon: DollarSign }
     ];
+
+    const visibleTabs = tabs.filter((tab) => {
+        if (tab.id === 'profile') return true;
+        if (tab.id === 'transactions') return hasPermission('payments' as any, 'read');
+        if (tab.id === 'wallets' || tab.id === 'wallet_transactions' || tab.id === 'earnings') {
+            return hasPermission('wallets' as any, 'read');
+        }
+        return true;
+    });
+
+    const visibleTabIds = visibleTabs.map((t) => t.id).join('|');
+
+    useEffect(() => {
+        if (visibleTabs.length === 0) return;
+        if (!visibleTabs.some((t) => t.id === activeTab)) {
+            setActiveTab(visibleTabs[0].id);
+        }
+    }, [activeTab, visibleTabIds, setActiveTab]);
 
     return (
         <div className="bg-white rounded-xl shadow-sm">
@@ -821,7 +949,7 @@ const CustomerDetails: React.FC<{
                 {/* Tabs */}
                 <div className="border-b border-gray-200">
                     <nav className="flex space-x-8">
-                        {tabs.map((tab) => (
+                        {visibleTabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
@@ -1020,7 +1148,7 @@ const CustomerDetails: React.FC<{
                                                     </div>
                                                     <div>
                                                         <h5 className="font-medium text-gray-900">
-                                                            {transaction.tbl_subscription_plans?.tsp_name || 'Payment'}
+                                                            {transaction.subscription?.plan?.tsp_name || 'Payment'}
                                                         </h5>
                                                         <p className="text-sm text-gray-500">
                                                             {new Date(transaction.tp_created_at).toLocaleDateString()} at {new Date(transaction.tp_created_at).toLocaleTimeString()}
@@ -1065,6 +1193,286 @@ const CustomerDetails: React.FC<{
                                 <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                                 <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
                                 <p className="text-gray-600">This customer hasn't made any payments yet.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'wallets' && (
+                    <div>
+                        <div className="flex items-center justify-between mb-6">
+                            <h4 className="font-medium text-gray-900 flex items-center">
+                                <Wallet className="h-5 w-5 mr-2" />
+                                Wallets
+                            </h4>
+                        </div>
+
+                        {loading ? (
+                            <div className="text-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                <p className="text-gray-500 mt-2">Loading wallet details...</p>
+                            </div>
+                        ) : walletDetails ? (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <div className="text-sm text-green-700">Wallet Balance</div>
+                                        <div className="text-2xl font-bold text-green-800">
+                                            {walletDetails.totals.walletBalance.toFixed(2)} USDT
+                                        </div>
+                                    </div>
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                        <div className="text-sm text-blue-700">Withdrawable</div>
+                                        <div className="text-2xl font-bold text-blue-800">
+                                            {walletDetails.totals.withdrawableBalance.toFixed(2)} USDT
+                                        </div>
+                                        {walletDetails.totals.reservedWithdrawals > 0 && (
+                                            <div className="text-xs text-blue-700 mt-1">
+                                                Reserved: {walletDetails.totals.reservedWithdrawals.toFixed(2)} USDT
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                        <div className="text-sm text-gray-700">Total Earned</div>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            {walletDetails.totals.totalEarned.toFixed(2)} USDT
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="text-sm font-semibold text-gray-900">Connected Wallet Addresses</div>
+                                        <div className="text-xs text-gray-500">
+                                            Total: {walletDetails.walletConnections.length}
+                                        </div>
+                                    </div>
+
+                                    {walletDetails.walletConnections.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {walletDetails.walletConnections.map((w) => (
+                                                <div key={w.tuwc_id} className="flex items-start justify-between border border-gray-100 rounded-lg p-3">
+                                                    <div>
+                                                        <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                                                            <span className="font-mono">{w.tuwc_wallet_address}</span>
+                                                            {w.tuwc_is_default && (
+                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                                                    Default
+                                                                </span>
+                                                            )}
+                                                            {w.tuwc_is_active ? (
+                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                                                    Active
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                                                    Inactive
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-gray-600 mt-1">
+                                                            {(w.tuwc_wallet_name || w.tuwc_wallet_type) ? (
+                                                                <span>{[w.tuwc_wallet_name, w.tuwc_wallet_type].filter(Boolean).join(' • ')}</span>
+                                                            ) : (
+                                                                <span>No wallet metadata</span>
+                                                            )}
+                                                            {w.tuwc_chain_id != null && <span> • Chain: {w.tuwc_chain_id}</span>}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {w.tuwc_last_connected_at ? (
+                                                            <span>Last: {new Date(w.tuwc_last_connected_at).toLocaleString()}</span>
+                                                        ) : (
+                                                            <span>Never connected</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-600">
+                                            No wallet connections found for this customer.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <Wallet className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">No wallet data</h3>
+                                <p className="text-gray-600">No wallet details found for this customer.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'wallet_transactions' && (
+                    <div>
+                        <div ref={walletTxTopRef} />
+                        <div className="flex items-center justify-between mb-6">
+                            <h4 className="font-medium text-gray-900 flex items-center">
+                                <Activity className="h-5 w-5 mr-2" />
+                                Wallet Transactions
+                            </h4>
+                            <div className="flex items-center gap-3">
+                                <div className="text-sm text-gray-500">Total: {walletTxTotalCount}</div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-600">Page size</span>
+                                    <select
+                                        value={walletTxPageSize}
+                                        onChange={(e) => { setWalletTxPageSize(Number(e.target.value)); setWalletTxPage(1); }}
+                                        className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                                    >
+                                        <option value={10}>10</option>
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {loading ? (
+                            <div className="text-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                <p className="text-gray-500 mt-2">Loading wallet transactions...</p>
+                            </div>
+                        ) : walletTransactions.length > 0 ? (
+                            <div className="space-y-3">
+                                {walletTransactions.map((t) => (
+                                    <div key={t.twt_id} className="border border-gray-200 rounded-lg p-4">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-start gap-3">
+                                                <div className={`p-2 rounded-lg ${
+                                                    t.twt_transaction_type === 'credit'
+                                                        ? 'bg-green-100 text-green-700'
+                                                        : t.twt_transaction_type === 'debit'
+                                                            ? 'bg-red-100 text-red-700'
+                                                            : 'bg-gray-100 text-gray-700'
+                                                }`}>
+                                                    {t.twt_transaction_type === 'credit' ? (
+                                                        <ArrowUpRight className="h-4 w-4" />
+                                                    ) : t.twt_transaction_type === 'debit' ? (
+                                                        <ArrowDownLeft className="h-4 w-4" />
+                                                    ) : (
+                                                        <Activity className="h-4 w-4" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-gray-900">{t.twt_description}</div>
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {new Date(t.twt_created_at).toLocaleDateString()} at {new Date(t.twt_created_at).toLocaleTimeString()}
+                                                        {t.twt_reference_type ? <span> • {t.twt_reference_type}</span> : null}
+                                                        {t.twt_blockchain_hash ? <span> • Hash: {String(t.twt_blockchain_hash).slice(0, 10)}…</span> : null}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className={`text-lg font-bold ${
+                                                    t.twt_transaction_type === 'credit' ? 'text-green-700' :
+                                                        t.twt_transaction_type === 'debit' ? 'text-red-700' : 'text-gray-900'
+                                                }`}>
+                                                    {t.twt_transaction_type === 'debit' ? '-' : '+'}{Number(t.twt_amount || 0).toFixed(2)} {t.twt_currency || 'USDT'}
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-1 capitalize">{t.twt_status}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions</h3>
+                                <p className="text-gray-600">No wallet transactions found for this customer.</p>
+                            </div>
+                        )}
+
+                        {walletTxTotalCount > 0 && (
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4 border-t border-gray-200 mt-6">
+                                <div className="text-sm text-gray-500">
+                                    Page {walletTxPage} of {Math.max(1, Math.ceil(walletTxTotalCount / walletTxPageSize))}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setWalletTxPage(1)}
+                                        disabled={walletTxPage === 1}
+                                        className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                    >
+                                        First
+                                    </button>
+                                    <button
+                                        onClick={() => setWalletTxPage((p) => Math.max(1, p - 1))}
+                                        disabled={walletTxPage === 1}
+                                        className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                    >
+                                        Prev
+                                    </button>
+                                    <button
+                                        onClick={() => setWalletTxPage((p) => Math.min(Math.max(1, Math.ceil(walletTxTotalCount / walletTxPageSize)), p + 1))}
+                                        disabled={walletTxPage >= Math.max(1, Math.ceil(walletTxTotalCount / walletTxPageSize))}
+                                        className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                    >
+                                        Next
+                                    </button>
+                                    <button
+                                        onClick={() => setWalletTxPage(Math.max(1, Math.ceil(walletTxTotalCount / walletTxPageSize)))}
+                                        disabled={walletTxPage >= Math.max(1, Math.ceil(walletTxTotalCount / walletTxPageSize))}
+                                        className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                    >
+                                        Last
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'earnings' && (
+                    <div>
+                        <div className="flex items-center justify-between mb-6">
+                            <h4 className="font-medium text-gray-900 flex items-center">
+                                <DollarSign className="h-5 w-5 mr-2" />
+                                Earnings
+                            </h4>
+                        </div>
+
+                        {loading ? (
+                            <div className="text-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                <p className="text-gray-500 mt-2">Loading earnings...</p>
+                            </div>
+                        ) : walletDetails ? (
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <div className="text-sm text-green-700">Total Earned</div>
+                                    <div className="text-2xl font-bold text-green-800">
+                                        {walletDetails.totals.totalEarned.toFixed(2)} USDT
+                                    </div>
+                                </div>
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                    <div className="text-sm text-red-700">Total Debited</div>
+                                    <div className="text-2xl font-bold text-red-800">
+                                        {walletDetails.totals.totalDebited.toFixed(2)} USDT
+                                    </div>
+                                </div>
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <div className="text-sm text-blue-700">Reserved Withdrawals</div>
+                                    <div className="text-2xl font-bold text-blue-800">
+                                        {walletDetails.totals.reservedWithdrawals.toFixed(2)} USDT
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                    <div className="text-sm text-gray-700">Withdrawable</div>
+                                    <div className="text-2xl font-bold text-gray-900">
+                                        {walletDetails.totals.withdrawableBalance.toFixed(2)} USDT
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">No earnings data</h3>
+                                <p className="text-gray-600">No wallet/earnings details found for this customer.</p>
                             </div>
                         )}
                     </div>

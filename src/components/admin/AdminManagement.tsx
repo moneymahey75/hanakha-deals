@@ -29,7 +29,9 @@ interface SubAdmin {
     companies: { read: boolean; write: boolean; delete: boolean };
     subscriptions: { read: boolean; write: boolean; delete: boolean };
     payments: { read: boolean; write: boolean; delete: boolean };
+    withdrawals: { read: boolean; write: boolean; delete: boolean };
     settings: { read: boolean; write: boolean; delete: boolean };
+    mlm: { read: boolean; write: boolean; delete: boolean };
     admins: { read: boolean; write: boolean; delete: boolean };
     coupons: { read: boolean, write: boolean, delete: boolean };
     dailytasks: { read: boolean, write: boolean, delete: boolean };
@@ -59,7 +61,9 @@ const AdminManagement: React.FC = () => {
       companies: { read: false, write: false, delete: false },
       subscriptions: { read: false, write: false, delete: false },
       payments: { read: false, write: false, delete: false },
+      withdrawals: { read: false, write: false, delete: false },
       settings: { read: false, write: false, delete: false },
+      mlm: { read: false, write: false, delete: false },
       admins: { read: false, write: false, delete: false },
       coupons: { read: false, write: false, delete: false },
       dailytasks: { read: false, write: false, delete: false },
@@ -77,7 +81,9 @@ const AdminManagement: React.FC = () => {
       companies: { read: false, write: false, delete: false },
       subscriptions: { read: false, write: false, delete: false },
       payments: { read: false, write: false, delete: false },
+      withdrawals: { read: false, write: false, delete: false },
       settings: { read: false, write: false, delete: false },
+      mlm: { read: false, write: false, delete: false },
       admins: { read: false, write: false, delete: false },
       coupons: { read: false, write: false, delete: false },
       dailytasks: { read: false, write: false, delete: false },
@@ -120,7 +126,9 @@ const AdminManagement: React.FC = () => {
           wallets: { read: false, write: false, delete: false },
           subscriptions: { read: false, write: false, delete: false },
           payments: { read: false, write: false, delete: false },
+          withdrawals: { read: false, write: false, delete: false },
           settings: { read: false, write: false, delete: false },
+          mlm: { read: false, write: false, delete: false },
           admins: { read: false, write: false, delete: false },
         }
       });

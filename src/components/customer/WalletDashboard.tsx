@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
 import { processingIndicator } from '../../lib/processingIndicator';
+import { getCustomerFriendlyWithdrawalMessage } from '../../utils/withdrawalMessages';
 import {
   Wallet,
   DollarSign,
@@ -101,36 +102,6 @@ interface DailyTask {
   };
 }
 
-const getCustomerFriendlyWithdrawalMessage = (reason?: string | null) => {
-  if (!reason) return null;
-
-  const normalizedReason = reason.toLowerCase();
-
-  if (normalizedReason.includes('insufficient') && normalizedReason.includes('balance')) {
-    return 'This withdrawal could not be completed because the payout wallet has insufficient balance. Please try again later or contact support.';
-  }
-
-  if (normalizedReason.includes('wallet') || normalizedReason.includes('address')) {
-    return 'This withdrawal could not be completed due to a wallet verification issue. Please review your default wallet or contact support.';
-  }
-
-  if (
-    normalizedReason.includes('network') ||
-    normalizedReason.includes('timeout') ||
-    normalizedReason.includes('rpc') ||
-    normalizedReason.includes('blockchain') ||
-    normalizedReason.includes('transfer')
-  ) {
-    return 'This withdrawal could not be completed because of a temporary processing issue. Please try again later or contact support.';
-  }
-
-  if (normalizedReason.includes('reject')) {
-    return 'This withdrawal request was not approved. Please contact support if you need more details.';
-  }
-
-  return 'This withdrawal could not be completed. Please contact support if you need more details.';
-};
-
 const renderDescriptionWithBullets = (description?: string | null) => {
   if (!description) return null;
 
@@ -180,6 +151,16 @@ const WalletDashboard: React.FC = () => {
     note: ''
   });
   const notification = useNotification();
+
+  const pendingWithdrawalTotal = React.useMemo(() => {
+    const pendingStatuses = new Set(['pending', 'processing', 'approved']);
+    return (withdrawalRequests || [])
+      .filter((r) => pendingStatuses.has(String(r.twr_status || '').toLowerCase()))
+      .reduce((sum, r) => sum + Number(r.twr_amount || 0), 0);
+  }, [withdrawalRequests]);
+
+  const walletTotalBalance = Number(wallet?.tw_balance || 0);
+  const withdrawableBalance = Math.max(0, walletTotalBalance - Number(pendingWithdrawalTotal || 0));
 
   useEffect(() => {
     if (user?.id) {
@@ -386,8 +367,13 @@ const WalletDashboard: React.FC = () => {
       return;
     }
 
-    if (wallet && withdrawalAmount > wallet.tw_balance) {
-      notification.showError('Insufficient Balance', 'Your wallet balance is too low for this withdrawal.');
+    if (withdrawalAmount > withdrawableBalance) {
+      notification.showError(
+        'Insufficient Balance',
+        pendingWithdrawalTotal > 0
+          ? `Withdrawable balance is ${withdrawableBalance.toFixed(2)} USDT (some funds are reserved in pending withdrawals).`
+          : 'Your wallet balance is too low for this withdrawal.'
+      );
       return;
     }
 
@@ -423,7 +409,7 @@ const WalletDashboard: React.FC = () => {
         withdrawalSettings.autoTransfer ? 'Withdrawal Submitted' : 'Withdrawal Requested',
         withdrawalSettings.autoTransfer
           ? 'Your withdrawal is being processed automatically.'
-          : `Your approval request will be entertained within ${withdrawalSettings.processingDays} working days.`
+          : `Your approval request will be entertained within ${withdrawalSettings.processingDays} working day(s).`
       );
 
       setWithdrawalAmount(0);
@@ -635,8 +621,8 @@ const WalletDashboard: React.FC = () => {
 
   return (
       <div className="space-y-6">
-        {/* Wallet Overview */}
-        <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white rounded-xl p-6">
+	        {/* Wallet Overview */}
+	        <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <div className="bg-white/20 p-3 rounded-lg">
@@ -656,12 +642,16 @@ const WalletDashboard: React.FC = () => {
             >
               <RefreshCw className="h-5 w-5" />
             </button>
-          </div>
-          <div className="text-3xl font-bold mb-2">
-            {wallet?.tw_balance?.toFixed(2) || '0.00'} USDT
-          </div>
-          <p className="text-green-100">Available Balance</p>
-        </div>
+	          </div>
+	          <div className="text-3xl font-bold mb-2">
+	            {withdrawableBalance.toFixed(2)} USDT
+	          </div>
+	          <p className="text-green-100">Withdrawable Balance</p>
+            <p className="text-xs text-white/80 mt-1">
+              Total: {walletTotalBalance.toFixed(2)} USDT
+              {pendingWithdrawalTotal > 0 ? ` • Reserved: ${pendingWithdrawalTotal.toFixed(2)} USDT` : ''}
+            </p>
+	        </div>
 
         {/* Navigation Tabs */}
         <div className="bg-white rounded-xl shadow-sm">
@@ -1048,7 +1038,7 @@ const WalletDashboard: React.FC = () => {
                     <p className="text-xs text-gray-500">
                       {withdrawalSettings.autoTransfer
                         ? 'Auto-transfer is enabled. Your withdrawal will be processed instantly.'
-                        : `Withdrawals require admin approval. Expect ${withdrawalSettings.processingDays} working days.`}
+                        : `Withdrawals require admin approval. Expect ${withdrawalSettings.processingDays} working day(s).`}
                     </p>
                     <button
                       onClick={handleWithdrawalSubmit}

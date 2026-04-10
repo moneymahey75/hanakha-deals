@@ -79,9 +79,12 @@ Deno.serve(async (req: Request) => {
         tp_transaction_id,
         tp_created_at,
         tp_gateway_response,
-        tbl_subscription_plans (
-          tsp_name,
-          tsp_price
+        subscription:tp_subscription_id(
+          tus_id,
+          plan:tus_plan_id(
+            tsp_name,
+            tsp_price
+          )
         )
       `
       )

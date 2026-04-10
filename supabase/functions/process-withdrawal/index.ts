@@ -1,6 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { logAdminAction } from '../_shared/adminSession.ts';
 import { ethers } from 'npm:ethers@6.10.0';
+import { formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -179,7 +180,7 @@ const processTransfer = async (params: {
 
     return tx.hash as string;
   } catch (error: any) {
-    const failureReason = error?.message || 'On-chain transfer failed';
+    const failureReason = formatWithdrawalFailureReason(error);
     await supabase
       .from('tbl_wallet_transactions')
       .update({ twt_status: 'failed' })

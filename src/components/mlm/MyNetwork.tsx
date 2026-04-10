@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Users, RefreshCw } from 'lucide-react';
 import { getReferralNetworkPage } from '../../lib/supabase';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 
 interface MyNetworkProps {
   userId: string;
@@ -33,6 +34,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const topRef = useScrollToTopOnChange([page], { smooth: true });
   const VIEW_STORAGE_KEY = 'customer.network.viewMode';
 
   const loadPage = async (opts?: { resetPage?: boolean }) => {
@@ -148,6 +150,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
+      <div ref={topRef} />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -155,7 +158,6 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           </div>
           <div>
           <h3 className="text-lg font-semibold text-gray-900">Referral Network</h3>
-          <p className="text-sm text-gray-600">All referrals under your account (multi-level)</p>
         </div>
       </div>
         <div className="flex flex-wrap items-center gap-3">

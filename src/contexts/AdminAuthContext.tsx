@@ -13,7 +13,9 @@ interface AdminUser {
     companies: { read: boolean; write: boolean; delete: boolean };
     subscriptions: { read: boolean; write: boolean; delete: boolean };
     payments: { read: boolean; write: boolean; delete: boolean };
+    withdrawals: { read: boolean; write: boolean; delete: boolean };
     settings: { read: boolean; write: boolean; delete: boolean };
+    mlm: { read: boolean; write: boolean; delete: boolean };
     admins: { read: boolean; write: boolean; delete: boolean };
     coupons: { read: boolean, write: boolean, delete: boolean },
     dailytasks: { read: boolean, write: boolean, delete: boolean },
@@ -53,6 +55,35 @@ interface AdminAuthContextType {
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
+
+const getDefaultPermissions = (): AdminUser['permissions'] => ({
+  customers: { read: false, write: false, delete: false },
+  companies: { read: false, write: false, delete: false },
+  subscriptions: { read: false, write: false, delete: false },
+  payments: { read: false, write: false, delete: false },
+  withdrawals: { read: false, write: false, delete: false },
+  settings: { read: false, write: false, delete: false },
+  mlm: { read: false, write: false, delete: false },
+  admins: { read: false, write: false, delete: false },
+  coupons: { read: false, write: false, delete: false },
+  dailytasks: { read: false, write: false, delete: false },
+  wallets: { read: false, write: false, delete: false },
+});
+
+const normalizePermissions = (permissions: any): AdminUser['permissions'] => {
+  const defaults = getDefaultPermissions();
+  const source = permissions ?? {};
+  const result: any = { ...defaults };
+  Object.keys(defaults).forEach((module) => {
+    let moduleSource = source?.[module] ?? {};
+    // Backward-compat: old sub-admins had no dedicated module keys.
+    if (module === 'withdrawals' && source?.withdrawals == null) moduleSource = source?.payments ?? {};
+    if (module === 'mlm' && source?.mlm == null) moduleSource = source?.settings ?? {};
+
+    result[module] = { ...defaults[module as keyof typeof defaults], ...(moduleSource ?? {}) };
+  });
+  return result as AdminUser['permissions'];
+};
 
 export const useAdminAuth = () => {
   const context = useContext(AdminAuthContext);
@@ -154,17 +185,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         email: user.tau_email,
         fullName: user.tau_full_name,
         role: user.tau_role,
-        permissions: user.tau_permissions || {
-          customers: { read: false, write: false, delete: false },
-          companies: { read: false, write: false, delete: false },
-          subscriptions: { read: false, write: false, delete: false },
-          payments: { read: false, write: false, delete: false },
-          settings: { read: false, write: false, delete: false },
-          admins: { read: false, write: false, delete: false },
-          coupons: { read: false, write: false, delete: false },
-          dailytasks: { read: false, write: false, delete: false },
-          wallets: { read: false, write: false, delete: false },
-        },
+        permissions: normalizePermissions(user.tau_permissions),
         isActive: user.tau_is_active,
         lastLogin: user.tau_last_login || '',
         createdAt: user.tau_created_at || ''
@@ -375,7 +396,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         id: admin.tau_id,
         email: admin.tau_email,
         fullName: admin.tau_full_name,
-        permissions: admin.tau_permissions,
+        permissions: normalizePermissions(admin.tau_permissions),
         isActive: admin.tau_is_active,
         createdBy: admin.tau_created_by,
         lastLogin: admin.tau_last_login,
@@ -391,7 +412,8 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const hasPermission = (module: keyof AdminUser['permissions'], action: 'read' | 'write' | 'delete'): boolean => {
     if (!admin) return false;
     if (admin.role === 'super_admin') return true;
-    return admin.permissions[module][action];
+    const modulePerms: any = (admin.permissions as any)?.[module];
+    return Boolean(modulePerms?.[action]);
   };
 
   const value = {

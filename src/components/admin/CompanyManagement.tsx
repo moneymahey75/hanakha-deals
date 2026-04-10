@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { Building, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Mail, Phone, Globe, FileText, Calendar, ArrowLeft, Save, Key, LogIn, X, AlertTriangle, User, Settings, Plus, RefreshCw } from 'lucide-react';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 
 let inFlightCompaniesRequest: Promise<any[]> | null = null;
 
@@ -40,6 +41,7 @@ const CompanyManagement: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const notification = useNotification();
   const itemsPerPage = 10;
+  const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
 
   const [newCompany, setNewCompany] = useState({
     company_name: '',
@@ -350,6 +352,7 @@ const CompanyManagement: React.FC = () => {
 
   return (
       <div className="bg-white rounded-xl shadow-sm">
+        <div ref={topRef} />
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">

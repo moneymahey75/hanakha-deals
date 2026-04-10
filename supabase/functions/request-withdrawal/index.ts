@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { ethers } from 'npm:ethers@6.10.0';
+import { formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -180,7 +181,7 @@ const processTransfer = async (params: {
 
     return tx.hash as string;
   } catch (error: any) {
-    const failureReason = error?.message || 'On-chain transfer failed';
+    const failureReason = formatWithdrawalFailureReason(error);
     await supabase
       .from('tbl_wallet_transactions')
       .update({ twt_status: 'failed' })
@@ -448,7 +449,7 @@ Deno.serve(async (req: Request) => {
         .from('tbl_withdrawal_requests')
         .update({
           twr_status: 'failed',
-          twr_failure_reason: error?.message || 'Auto transfer failed',
+          twr_failure_reason: formatWithdrawalFailureReason(error),
           twr_processed_at: new Date().toISOString()
         })
         .eq('twr_id', requestRow.twr_id);

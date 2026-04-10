@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Eye, RefreshCw, X } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
+import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 
 let inFlightWithdrawalsRequest: {
   key: string;
@@ -39,6 +40,7 @@ const WithdrawalRequests: React.FC = () => {
   const [withdrawalProcessing, setWithdrawalProcessing] = useState<string | null>(null);
   const [selectedWithdrawal, setSelectedWithdrawal] = useState<WithdrawalRequest | null>(null);
   const [rejectingWithdrawal, setRejectingWithdrawal] = useState<WithdrawalRequest | null>(null);
+  const [failingWithdrawal, setFailingWithdrawal] = useState<WithdrawalRequest | null>(null);
   const [rejectionNote, setRejectionNote] = useState('');
   const [rejectionSubmitting, setRejectionSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -51,6 +53,7 @@ const WithdrawalRequests: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const pageSize = 10;
   const notification = useNotification();
+  const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
 
   const getAdminSessionToken = () => {
     const directToken = sessionStorage.getItem('admin_session_token');
@@ -189,6 +192,25 @@ const WithdrawalRequests: React.FC = () => {
     }
   };
 
+  const handleFailWithdrawal = async (withdrawalId: string, note: string): Promise<boolean> => {
+    setWithdrawalProcessing(withdrawalId);
+    try {
+      await adminApi.post('admin-fail-withdrawal', {
+        withdrawalId,
+        note
+      });
+
+      notification.showSuccess('Marked Failed', 'Withdrawal request has been marked as failed');
+      loadWithdrawals();
+      return true;
+    } catch (error: any) {
+      notification.showError('Update Failed', error.message);
+      return false;
+    } finally {
+      setWithdrawalProcessing(null);
+    }
+  };
+
   const sendRejectionEmail = async (email: string, note: string, amount: number) => {
     if (!email) return;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -220,6 +242,7 @@ const WithdrawalRequests: React.FC = () => {
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+      <div ref={topRef} />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Withdrawal Requests</h2>
@@ -412,10 +435,21 @@ const WithdrawalRequests: React.FC = () => {
                           setRejectingWithdrawal(withdrawal);
                           setRejectionNote('');
                         }}
-                        disabled={withdrawalProcessing === withdrawal.twr_id || withdrawal.twr_status !== 'pending'}
+                        disabled={withdrawalProcessing === withdrawal.twr_id || !['pending', 'failed', 'processing'].includes(withdrawal.twr_status)}
                         className="px-3 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 disabled:opacity-50"
                       >
                         Reject
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFailingWithdrawal(withdrawal);
+                          setRejectionNote('');
+                        }}
+                        disabled={withdrawalProcessing === withdrawal.twr_id || withdrawal.twr_status !== 'processing'}
+                        className="px-3 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50"
+                        title="If a withdrawal is stuck in processing, mark it failed to allow Retry."
+                      >
+                        Mark Failed
                       </button>
                     </div>
                   </td>
@@ -623,6 +657,69 @@ const WithdrawalRequests: React.FC = () => {
                 className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {rejectionSubmitting ? 'Rejecting...' : 'Reject Withdrawal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {failingWithdrawal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Mark Withdrawal Failed</h3>
+                <p className="text-xs text-gray-500">Use this when a request is stuck in processing</p>
+              </div>
+              <button
+                onClick={() => setFailingWithdrawal(null)}
+                className="p-2 text-gray-500 hover:text-gray-700"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Failure Note</label>
+              <textarea
+                value={rejectionNote}
+                onChange={(event) => setRejectionNote(event.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                placeholder="Explain why this was marked failed (e.g. stuck processing / RPC timeout)..."
+              />
+              <p className="mt-2 text-xs text-gray-500">This will also revert any pending debit (if present) so the user can withdraw again.</p>
+            </div>
+
+            <div className="border-t border-gray-200 px-5 py-4 flex justify-end space-x-2">
+              <button
+                onClick={() => setFailingWithdrawal(null)}
+                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const note = rejectionNote.trim();
+                  if (!note || !failingWithdrawal) {
+                    notification.showError('Missing Note', 'Please add a failure note.');
+                    return;
+                  }
+                  setRejectionSubmitting(true);
+                  try {
+                    const ok = await handleFailWithdrawal(failingWithdrawal.twr_id, note);
+                    if (ok) {
+                      setFailingWithdrawal(null);
+                    }
+                  } finally {
+                    setRejectionSubmitting(false);
+                  }
+                }}
+                disabled={rejectionSubmitting}
+                className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {rejectionSubmitting ? 'Updating...' : 'Mark Failed'}
               </button>
             </div>
           </div>

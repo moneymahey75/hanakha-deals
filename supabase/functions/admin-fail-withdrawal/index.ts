@@ -44,7 +44,7 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
 
   const { data: debitTx, error: txError } = await supabase
     .from('tbl_wallet_transactions')
-    .select('twt_id, twt_status')
+    .select('twt_id, twt_status, twt_amount')
     .eq('twt_reference_type', 'withdrawal')
     .eq('twt_reference_id', withdrawal.twr_id)
     .eq('twt_transaction_type', 'debit')
@@ -80,7 +80,7 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
       twt_user_id: withdrawal.twr_user_id,
       twt_transaction_type: 'credit',
       twt_amount: amount,
-      twt_description: 'Withdrawal rejected refund',
+      twt_description: 'Withdrawal reverted by admin',
       twt_reference_type: 'withdrawal',
       twt_reference_id: withdrawal.twr_id,
       twt_status: 'completed',
@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
 
     const status = String(withdrawal.twr_status || '').toLowerCase();
     if (withdrawal.twr_blockchain_tx || status === 'completed') {
-      return new Response(JSON.stringify({ success: false, error: 'Cannot reject a completed withdrawal' }), {
+      return new Response(JSON.stringify({ success: false, error: 'Cannot mark completed withdrawal as failed' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -155,20 +155,18 @@ Deno.serve(async (req: Request) => {
     const { error } = await supabase
       .from('tbl_withdrawal_requests')
       .update({
-        twr_status: 'rejected',
+        twr_status: 'failed',
         twr_processed_at: new Date().toISOString(),
         twr_processed_by_admin_id: admin.tau_id,
         twr_processed_by_admin_email: admin.tau_email,
         twr_processed_by_admin_name: admin.tau_email,
-        twr_failure_reason: note || null
+        twr_failure_reason: note || 'Marked failed by admin'
       })
       .eq('twr_id', withdrawalId);
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
-    await logAdminAction(supabase, admin.tau_id, 'reject_withdrawal', 'withdrawals', {
+    await logAdminAction(supabase, admin.tau_id, 'fail_withdrawal', 'withdrawals', {
       withdrawal_id: withdrawalId,
       previous_status: status,
       refunded: refundResult.refunded,
@@ -176,7 +174,7 @@ Deno.serve(async (req: Request) => {
       note: note || null
     });
 
-    return new Response(JSON.stringify({ success: true, data: { withdrawalId } }), {
+    return new Response(JSON.stringify({ success: true, data: { withdrawalId, refunded: refundResult.refunded } }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -187,3 +185,4 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
+

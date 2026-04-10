@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: wallet, error: walletError } = await supabase
       .from('tbl_wallets')
-      .select('tw_id')
+      .select('tw_id, tw_balance, tw_currency, tw_created_at, tw_updated_at, tw_is_active')
       .eq('tw_user_id', userId)
       .eq('tw_currency', 'USDT')
       .maybeSingle();
@@ -78,28 +78,88 @@ Deno.serve(async (req: Request) => {
       throw walletError;
     }
 
-    if (!wallet?.tw_id) {
-      return new Response(JSON.stringify({ success: true, data: [] }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const { data: walletConnections, error: walletConnectionsError } = await supabase
+      .from('tbl_user_wallet_connections')
+      .select(
+        `
+        tuwc_id,
+        tuwc_wallet_address,
+        tuwc_wallet_name,
+        tuwc_wallet_type,
+        tuwc_chain_id,
+        tuwc_is_default,
+        tuwc_is_active,
+        tuwc_last_connected_at,
+        tuwc_created_at,
+        tuwc_updated_at
+      `
+      )
+      .eq('tuwc_user_id', userId)
+      .order('tuwc_is_default', { ascending: false })
+      .order('tuwc_is_active', { ascending: false })
+      .order('tuwc_last_connected_at', { ascending: false, nullsFirst: false });
+
+    if (walletConnectionsError) {
+      throw walletConnectionsError;
     }
 
-    const { data: transactionsData, error } = await supabase
+    const { data: completedTxns, error: completedTxnsError } = await supabase
       .from('tbl_wallet_transactions')
-      .select('*')
-      .eq('twt_wallet_id', wallet.tw_id)
-      .order('twt_created_at', { ascending: false })
-      .limit(50);
+      .select('twt_amount, twt_transaction_type')
+      .eq('twt_user_id', userId)
+      .eq('twt_status', 'completed');
 
-    if (error) {
-      throw error;
+    if (completedTxnsError) {
+      throw completedTxnsError;
     }
 
-    return new Response(JSON.stringify({ success: true, data: transactionsData || [] }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    const totalEarned = (completedTxns || [])
+      .filter((t: any) => t.twt_transaction_type === 'credit')
+      .reduce((sum: number, t: any) => sum + Number(t.twt_amount || 0), 0);
+
+    const totalDebited = (completedTxns || [])
+      .filter((t: any) => t.twt_transaction_type === 'debit')
+      .reduce((sum: number, t: any) => sum + Number(t.twt_amount || 0), 0);
+
+    const pendingStatuses = new Set(['pending', 'processing', 'approved']);
+    const { data: withdrawals, error: withdrawalsError } = await supabase
+      .from('tbl_withdrawal_requests')
+      .select('twr_amount, twr_status')
+      .eq('twr_user_id', userId);
+
+    if (withdrawalsError) {
+      throw withdrawalsError;
+    }
+
+    const reservedWithdrawals = (withdrawals || [])
+      .filter((w: any) => pendingStatuses.has(String(w.twr_status || '').toLowerCase()))
+      .reduce((sum: number, w: any) => sum + Number(w.twr_amount || 0), 0);
+
+    const walletBalance = Number(wallet?.tw_balance || 0);
+    const withdrawableBalance = Math.max(0, walletBalance - reservedWithdrawals);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          wallet: wallet
+            ? {
+                ...wallet,
+                tw_balance: walletBalance,
+              }
+            : null,
+          walletConnections: walletConnections || [],
+          totals: {
+            walletBalance,
+            withdrawableBalance,
+            reservedWithdrawals,
+            totalEarned,
+            totalDebited,
+          },
+        },
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   } catch (error: any) {
     return new Response(JSON.stringify({ success: false, error: error?.message || 'Failed' }), {
       status: 500,
@@ -107,3 +167,4 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
+
