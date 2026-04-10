@@ -15,6 +15,7 @@ const MIN_CONFIRMATIONS_DEFAULT = 1;
 
 const USDT_ABI = [
   'function decimals() view returns (uint8)',
+  'function balanceOf(address owner) view returns (uint256)',
   'function transfer(address to, uint256 amount) returns (bool)'
 ];
 
@@ -60,12 +61,27 @@ const parseSetting = (raw: any) => {
 const normalizeAddress = (address?: string | null) =>
   (address || '').trim().toLowerCase();
 
-const isMultiple = (amount: number, step: number) => {
-  if (step <= 0) return true;
-  const factor = 100; // cents precision
-  const scaledAmount = Math.round(amount * factor);
-  const scaledStep = Math.round(step * factor);
-  return scaledAmount % scaledStep === 0;
+const formatAmountForUnits = (value: unknown) => {
+  if (value === null || value === undefined) return '';
+  const s = String(value).trim();
+  return s;
+};
+
+const isDecimalUpTo6 = (value: string) => /^(\d+)(\.\d{1,6})?$/.test(value);
+
+const toUnits6 = (value: unknown) => {
+  const s = formatAmountForUnits(value);
+  if (!s || !isDecimalUpTo6(s)) return null;
+  try {
+    return ethers.parseUnits(s, 6);
+  } catch {
+    return null;
+  }
+};
+
+const isMultipleUnits = (amountUnits: bigint, stepUnits: bigint) => {
+  if (stepUnits <= 0n) return true;
+  return amountUnits % stepUnits === 0n;
 };
 
 const processTransfer = async (params: {
@@ -164,6 +180,24 @@ const processTransfer = async (params: {
     const token = new ethers.Contract(usdtAddress, USDT_ABI, signer);
     const decimals = await token.decimals();
     const amountUnits = ethers.parseUnits(netAmount.toFixed(6), decimals);
+
+    // Preflight: ensure admin wallet can actually send this withdrawal.
+    // If this fails, we return a user-friendly message instead of the raw EVM error blob.
+    try {
+      const adminTokenBalance = await token.balanceOf(signer.address);
+      if (adminTokenBalance < amountUnits) {
+        throw new Error('Admin wallet has insufficient USDT balance');
+      }
+
+      const gasBalance = await provider.getBalance(signer.address);
+      // Very small heuristic: if there's effectively no native token, transfers will fail.
+      if (gasBalance === 0n) {
+        throw new Error('Admin wallet has insufficient gas');
+      }
+    } catch (preflightError) {
+      throw preflightError;
+    }
+
     const tx = await token.transfer(destinationAddress, amountUnits);
     await tx.wait(MIN_CONFIRMATIONS_DEFAULT);
 
@@ -238,10 +272,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { amount } = await req.json();
-    const withdrawalAmount = Number(amount);
+    const body = await req.json();
+    const amountUnits = toUnits6(body?.amount);
+    const withdrawalAmount = Number(body?.amount);
 
-    if (!Number.isFinite(withdrawalAmount) || withdrawalAmount <= 0) {
+    if (amountUnits === null || !Number.isFinite(withdrawalAmount) || withdrawalAmount <= 0) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid withdrawal amount' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -263,6 +298,8 @@ Deno.serve(async (req: Request) => {
       .from('tbl_system_settings')
       .select('tss_setting_key, tss_setting_value')
       .in('tss_setting_key', [
+        'withdrawal_enabled',
+        'withdrawal_disabled_message',
         'withdrawal_min_amount',
         'withdrawal_step_amount',
         'withdrawal_commission_percent',
@@ -281,19 +318,50 @@ Deno.serve(async (req: Request) => {
       settingsMap[row.tss_setting_key] = parseSetting(row.tss_setting_value);
     }
 
-    const minAmount = Number(settingsMap.withdrawal_min_amount ?? 10);
-    const stepAmount = Number(settingsMap.withdrawal_step_amount ?? 10);
+    const withdrawalsEnabled = settingsMap.withdrawal_enabled !== undefined ? Boolean(settingsMap.withdrawal_enabled) : true;
+    const withdrawalsDisabledMessageRaw = String(settingsMap.withdrawal_disabled_message || '').trim();
+    const withdrawalsDisabledMessage =
+      withdrawalsDisabledMessageRaw || 'Withdrawals are temporarily disabled. Please try again later.';
+
+    if (!withdrawalsEnabled) {
+      return new Response(JSON.stringify({ success: false, error: withdrawalsDisabledMessage }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const minAmountRaw = settingsMap.withdrawal_min_amount ?? 10;
+    const stepAmountRaw = settingsMap.withdrawal_step_amount ?? 10;
+    const minUnits = toUnits6(minAmountRaw);
+    const stepUnits = toUnits6(stepAmountRaw);
+
+    if (minUnits === null) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid withdrawal minimum configuration' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (stepUnits === null) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid withdrawal step configuration' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const minAmount = Number(minAmountRaw ?? 0);
+    const stepAmount = Number(stepAmountRaw ?? 0);
     const commissionPercent = Number(settingsMap.withdrawal_commission_percent ?? 0.5);
     const autoTransfer = Boolean(settingsMap.withdrawal_auto_transfer ?? false);
 
-    if (withdrawalAmount < minAmount) {
+    if (amountUnits < minUnits) {
       return new Response(JSON.stringify({ success: false, error: `Minimum withdrawal is ${minAmount}` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    if (!isMultiple(withdrawalAmount, stepAmount)) {
+    if (!isMultipleUnits(amountUnits, stepUnits)) {
       return new Response(JSON.stringify({ success: false, error: `Withdrawal must be a multiple of ${stepAmount}` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -454,9 +522,10 @@ Deno.serve(async (req: Request) => {
         })
         .eq('twr_id', requestRow.twr_id);
 
+      const failureReason = formatWithdrawalFailureReason(error);
       return new Response(JSON.stringify({
         success: false,
-        error: error?.message || 'Auto transfer failed',
+        error: failureReason,
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

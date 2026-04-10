@@ -18,6 +18,8 @@ const PaymentSettings: React.FC = () => {
         withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
         withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
         withdrawalProcessingDays: settings.withdrawalProcessingDays,
+        withdrawalEnabled: settings.withdrawalEnabled,
+        withdrawalDisabledMessage: settings.withdrawalDisabledMessage,
         paymentWalletsEnabled: settings.paymentWalletsEnabled || {
             trust_wallet: true,
             metamask: true,
@@ -41,6 +43,8 @@ const PaymentSettings: React.FC = () => {
             withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
             withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
             withdrawalProcessingDays: settings.withdrawalProcessingDays,
+            withdrawalEnabled: settings.withdrawalEnabled,
+            withdrawalDisabledMessage: settings.withdrawalDisabledMessage,
             paymentWalletsEnabled: settings.paymentWalletsEnabled || {
                 trust_wallet: true,
                 metamask: true,
@@ -74,7 +78,9 @@ const PaymentSettings: React.FC = () => {
                 { key: 'withdrawal_step_amount', value: JSON.stringify(formData.withdrawalStepAmount) },
                 { key: 'withdrawal_commission_percent', value: JSON.stringify(formData.withdrawalCommissionPercent) },
                 { key: 'withdrawal_auto_transfer', value: JSON.stringify(formData.withdrawalAutoTransfer) },
-                { key: 'withdrawal_processing_days', value: JSON.stringify(formData.withdrawalProcessingDays) }
+                { key: 'withdrawal_processing_days', value: JSON.stringify(formData.withdrawalProcessingDays) },
+                { key: 'withdrawal_enabled', value: JSON.stringify(formData.withdrawalEnabled) },
+                { key: 'withdrawal_disabled_message', value: JSON.stringify(formData.withdrawalDisabledMessage || '') }
             ];
 
             await adminApi.post('admin-upsert-settings', {
@@ -287,7 +293,7 @@ const PaymentSettings: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label htmlFor="withdrawalMinAmount" className="block text-sm font-medium text-gray-700 mb-2">
-                                Minimum Withdrawal Amount (USD)
+                                Minimum Withdrawal Amount (USDT)
                             </label>
                             <input
                                 type="number"
@@ -303,12 +309,12 @@ const PaymentSettings: React.FC = () => {
                         </div>
                         <div>
                             <label htmlFor="withdrawalStepAmount" className="block text-sm font-medium text-gray-700 mb-2">
-                                Withdrawal Step Amount (USD)
+                                Withdrawal Step Amount (USDT)
                             </label>
                             <input
                                 type="number"
                                 step="0.01"
-                                min="1"
+                                min="0.01"
                                 id="withdrawalStepAmount"
                                 name="withdrawalStepAmount"
                                 value={formData.withdrawalStepAmount}
@@ -345,6 +351,37 @@ const PaymentSettings: React.FC = () => {
                                 Auto-transfer withdrawals (no admin approval)
                             </label>
                         </div>
+                        <div className="flex items-center">
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    name="withdrawalEnabled"
+                                    checked={formData.withdrawalEnabled}
+                                    onChange={handleToggleChange}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                />
+                                Enable withdrawals
+                            </label>
+                        </div>
+                        {!formData.withdrawalEnabled && (
+                            <div className="md:col-span-2">
+                                <label htmlFor="withdrawalDisabledMessage" className="block text-sm font-medium text-gray-700 mb-2">
+                                    Disabled Message
+                                </label>
+                                <input
+                                    type="text"
+                                    id="withdrawalDisabledMessage"
+                                    name="withdrawalDisabledMessage"
+                                    value={formData.withdrawalDisabledMessage}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="Withdrawals are disabled temporarily"
+                                />
+                                <p className="text-xs text-gray-500 mt-2">
+                                    This message is shown to customers if they attempt a withdrawal while disabled.
+                                </p>
+                            </div>
+                        )}
                         <div>
                             <label htmlFor="withdrawalProcessingDays" className="block text-sm font-medium text-gray-700 mb-2">
                                 Processing Days (Working Days)

@@ -4,17 +4,32 @@ export const formatWithdrawalFailureReason = (error: any) => {
 
   const lower = raw.toLowerCase();
 
+  if (lower.includes('admin wallet has insufficient usdt balance')) {
+    return 'Unable to process this withdrawal right now. Please contact support.';
+  }
+
+  if (lower.includes('admin wallet has insufficient gas')) {
+    return 'Unable to process this withdrawal right now. Please contact support.';
+  }
+
+  if (
+    lower.includes('transfer amount exceeds balance') ||
+    (lower.includes('erc20') && lower.includes('exceeds') && lower.includes('balance'))
+  ) {
+    return 'Unable to process this withdrawal right now. Please contact support.';
+  }
+
   if (
     lower.includes('execution reverted') ||
     lower.includes('call_exception') ||
     lower.includes('estimategas') ||
     lower.includes('revert')
   ) {
-    return 'On-chain transfer reverted';
+    return 'Unable to process this withdrawal right now. Please contact support.';
   }
 
   if (lower.includes('insufficient funds')) {
-    return 'On-chain transfer failed due to insufficient gas funds';
+    return 'Unable to process this withdrawal right now. Please contact support.';
   }
 
   if (lower.includes('nonce')) {
@@ -31,4 +46,3 @@ export const formatWithdrawalFailureReason = (error: any) => {
   if (cleaned.length > 180) cleaned = `${cleaned.slice(0, 177)}...`;
   return cleaned;
 };
-

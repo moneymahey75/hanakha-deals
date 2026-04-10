@@ -101,7 +101,7 @@ BEGIN
     VALUES (
       'withdrawal_min_amount',
       '10'::jsonb,
-      'Minimum withdrawal amount in USD'
+      'Minimum withdrawal amount in USDT'
     );
   END IF;
 

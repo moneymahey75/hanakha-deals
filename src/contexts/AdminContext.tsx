@@ -33,6 +33,8 @@ interface GeneralSettings {
   withdrawalCommissionPercent: number;
   withdrawalAutoTransfer: boolean;
   withdrawalProcessingDays: number;
+  withdrawalEnabled: boolean;
+  withdrawalDisabledMessage: string;
   // Username validation settings
   usernameMinLength: number;
   usernameMaxLength: number;
@@ -141,6 +143,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     withdrawalCommissionPercent: 0.5,
     withdrawalAutoTransfer: false,
     withdrawalProcessingDays: 5,
+    withdrawalEnabled: true,
+    withdrawalDisabledMessage: 'Withdrawals are temporarily disabled. Please try again later.',
     // Username validation default settings
     usernameMinLength: 8,
     usernameMaxLength: 30,
@@ -334,6 +338,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'withdrawal_processing_days':
                 loadedSettings.withdrawalProcessingDays = Number(value);
                 break;
+              case 'withdrawal_enabled':
+                loadedSettings.withdrawalEnabled = Boolean(value);
+                break;
+              case 'withdrawal_disabled_message':
+                loadedSettings.withdrawalDisabledMessage = String(value || '');
+                break;
 
                 // Username validation settings
               case 'username_min_length':
@@ -479,7 +489,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             : defaultSettings.withdrawalAutoTransfer,
           withdrawalProcessingDays: Number.isFinite(loadedSettings.withdrawalProcessingDays as number)
             ? (loadedSettings.withdrawalProcessingDays as number)
-            : defaultSettings.withdrawalProcessingDays
+            : defaultSettings.withdrawalProcessingDays,
+          withdrawalEnabled: loadedSettings.withdrawalEnabled !== undefined
+            ? Boolean(loadedSettings.withdrawalEnabled)
+            : defaultSettings.withdrawalEnabled,
+          withdrawalDisabledMessage: loadedSettings.withdrawalDisabledMessage !== undefined
+            ? String(loadedSettings.withdrawalDisabledMessage || '')
+            : defaultSettings.withdrawalDisabledMessage
         };
 
         setSettings(mergedSettings);

@@ -392,7 +392,7 @@ const SubscriptionManagement: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Price (USD)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price (USDT)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -417,7 +417,7 @@ const SubscriptionManagement: React.FC = () => {
 
               {activeTab === 'registration' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent A/C Income (USD)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent A/C Income (USDT)</label>
                   <input
                     type="number"
                     step="0.01"
