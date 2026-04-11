@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useNavigate } from 'react-router-dom';
 import { sessionUtils } from '../../utils/sessionUtils';
+import { adminApi } from '../../lib/adminApi';
 import GeneralSettings from '../../components/admin/GeneralSettings';
 import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
@@ -51,6 +52,20 @@ interface SubAdmin {
   createdAt: string;
 }
 
+type OverviewStats = {
+  totalUsers: number;
+  companies: number;
+  pendingWithdrawals: number;
+  totalEarnings: number;
+};
+
+type OverviewRecentItem = {
+  id: string;
+  type: 'user' | 'payment' | 'withdrawal' | 'company';
+  message: string;
+  timestamp: string;
+};
+
 const AdminDashboard: React.FC = () => {
   const {
     admin,
@@ -72,6 +87,15 @@ const AdminDashboard: React.FC = () => {
   const [selectedSubAdmin, setSelectedSubAdmin] = useState<SubAdmin | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionCheckInterval, setSessionCheckInterval] = useState<NodeJS.Timeout | null>(null);
+
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewStats, setOverviewStats] = useState<OverviewStats>({
+    totalUsers: 0,
+    companies: 0,
+    pendingWithdrawals: 0,
+    totalEarnings: 0
+  });
+  const [overviewRecent, setOverviewRecent] = useState<OverviewRecentItem[]>([]);
 
   const [newSubAdmin, setNewSubAdmin] = useState({
     email: '',
@@ -208,36 +232,71 @@ const AdminDashboard: React.FC = () => {
     navigate('/backpanel/login', { replace: true });
   };
 
-  const stats = [
+  const loadOverview = async () => {
+    setOverviewLoading(true);
+    try {
+      const result = await adminApi.post<{ stats: OverviewStats; recent: OverviewRecentItem[] }>('admin-get-dashboard-overview', {});
+      setOverviewStats(result?.stats || { totalUsers: 0, companies: 0, pendingWithdrawals: 0, totalEarnings: 0 });
+      setOverviewRecent(Array.isArray(result?.recent) ? result.recent : []);
+    } catch (error) {
+      console.error('Failed to load admin dashboard overview:', error);
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!admin) return;
+    if (activeTab !== 'overview') return;
+    loadOverview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin?.id, activeTab]);
+
+  const stats = useMemo(() => ([
     {
       title: 'Total Users',
-      value: '12,847',
+      value: String(overviewStats.totalUsers ?? 0),
       icon: Users,
       color: 'bg-blue-500',
-      change: '+12%'
+      change: 'All time'
     },
     {
       title: 'Companies',
-      value: '234',
+      value: String(overviewStats.companies ?? 0),
       icon: Building,
       color: 'bg-green-500',
-      change: '+8%'
+      change: 'All time'
     },
     {
-      title: 'Active Plans',
-      value: '3',
-      icon: CreditCard,
+      title: 'Pending Withdrawals',
+      value: String(overviewStats.pendingWithdrawals ?? 0),
+      icon: RefreshCw,
       color: 'bg-purple-500',
-      change: '+2'
+      change: 'Pending'
     },
     {
-      title: 'Monthly Revenue',
-      value: '45,230 USDT',
+      title: 'Total Earnings',
+      value: `${Number(overviewStats.totalEarnings ?? 0).toFixed(2)} USDT`,
       icon: DollarSign,
       color: 'bg-yellow-500',
-      change: '+15%'
+      change: 'All time'
     }
-  ];
+  ]), [overviewStats]);
+
+  const getOverviewActivityIcon = (type: OverviewRecentItem['type']) => {
+    switch (type) {
+      case 'user':
+        return Users;
+      case 'payment':
+        return DollarSign;
+      case 'withdrawal':
+        return RefreshCw;
+      case 'company':
+        return Building;
+      default:
+        return Activity;
+    }
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3, permission: null },
@@ -435,20 +494,25 @@ const AdminDashboard: React.FC = () => {
                     <div className="bg-white rounded-xl shadow-sm p-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
                       <div className="space-y-3">
-                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                          <Activity className="h-5 w-5 text-blue-600" />
-                          <div>
-                            <p className="text-sm font-medium">New user registration</p>
-                            <p className="text-xs text-gray-500">2 minutes ago</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                          <DollarSign className="h-5 w-5 text-green-600" />
-                          <div>
-                            <p className="text-sm font-medium">Payment received</p>
-                            <p className="text-xs text-gray-500">5 minutes ago</p>
-                          </div>
-                        </div>
+                        {overviewLoading ? (
+                          <div className="text-sm text-gray-500">Loading activity...</div>
+                        ) : overviewRecent.length > 0 ? (
+                          overviewRecent.map((item) => {
+                            const Icon = getOverviewActivityIcon(item.type);
+                            const ts = item.timestamp ? new Date(item.timestamp).toLocaleString() : '';
+                            return (
+                              <div key={item.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                                <Icon className="h-5 w-5 text-blue-600" />
+                                <div>
+                                  <p className="text-sm font-medium">{item.message}</p>
+                                  <p className="text-xs text-gray-500">{ts}</p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-sm text-gray-500">No recent activity</div>
+                        )}
                       </div>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm p-6">

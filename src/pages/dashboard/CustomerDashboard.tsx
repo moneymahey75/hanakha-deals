@@ -36,7 +36,7 @@ import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
 
 interface DashboardStats {
   totalReferrals: number;
-  monthlyEarnings: number;
+  totalEarnings: number;
   achievementPoints: number;
   directReferrals: number;
   activeReferrals: number;
@@ -79,7 +79,7 @@ const CustomerDashboard: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     totalReferrals: 0,
-    monthlyEarnings: 0,
+    totalEarnings: 0,
     achievementPoints: 0,
     directReferrals: 0,
     activeReferrals: 0
@@ -90,7 +90,7 @@ const CustomerDashboard: React.FC = () => {
 
   // Navigation items
   const navigationItems = [
-    { id: 'overview', label: 'Overview', icon: BarChart3 },
+    { id: 'overview', label: 'Dashboard', icon: BarChart3 },
     { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
     { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
     { id: 'network', label: 'My Network', icon: Users },
@@ -265,28 +265,23 @@ const CustomerDashboard: React.FC = () => {
   const loadEarningsStats = async () => {
     if (!user?.id) return;
     try {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const startIso = start.toISOString();
-
       const { data, error } = await supabase
         .from('tbl_wallet_transactions')
         .select('twt_amount, twt_transaction_type, twt_status, twt_created_at')
         .eq('twt_user_id', user.id)
         .eq('twt_currency', 'USDT')
         .eq('twt_status', 'completed')
-        .gte('twt_created_at', startIso)
         .limit(5000);
 
       if (error) throw error;
 
-      const monthlyCredits = (data || [])
+      const totalCredits = (data || [])
         .filter((row: any) => row.twt_transaction_type === 'credit')
         .reduce((sum: number, row: any) => sum + Number(row.twt_amount || 0), 0);
 
       setDashboardStats((prev) => ({
         ...prev,
-        monthlyEarnings: Number(monthlyCredits.toFixed(2))
+        totalEarnings: Number(totalCredits.toFixed(2))
       }));
     } catch (error) {
       console.error('❌ Failed to load earnings stats:', error);
@@ -353,11 +348,11 @@ const CustomerDashboard: React.FC = () => {
       change: 'Active users'
     },
     {
-      title: 'Monthly Earnings',
-      value: `${dashboardStats.monthlyEarnings.toFixed(2)} USDT`,
+      title: 'Total Earnings',
+      value: `${dashboardStats.totalEarnings.toFixed(2)} USDT`,
       icon: DollarSign,
       color: 'bg-yellow-500',
-      change: 'This month'
+      change: 'All time'
     }
   ];
 

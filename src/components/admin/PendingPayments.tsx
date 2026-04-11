@@ -488,15 +488,15 @@ const PendingPayments: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="bg-blue-50 rounded-lg p-4">
             <p className="text-xs text-blue-700">Total Gross</p>
-            <p className="text-lg font-semibold text-blue-900">${earningsTotals.gross.toFixed(2)}</p>
+            <p className="text-lg font-semibold text-blue-900">{earningsTotals.gross.toFixed(2)} USDT</p>
           </div>
           <div className="bg-green-50 rounded-lg p-4">
             <p className="text-xs text-green-700">Admin Income</p>
-            <p className="text-lg font-semibold text-green-900">${earningsTotals.adminIncome.toFixed(2)}</p>
+            <p className="text-lg font-semibold text-green-900">{earningsTotals.adminIncome.toFixed(2)} USDT</p>
           </div>
           <div className="bg-amber-50 rounded-lg p-4">
             <p className="text-xs text-amber-700">Commission Paid</p>
-            <p className="text-lg font-semibold text-amber-900">${earningsTotals.commission.toFixed(2)}</p>
+            <p className="text-lg font-semibold text-amber-900">{earningsTotals.commission.toFixed(2)} USDT</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-xs text-gray-600">Records</p>
