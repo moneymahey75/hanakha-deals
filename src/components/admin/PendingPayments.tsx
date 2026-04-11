@@ -65,6 +65,15 @@ interface AdminEarning {
   };
 }
 
+type AdminWalletStats = {
+  walletAddress: string;
+  walletUsdtBalance: number;
+  walletNativeBalance: number;
+  todayEarnings: number;
+  todayWithdrawalsRequested: number;
+  todayWithdrawalsCount: number;
+};
+
 const PendingPayments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +85,8 @@ const PendingPayments: React.FC = () => {
   const [earningsAdminFilter, setEarningsAdminFilter] = useState('all');
   const [earningsStartDate, setEarningsStartDate] = useState('');
   const [earningsEndDate, setEarningsEndDate] = useState('');
+  const [walletStats, setWalletStats] = useState<AdminWalletStats | null>(null);
+  const [walletStatsLoading, setWalletStatsLoading] = useState(false);
   const notification = useNotification();
 
   useEffect(() => {
@@ -90,6 +101,10 @@ const PendingPayments: React.FC = () => {
     loadAdminEarnings();
   }, [earningsAdminFilter, earningsStartDate, earningsEndDate]);
 
+  useEffect(() => {
+    loadWalletStats();
+  }, []);
+
   const loadPayments = async () => {
     setLoading(true);
     try {
@@ -102,6 +117,19 @@ const PendingPayments: React.FC = () => {
     } finally {
       inFlightPendingPaymentsRequest = null;
       setLoading(false);
+    }
+  };
+
+  const loadWalletStats = async () => {
+    setWalletStatsLoading(true);
+    try {
+      const data = await adminApi.post<AdminWalletStats>('admin-get-admin-wallet-stats', {});
+      setWalletStats(data || null);
+    } catch (error: any) {
+      console.error('Failed to load admin wallet stats:', error);
+      setWalletStats(null);
+    } finally {
+      setWalletStatsLoading(false);
     }
   };
 
@@ -311,18 +339,60 @@ const PendingPayments: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Pending Registration Payments</h2>
-          <p className="text-gray-600 mt-1">Review and approve customer registration payments</p>
-        </div>
-        <button
-          onClick={loadPayments}
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Pending Registration Payments</h2>
+            <p className="text-gray-600 mt-1">Review and approve customer registration payments</p>
+          </div>
+          <button
+          onClick={() => {
+            loadPayments();
+            loadWalletStats();
+          }}
           className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
         >
           <RefreshCw className="h-5 w-5" />
           <span>Refresh</span>
         </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Live Admin Wallet Stats</h3>
+            <p className="text-sm text-gray-600">Balance and today’s totals</p>
+          </div>
+          <button
+            onClick={loadWalletStats}
+            className="flex items-center space-x-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100"
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>{walletStatsLoading ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+        </div>
+
+        {walletStatsLoading ? (
+          <div className="text-sm text-gray-500">Loading wallet stats...</div>
+        ) : walletStats ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-indigo-50 rounded-lg p-4">
+              <p className="text-xs text-indigo-700">Wallet USDT Balance</p>
+              <p className="text-lg font-semibold text-indigo-900">{walletStats.walletUsdtBalance.toFixed(2)} USDT</p>
+              <p className="text-xs text-indigo-600 mt-1 truncate">{walletStats.walletAddress}</p>
+            </div>
+            <div className="bg-green-50 rounded-lg p-4">
+              <p className="text-xs text-green-700">Total Earnings Today</p>
+              <p className="text-lg font-semibold text-green-900">{walletStats.todayEarnings.toFixed(2)} USDT</p>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-4">
+              <p className="text-xs text-amber-700">Withdrawals Today</p>
+              <p className="text-lg font-semibold text-amber-900">{walletStats.todayWithdrawalsRequested.toFixed(2)} USDT</p>
+              <p className="text-xs text-amber-700 mt-1">{walletStats.todayWithdrawalsCount} requests</p>
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">Wallet stats unavailable.</div>
+        )}
       </div>
 
       {payments.length === 0 ? (

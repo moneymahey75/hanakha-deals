@@ -61,6 +61,18 @@ interface PasswordValidation {
   };
 }
 
+const createEmailAlias = (email: string, suffix: string) => {
+  const trimmedEmail = email.trim();
+  const atIndex = trimmedEmail.lastIndexOf('@');
+  if (atIndex <= 0 || atIndex === trimmedEmail.length - 1) return trimmedEmail;
+
+  const local = trimmedEmail.slice(0, atIndex);
+  const domain = trimmedEmail.slice(atIndex + 1);
+  return `${local}+${suffix}@${domain}`;
+};
+
+const isLikelyEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
 const checkUsernameExists = async (username: string): Promise<boolean> => {
   try {
     console.log('🔍 Checking username availability via RPC:', username);
@@ -113,6 +125,13 @@ const CustomerRegister: React.FC = () => {
   const [showUsernameTooltip, setShowUsernameTooltip] = useState(false);
   const [showPasswordTooltip, setShowPasswordTooltip] = useState(false);
 
+  // Email/mobile uniqueness state
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
+  const [emailWillAlias, setEmailWillAlias] = useState(false);
+  const [checkingMobile, setCheckingMobile] = useState(false);
+  const [mobileAvailable, setMobileAvailable] = useState<boolean | null>(null);
+
   // Referral validation state
   const [validatingReferral, setValidatingReferral] = useState(false);
   const [referralValid, setReferralValid] = useState<boolean | null>(null);
@@ -149,8 +168,12 @@ const CustomerRegister: React.FC = () => {
   const referralInitialized = useRef(false);
   const validationTimeout = useRef<NodeJS.Timeout>();
   const usernameTimeout = useRef<NodeJS.Timeout>();
+  const emailTimeout = useRef<NodeJS.Timeout>();
+  const mobileTimeout = useRef<NodeJS.Timeout>();
   const passwordTimeout = useRef<NodeJS.Timeout>();
   const tooltipTimeout = useRef<NodeJS.Timeout>();
+  const emailCheckSeq = useRef(0);
+  const mobileCheckSeq = useRef(0);
 
   // Initialize referral code from URL once
   useEffect(() => {
@@ -212,6 +235,118 @@ const CustomerRegister: React.FC = () => {
       }
     };
   }, [formData.userName]);
+
+  const runEmailUniquenessCheck = useCallback(async (rawEmail: string) => {
+    const email = rawEmail.trim();
+    const seq = ++emailCheckSeq.current;
+
+    setEmailWillAlias(false);
+
+    if (!email || !isLikelyEmail(email)) {
+      setCheckingEmail(false);
+      setEmailAvailable(null);
+      return;
+    }
+
+    setCheckingEmail(true);
+
+    try {
+      if (settings.customerEmailUnique) {
+        const { data: exists, error } = await supabase.rpc('check_customer_email_exists', { p_email: email });
+        if (error) throw error;
+
+        if (seq !== emailCheckSeq.current) return;
+        setEmailAvailable(exists !== true);
+      } else {
+        // Even when uniqueness is disabled for customers, Supabase Auth still needs a unique email.
+        // If this email already exists anywhere, we'll alias it during submit.
+        const { data: existsAny, error } = await supabase.rpc('check_email_exists', { p_email: email });
+        if (error) throw error;
+
+        if (seq !== emailCheckSeq.current) return;
+        setEmailAvailable(true);
+        setEmailWillAlias(existsAny === true);
+      }
+    } catch (checkError) {
+      console.warn('Email uniqueness check failed:', checkError);
+      if (seq !== emailCheckSeq.current) return;
+      setEmailAvailable(null);
+      setEmailWillAlias(false);
+    } finally {
+      if (seq === emailCheckSeq.current) setCheckingEmail(false);
+    }
+  }, [settings.customerEmailUnique]);
+
+  // Debounced email uniqueness check
+  useEffect(() => {
+    if (emailTimeout.current) clearTimeout(emailTimeout.current);
+
+    if (formData.email.trim()) {
+      emailTimeout.current = setTimeout(() => {
+        runEmailUniquenessCheck(formData.email);
+      }, 400);
+    } else {
+      setCheckingEmail(false);
+      setEmailAvailable(null);
+      setEmailWillAlias(false);
+    }
+
+    return () => {
+      if (emailTimeout.current) clearTimeout(emailTimeout.current);
+    };
+  }, [formData.email, runEmailUniquenessCheck]);
+
+  const runMobileUniquenessCheck = useCallback(async (rawMobile: string, countryCode: string) => {
+    const mobile = rawMobile.trim();
+    const seq = ++mobileCheckSeq.current;
+
+    if (!settings.customerMobileUnique) {
+      setCheckingMobile(false);
+      setMobileAvailable(null);
+      return;
+    }
+
+    if (!mobile || mobile.length !== 10) {
+      setCheckingMobile(false);
+      setMobileAvailable(null);
+      return;
+    }
+
+    const fullMobile = `${countryCode}${mobile}`;
+    setCheckingMobile(true);
+
+    try {
+      const { data: exists, error } = await supabase.rpc('check_customer_mobile_exists', { p_mobile: fullMobile });
+      if (error) throw error;
+
+      if (seq !== mobileCheckSeq.current) return;
+      setMobileAvailable(exists !== true);
+    } catch (checkError) {
+      console.warn('Mobile uniqueness check failed:', checkError);
+      if (seq !== mobileCheckSeq.current) return;
+      setMobileAvailable(null);
+    } finally {
+      if (seq === mobileCheckSeq.current) setCheckingMobile(false);
+    }
+  }, [settings.customerMobileUnique]);
+
+  // Debounced mobile uniqueness check (depends on mobile + country code)
+  useEffect(() => {
+    if (mobileTimeout.current) clearTimeout(mobileTimeout.current);
+
+    if (formData.mobile.trim() || formData.mobileCountryCode) {
+      mobileTimeout.current = setTimeout(() => {
+        runMobileUniquenessCheck(formData.mobile, formData.mobileCountryCode);
+      }, 400);
+    } else {
+      setCheckingMobile(false);
+      setMobileAvailable(null);
+    }
+
+    return () => {
+      if (mobileTimeout.current) clearTimeout(mobileTimeout.current);
+    };
+  }, [formData.mobile, formData.mobileCountryCode, runMobileUniquenessCheck]);
 
   // Debounced password validation
   useEffect(() => {
@@ -659,6 +794,14 @@ const CustomerRegister: React.FC = () => {
       return 'Please complete the reCAPTCHA verification';
     }
 
+    if (settings.customerEmailUnique && formData.email.trim() && isLikelyEmail(formData.email) && emailAvailable === false) {
+      return 'This email address is already used by another customer.';
+    }
+
+    if (settings.customerMobileUnique && formData.mobile.trim().length === 10 && mobileAvailable === false) {
+      return 'This mobile number is already used by another customer.';
+    }
+
     if (!usernameValidation.isValid && formData.userName.trim()) {
       return 'Please fix username validation errors';
     }
@@ -804,9 +947,53 @@ const CustomerRegister: React.FC = () => {
         finalUsername = finalUsername.toLowerCase();
       }
 
+      let finalEmail = formData.email.trim();
+
+      if (settings.customerEmailUnique) {
+        const { data: existsCustomerEmail, error } = await supabase.rpc('check_customer_email_exists', { p_email: finalEmail });
+        if (error) throw error;
+
+        if (existsCustomerEmail === true) {
+          setError('This email address is already used by another customer.');
+          return;
+        }
+      } else {
+        // Supabase Auth always requires unique emails. When uniqueness is disabled in settings
+        // (typically for development/testing), we auto-generate an alias to avoid auth conflicts.
+        const { data: existsAnyEmail, error } = await supabase.rpc('check_email_exists', { p_email: finalEmail });
+        if (error) throw error;
+
+        if (existsAnyEmail === true) {
+          const safeUsername = finalUsername.replace(/[^a-z0-9._-]/gi, '').slice(0, 16) || 'user';
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const rand = Math.random().toString(36).slice(2, 8);
+            const alias = createEmailAlias(finalEmail, `sc_${safeUsername}_${rand}`);
+
+            const { data: aliasExistsAny, error: aliasExistsError } = await supabase.rpc('check_email_exists', { p_email: alias });
+            if (aliasExistsError) throw aliasExistsError;
+
+            if (aliasExistsAny !== true) {
+              finalEmail = alias;
+              break;
+            }
+          }
+        }
+      }
+
+      if (settings.customerMobileUnique) {
+        const { data: existsCustomerMobile, error } = await supabase.rpc('check_customer_mobile_exists', { p_mobile: fullMobile });
+        if (error) throw error;
+
+        if (existsCustomerMobile === true) {
+          setError('This mobile number is already used by another customer.');
+          return;
+        }
+      }
+
       const userId = await register({
         ...formData,
         userName: finalUsername,
+        email: finalEmail,
         mobile: fullMobile
       }, 'customer');
 
@@ -819,7 +1006,7 @@ const CustomerRegister: React.FC = () => {
         navigate('/verify-otp', {
           state: {
             userId,
-            email: formData.email,
+            email: finalEmail,
             mobile: fullMobile,
             verificationSettings: {
               emailRequired: settings.emailVerificationRequired,
@@ -841,6 +1028,18 @@ const CustomerRegister: React.FC = () => {
   }, [formData, settings, recaptchaToken, isSubmitting, validateForm, usernameValidation, usernameAvailable, passwordValidation, register, navigate]);
 
   const selectedCountry = countryCodes.find(country => country.code === formData.mobileCountryCode);
+  const isEmailDuplicate =
+    settings.customerEmailUnique &&
+    formData.email.trim() &&
+    isLikelyEmail(formData.email) &&
+    emailAvailable === false;
+  const isMobileDuplicate =
+    settings.customerMobileUnique &&
+    formData.mobile.trim().length === 10 &&
+    mobileAvailable === false;
+  const isUniquenessCheckInProgress =
+    (settings.customerEmailUnique && checkingEmail) ||
+    (settings.customerMobileUnique && checkingMobile);
 
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -1061,10 +1260,41 @@ const CustomerRegister: React.FC = () => {
                         required={settings.emailVerificationRequired || settings.eitherVerificationRequired}
                         value={formData.email}
                         onChange={handleChange}
-                        className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        onBlur={() => runEmailUniquenessCheck(formData.email)}
+                        className={`block w-full pl-10 pr-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                          !formData.email.trim()
+                            ? 'border-gray-300'
+                            : settings.customerEmailUnique
+                              ? (emailAvailable === false ? 'border-red-300' : emailAvailable === true ? 'border-green-300' : 'border-gray-300')
+                              : (emailWillAlias ? 'border-blue-300' : 'border-gray-300')
+                        }`}
                         placeholder="your@email.com"
                     />
                   </div>
+                  {checkingEmail && formData.email.trim() && isLikelyEmail(formData.email) && (
+                    <p className="text-xs text-yellow-600 flex items-center mt-1">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600 mr-1"></div>
+                      Checking email...
+                    </p>
+                  )}
+                  {!checkingEmail && settings.customerEmailUnique && emailAvailable === true && formData.email.trim() && isLikelyEmail(formData.email) && (
+                    <p className="text-xs text-green-600 flex items-center mt-1">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Email is available
+                    </p>
+                  )}
+                  {!checkingEmail && settings.customerEmailUnique && emailAvailable === false && formData.email.trim() && isLikelyEmail(formData.email) && (
+                    <p className="text-xs text-red-600 flex items-center mt-1">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Email is already used by another customer
+                    </p>
+                  )}
+                  {!checkingEmail && !settings.customerEmailUnique && formData.email.trim() && isLikelyEmail(formData.email) && emailWillAlias && (
+                    <p className="text-xs text-blue-600 flex items-center mt-1">
+                      <Info className="h-3 w-3 mr-1" />
+                      Email already exists; we will auto-generate a unique alias for this test account
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1111,14 +1341,41 @@ const CustomerRegister: React.FC = () => {
                           required={settings.mobileVerificationRequired || settings.eitherVerificationRequired}
                           value={formData.mobile}
                           onChange={handleChange}
-                          className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          onBlur={() => runMobileUniquenessCheck(formData.mobile, formData.mobileCountryCode)}
+                          className={`block w-full pl-10 pr-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                            !formData.mobile.trim()
+                              ? 'border-gray-300'
+                              : settings.customerMobileUnique && formData.mobile.trim().length === 10
+                                ? (mobileAvailable === false ? 'border-red-300' : mobileAvailable === true ? 'border-green-300' : 'border-gray-300')
+                                : 'border-gray-300'
+                          }`}
                           placeholder="1234567890"
                           maxLength={10}
                           pattern="[0-9]{10}"
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Enter 10-digit mobile number</p>
+                  <div className="mt-1 space-y-1">
+                    <p className="text-xs text-gray-500">Enter 10-digit mobile number</p>
+                    {settings.customerMobileUnique && checkingMobile && formData.mobile.trim().length === 10 && (
+                      <p className="text-xs text-yellow-600 flex items-center">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600 mr-1"></div>
+                        Checking mobile...
+                      </p>
+                    )}
+                    {settings.customerMobileUnique && !checkingMobile && mobileAvailable === true && formData.mobile.trim().length === 10 && (
+                      <p className="text-xs text-green-600 flex items-center">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Mobile is available
+                      </p>
+                    )}
+                    {settings.customerMobileUnique && !checkingMobile && mobileAvailable === false && formData.mobile.trim().length === 10 && (
+                      <p className="text-xs text-red-600 flex items-center">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Mobile is already used by another customer
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1448,7 +1705,15 @@ const CustomerRegister: React.FC = () => {
 
               <button
                   type="submit"
-                  disabled={isSubmitting || !recaptchaToken || !usernameValidation.isValid || !passwordValidation.isValid}
+                  disabled={
+                    isSubmitting ||
+                    !recaptchaToken ||
+                    !usernameValidation.isValid ||
+                    !passwordValidation.isValid ||
+                    isUniquenessCheckInProgress ||
+                    isEmailDuplicate ||
+                    isMobileDuplicate
+                  }
                   className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
               >
                 {isSubmitting ? (

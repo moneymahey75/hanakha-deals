@@ -32,6 +32,7 @@ import SitePolicies from './pages/SitePolicies';
 import FAQ from './pages/FAQ';
 import JoinAsCustomer from './pages/JoinAsCustomer';
 import JoinAsCompany from './pages/JoinAsCompany';
+import UpcomingPlan from './pages/UpcomingPlan';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
 import GuestRoute from './components/auth/GuestRoute';
@@ -91,6 +92,7 @@ function App() {
                             <Route path="/faq" element={<FAQ />} />
                             <Route path="/join-customer" element={<JoinAsCustomer />} />
                             <Route path="/join-company" element={<JoinAsCompany />} />
+                            <Route path="/upcoming-plan" element={<UpcomingPlan />} />
                             
                             {/* Customer Routes */}
                             <Route path="/customer/login" element={

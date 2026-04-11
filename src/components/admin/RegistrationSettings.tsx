@@ -14,6 +14,8 @@ const RegistrationSettings: React.FC = () => {
 	        referralMandatory: false,
 	        eitherVerificationRequired: false,
 	        walletUniquePerCustomer: import.meta.env.PROD,
+	        customerEmailUnique: import.meta.env.PROD,
+	        customerMobileUnique: import.meta.env.PROD,
 	        testOtpEnabled: false,
 	        testOtpCode: '123456',
 	        registrationPaymentAutoApprove: true,
@@ -60,6 +62,8 @@ const RegistrationSettings: React.FC = () => {
 	                    'referral_mandatory',
 	                    'either_verification_required',
 	                    'wallet_unique_per_customer',
+	                    'customer_email_unique',
+	                    'customer_mobile_unique',
 	                    'test_otp_enabled',
 	                    'test_otp_code',
 	                    'registration_payment_auto_approve',
@@ -124,6 +128,8 @@ const RegistrationSettings: React.FC = () => {
 	                    referralMandatory: settingsMap.referral_mandatory ?? false,
 	                    eitherVerificationRequired: settingsMap.either_verification_required ?? false,
 	                    walletUniquePerCustomer: settingsMap.wallet_unique_per_customer ?? import.meta.env.PROD,
+	                    customerEmailUnique: settingsMap.customer_email_unique ?? import.meta.env.PROD,
+	                    customerMobileUnique: settingsMap.customer_mobile_unique ?? import.meta.env.PROD,
 	                    testOtpEnabled: settingsMap.test_otp_enabled ?? false,
 	                    testOtpCode: settingsMap.test_otp_code ?? '123456',
 	                    registrationPaymentAutoApprove: settingsMap.registration_payment_auto_approve ?? true,
@@ -165,6 +171,8 @@ const RegistrationSettings: React.FC = () => {
 	                    'referral_mandatory',
 	                    'either_verification_required',
 	                    'wallet_unique_per_customer',
+	                    'customer_email_unique',
+	                    'customer_mobile_unique',
 	                    'test_otp_enabled',
 	                    'test_otp_code',
 	                    'registration_payment_auto_approve',
@@ -207,6 +215,8 @@ const RegistrationSettings: React.FC = () => {
 	            referralMandatory: false,
 	            eitherVerificationRequired: false,
 	            walletUniquePerCustomer: import.meta.env.PROD,
+	            customerEmailUnique: import.meta.env.PROD,
+	            customerMobileUnique: import.meta.env.PROD,
 	            testOtpEnabled: false,
 	            testOtpCode: '123456',
 	            registrationPaymentAutoApprove: true,
@@ -268,6 +278,16 @@ const RegistrationSettings: React.FC = () => {
 	                    tss_setting_key: 'wallet_unique_per_customer',
 	                    tss_setting_value: JSON.stringify(formData.walletUniquePerCustomer),
 	                    tss_description: 'Require a wallet address to be linked to only one customer account'
+	                },
+	                {
+	                    tss_setting_key: 'customer_email_unique',
+	                    tss_setting_value: JSON.stringify(formData.customerEmailUnique),
+	                    tss_description: 'Require customer email to be unique (app-level)'
+	                },
+	                {
+	                    tss_setting_key: 'customer_mobile_unique',
+	                    tss_setting_value: JSON.stringify(formData.customerMobileUnique),
+	                    tss_description: 'Require customer mobile to be unique'
 	                },
 	                {
 	                    tss_setting_key: 'test_otp_enabled',
@@ -961,6 +981,58 @@ const RegistrationSettings: React.FC = () => {
 	                                    ) : (
 	                                        <span className="text-gray-500">Wallet addresses may be shared across multiple customers (development only)</span>
 	                                    )}
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+
+	                    {/* Customer Email/Mobile Uniqueness */}
+	                    <div className="border border-indigo-200 rounded-lg p-6 bg-indigo-50">
+	                        <div className="flex items-start space-x-4">
+	                            <div className="bg-indigo-100 p-2 rounded-lg mt-1">
+	                                <User className="h-5 w-5 text-indigo-600" />
+	                            </div>
+	                            <div className="flex-1 space-y-4">
+	                                <div className="flex items-center justify-between">
+	                                    <div>
+	                                        <h4 className="text-lg font-medium text-gray-900">Unique Customer Email</h4>
+	                                        <p className="text-sm text-gray-600 mt-1">
+	                                            Enforce unique email addresses for customers (app-level)
+	                                        </p>
+	                                    </div>
+	                                    <label className="relative inline-flex items-center cursor-pointer">
+	                                        <input
+	                                            type="checkbox"
+	                                            name="customerEmailUnique"
+	                                            checked={formData.customerEmailUnique}
+	                                            onChange={handleChange}
+	                                            className="sr-only peer"
+	                                        />
+	                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+	                                    </label>
+	                                </div>
+
+	                                <div className="flex items-center justify-between">
+	                                    <div>
+	                                        <h4 className="text-lg font-medium text-gray-900">Unique Customer Mobile</h4>
+	                                        <p className="text-sm text-gray-600 mt-1">
+	                                            Enforce unique mobile numbers for customers
+	                                        </p>
+	                                    </div>
+	                                    <label className="relative inline-flex items-center cursor-pointer">
+	                                        <input
+	                                            type="checkbox"
+	                                            name="customerMobileUnique"
+	                                            checked={formData.customerMobileUnique}
+	                                            onChange={handleChange}
+	                                            className="sr-only peer"
+	                                        />
+	                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+	                                    </label>
+	                                </div>
+
+	                                <div className="text-xs text-gray-500">
+	                                    Tip: in development you can disable these for easier testing. In production keep them enabled.
 	                                </div>
 	                            </div>
 	                        </div>

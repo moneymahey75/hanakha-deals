@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
-import { Menu, X, User, LogOut, Settings, Home, ChevronDown, Building, CreditCard } from 'lucide-react';
+import { Menu, X, User, LogOut, Settings, Home, ChevronDown, Building, CreditCard, Rocket } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -80,6 +80,14 @@ const Navbar: React.FC = () => {
             >
               <Home className="h-4 w-4" />
               <span>Home</span>
+            </Link>
+
+            <Link
+              to="/upcoming-plan"
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 font-medium"
+            >
+              <Rocket className="h-4 w-4" />
+              <span>Upcoming Plan</span>
             </Link>
 
             {!user ? (
@@ -259,6 +267,15 @@ const Navbar: React.FC = () => {
             >
               <Home className="h-5 w-5" />
               <span className="font-medium">Home</span>
+            </Link>
+
+            <Link
+              to="/upcoming-plan"
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <Rocket className="h-5 w-5" />
+              <span className="font-medium">Upcoming Plan</span>
             </Link>
 
             {!user ? (

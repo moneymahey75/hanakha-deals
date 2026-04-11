@@ -14,6 +14,8 @@ interface GeneralSettings {
   eitherVerificationRequired: boolean;
   referralMandatory: boolean;
   walletUniquePerCustomer: boolean;
+  customerEmailUnique: boolean;
+  customerMobileUnique: boolean;
   jobSeekerVideoUrl?: string;
   jobProviderVideoUrl?: string;
   paymentMode?: boolean;
@@ -124,6 +126,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     eitherVerificationRequired: true,
     referralMandatory: false,
     walletUniquePerCustomer: import.meta.env.PROD,
+    customerEmailUnique: import.meta.env.PROD,
+    customerMobileUnique: import.meta.env.PROD,
     jobSeekerVideoUrl: '',
     jobProviderVideoUrl: '',
     paymentMode: false,
@@ -292,6 +296,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'wallet_unique_per_customer':
                 loadedSettings.walletUniquePerCustomer = Boolean(value);
+                break;
+              case 'customer_email_unique':
+                loadedSettings.customerEmailUnique = Boolean(value);
+                break;
+              case 'customer_mobile_unique':
+                loadedSettings.customerMobileUnique = Boolean(value);
                 break;
               case 'job_seeker_video_url':
                 loadedSettings.jobSeekerVideoUrl = value;
@@ -475,6 +485,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               loadedSettings.passwordHistoryCount : defaultSettings.passwordHistoryCount,
           passwordAllowedSpecialChars: loadedSettings.passwordAllowedSpecialChars ||
               defaultSettings.passwordAllowedSpecialChars,
+          customerEmailUnique: loadedSettings.customerEmailUnique !== undefined
+            ? Boolean(loadedSettings.customerEmailUnique)
+            : defaultSettings.customerEmailUnique,
+          customerMobileUnique: loadedSettings.customerMobileUnique !== undefined
+            ? Boolean(loadedSettings.customerMobileUnique)
+            : defaultSettings.customerMobileUnique,
           withdrawalMinAmount: Number.isFinite(loadedSettings.withdrawalMinAmount as number)
             ? (loadedSettings.withdrawalMinAmount as number)
             : defaultSettings.withdrawalMinAmount,
