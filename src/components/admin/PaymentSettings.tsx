@@ -7,12 +7,14 @@ const PaymentSettings: React.FC = () => {
     const { settings, updateSettings, loading, refreshSettings } = useAdmin();
     const [formData, setFormData] = useState({
         paymentMode: settings.paymentMode,
-        usdtAddress: settings.usdtAddress,
+        usdtAddressTestnet: settings.usdtAddressTestnet || settings.usdtAddress || '',
+        usdtAddressMainnet: settings.usdtAddressMainnet || settings.usdtAddress || '',
         subscriptionContractAddress: settings.subscriptionContractAddress,
         investmentContractAddress: settings.investmentContractAddress,
         subscriptionWalletAddress: settings.subscriptionWalletAddress,
         investmentWalletAddress: settings.investmentWalletAddress,
-        adminPaymentWallet: settings.adminPaymentWallet,
+        adminPaymentWalletTestnet: settings.adminPaymentWalletTestnet || settings.adminPaymentWallet || '',
+        adminPaymentWalletMainnet: settings.adminPaymentWalletMainnet || settings.adminPaymentWallet || '',
         withdrawalMinAmount: settings.withdrawalMinAmount,
         withdrawalStepAmount: settings.withdrawalStepAmount,
         withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
@@ -32,12 +34,14 @@ const PaymentSettings: React.FC = () => {
     useEffect(() => {
         setFormData({
             paymentMode: settings.paymentMode,
-            usdtAddress: settings.usdtAddress,
+            usdtAddressTestnet: settings.usdtAddressTestnet || settings.usdtAddress || '',
+            usdtAddressMainnet: settings.usdtAddressMainnet || settings.usdtAddress || '',
             subscriptionContractAddress: settings.subscriptionContractAddress,
             investmentContractAddress: settings.investmentContractAddress,
             subscriptionWalletAddress: settings.subscriptionWalletAddress,
             investmentWalletAddress: settings.investmentWalletAddress,
-            adminPaymentWallet: settings.adminPaymentWallet,
+            adminPaymentWalletTestnet: settings.adminPaymentWalletTestnet || settings.adminPaymentWallet || '',
+            adminPaymentWalletMainnet: settings.adminPaymentWalletMainnet || settings.adminPaymentWallet || '',
             withdrawalMinAmount: settings.withdrawalMinAmount,
             withdrawalStepAmount: settings.withdrawalStepAmount,
             withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
@@ -67,12 +71,18 @@ const PaymentSettings: React.FC = () => {
             // Update settings in database
             const updates = [
                 { key: 'payment_mode', value: JSON.stringify(formData.paymentMode) },
-                { key: 'usdt_address', value: JSON.stringify(formData.usdtAddress) },
+                // Keep legacy key in sync with selected mode (backward compatibility)
+                { key: 'usdt_address', value: JSON.stringify(String(formData.paymentMode) === '1' ? formData.usdtAddressMainnet : formData.usdtAddressTestnet) },
+                { key: 'usdt_address_testnet', value: JSON.stringify(formData.usdtAddressTestnet) },
+                { key: 'usdt_address_mainnet', value: JSON.stringify(formData.usdtAddressMainnet) },
                 { key: 'subscription_contract_address', value: JSON.stringify(formData.subscriptionContractAddress) },
                 { key: 'investment_contract_address', value: JSON.stringify(formData.investmentContractAddress) },
                 { key: 'subscription_wallet_address', value: JSON.stringify(formData.subscriptionWalletAddress) },
                 { key: 'investment_wallet_address', value: JSON.stringify(formData.investmentWalletAddress) },
-                { key: 'admin_payment_wallet', value: JSON.stringify(formData.adminPaymentWallet || '') },
+                // Keep legacy key in sync with selected mode (backward compatibility)
+                { key: 'admin_payment_wallet', value: JSON.stringify(String(formData.paymentMode) === '1' ? formData.adminPaymentWalletMainnet : formData.adminPaymentWalletTestnet) },
+                { key: 'admin_payment_wallet_testnet', value: JSON.stringify(formData.adminPaymentWalletTestnet || '') },
+                { key: 'admin_payment_wallet_mainnet', value: JSON.stringify(formData.adminPaymentWalletMainnet || '') },
                 { key: 'payment_wallets_enabled', value: JSON.stringify(formData.paymentWalletsEnabled) },
                 { key: 'withdrawal_min_amount', value: JSON.stringify(formData.withdrawalMinAmount) },
                 { key: 'withdrawal_step_amount', value: JSON.stringify(formData.withdrawalStepAmount) },
@@ -92,7 +102,28 @@ const PaymentSettings: React.FC = () => {
             });
 
             // Update context
-            updateSettings(formData);
+            updateSettings({
+                paymentMode: formData.paymentMode,
+                usdtAddressTestnet: formData.usdtAddressTestnet,
+                usdtAddressMainnet: formData.usdtAddressMainnet,
+                adminPaymentWalletTestnet: formData.adminPaymentWalletTestnet,
+                adminPaymentWalletMainnet: formData.adminPaymentWalletMainnet,
+                // effective values (AdminContext will also recompute after refresh)
+                usdtAddress: String(formData.paymentMode) === '1' ? formData.usdtAddressMainnet : formData.usdtAddressTestnet,
+                adminPaymentWallet: String(formData.paymentMode) === '1' ? formData.adminPaymentWalletMainnet : formData.adminPaymentWalletTestnet,
+                subscriptionContractAddress: formData.subscriptionContractAddress,
+                investmentContractAddress: formData.investmentContractAddress,
+                subscriptionWalletAddress: formData.subscriptionWalletAddress,
+                investmentWalletAddress: formData.investmentWalletAddress,
+                withdrawalMinAmount: formData.withdrawalMinAmount,
+                withdrawalStepAmount: formData.withdrawalStepAmount,
+                withdrawalCommissionPercent: formData.withdrawalCommissionPercent,
+                withdrawalAutoTransfer: formData.withdrawalAutoTransfer,
+                withdrawalProcessingDays: formData.withdrawalProcessingDays,
+                withdrawalEnabled: formData.withdrawalEnabled,
+                withdrawalDisabledMessage: formData.withdrawalDisabledMessage,
+                paymentWalletsEnabled: formData.paymentWalletsEnabled
+            });
 
             // Refresh settings from database to ensure sync
             await refreshSettings();
@@ -209,17 +240,36 @@ const PaymentSettings: React.FC = () => {
 
                     <div>
                         <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
-                            USDT Address *
+                            USDT Contract Address (Testnet) *
                         </label>
                         <input
                             type="text"
-                            id="usdtAddress"
-                            name="usdtAddress"
+                            id="usdtAddressTestnet"
+                            name="usdtAddressTestnet"
                             required
-                            value={formData.usdtAddress}
+                            value={formData.usdtAddressTestnet}
                             onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter USDT address"
+                            placeholder="Enter USDT token contract address for BSC Testnet"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            MetaMask may show multiple tokens named “USDT”. The system uses the contract address configured here.
+                        </p>
+                    </div>
+
+                    <div className="mt-6">
+                        <label htmlFor="usdtAddressMainnet" className="block text-sm font-medium text-gray-700 mb-2">
+                            USDT Contract Address (Mainnet) *
+                        </label>
+                        <input
+                            type="text"
+                            id="usdtAddressMainnet"
+                            name="usdtAddressMainnet"
+                            required
+                            value={formData.usdtAddressMainnet}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Enter USDT token contract address for BSC Mainnet"
                         />
                     </div>
                 </div>
@@ -227,21 +277,37 @@ const PaymentSettings: React.FC = () => {
                 <div className="border border-gray-200 rounded-lg p-6">
                     <div>
                         <label htmlFor="adminPaymentWallet" className="block text-sm font-medium text-gray-700 mb-2">
-                            Registration USDT Receiving Address *
+                            Registration USDT Receiving Address (Testnet) *
                         </label>
                         <input
                             type="text"
-                            id="adminPaymentWallet"
-                            name="adminPaymentWallet"
+                            id="adminPaymentWalletTestnet"
+                            name="adminPaymentWalletTestnet"
                             required
-                            value={formData.adminPaymentWallet}
+                            value={formData.adminPaymentWalletTestnet}
                             onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter admin USDT address for registration payments"
+                            placeholder="Enter receiving wallet for registration payments (testnet)"
                         />
                         <p className="text-xs text-gray-500 mt-2">
                             Users will send registration USDT payments directly to this address.
                         </p>
+                    </div>
+
+                    <div className="mt-6">
+                        <label htmlFor="adminPaymentWalletMainnet" className="block text-sm font-medium text-gray-700 mb-2">
+                            Registration USDT Receiving Address (Mainnet) *
+                        </label>
+                        <input
+                            type="text"
+                            id="adminPaymentWalletMainnet"
+                            name="adminPaymentWalletMainnet"
+                            required
+                            value={formData.adminPaymentWalletMainnet}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Enter receiving wallet for registration payments (mainnet)"
+                        />
                     </div>
 
                     <div className="mt-6">

@@ -1,7 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { logAdminAction } from '../_shared/adminSession.ts';
 import { ethers } from 'npm:ethers@6.10.0';
-import { formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
+import { formatWithdrawalAdminDebug, formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,10 +145,9 @@ const processTransfer = async (params: {
     throw new Error('Admin wallet private key is not configured');
   }
 
-  const isMainnet = paymentMode === true || paymentMode === '1' || paymentMode === 1 || paymentMode === 'true';
-  const rpcUrl = isMainnet
-    ? (Deno.env.get('BSC_MAINNET_RPC_URL') || DEFAULT_MAINNET_RPC)
-    : (Deno.env.get('BSC_TESTNET_RPC_URL') || DEFAULT_TESTNET_RPC);
+    const rpcUrl = isMainnet
+      ? (Deno.env.get('BSC_MAINNET_RPC_URL') || DEFAULT_MAINNET_RPC)
+      : (Deno.env.get('BSC_TESTNET_RPC_URL') || DEFAULT_TESTNET_RPC);
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const signer = new ethers.Wallet(privateKey, provider);
@@ -196,6 +195,7 @@ const processTransfer = async (params: {
       .update({
         twr_status: 'failed',
         twr_failure_reason: failureReason,
+        twr_admin_debug: formatWithdrawalAdminDebug(error),
         twr_processed_at: new Date().toISOString(),
         twr_processed_by_admin_id: adminInfo.id,
         twr_processed_by_admin_email: adminInfo.email,
@@ -211,6 +211,9 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
+
+  let requestedWithdrawalId: string | null = null;
+  let adminInfoForCatch: { id: string; email: string; name: string | null } | null = null;
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -261,6 +264,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { withdrawalId } = await req.json();
+    requestedWithdrawalId = withdrawalId || null;
 
     if (!withdrawalId) {
       return new Response(
@@ -301,7 +305,15 @@ Deno.serve(async (req: Request) => {
     const { data: settingsRows, error: settingsError } = await supabase
       .from('tbl_system_settings')
       .select('tss_setting_key, tss_setting_value')
-      .in('tss_setting_key', ['admin_payment_wallet', 'payment_mode', 'usdt_address']);
+      .in('tss_setting_key', [
+        'payment_mode',
+        'usdt_address',
+        'usdt_address_testnet',
+        'usdt_address_mainnet',
+        'admin_payment_wallet',
+        'admin_payment_wallet_testnet',
+        'admin_payment_wallet_mainnet'
+      ]);
 
     if (settingsError) {
       throw settingsError;
@@ -312,9 +324,20 @@ Deno.serve(async (req: Request) => {
       settingsMap[row.tss_setting_key] = parseSetting(row.tss_setting_value);
     }
 
-    const adminPaymentWallet = String(settingsMap.admin_payment_wallet || '').trim();
-    const usdtAddress = String(settingsMap.usdt_address || '').trim();
     const paymentMode = settingsMap.payment_mode;
+    const isMainnet = paymentMode === true || paymentMode === '1' || paymentMode === 1 || paymentMode === 'true';
+
+    const adminPaymentWallet = String(
+      (isMainnet ? settingsMap.admin_payment_wallet_mainnet : settingsMap.admin_payment_wallet_testnet) ??
+      settingsMap.admin_payment_wallet ??
+      ''
+    ).trim();
+
+    const usdtAddress = String(
+      (isMainnet ? settingsMap.usdt_address_mainnet : settingsMap.usdt_address_testnet) ??
+      settingsMap.usdt_address ??
+      ''
+    ).trim();
 
     if (!ethers.isAddress(adminPaymentWallet)) {
       throw new Error('Admin payment wallet not configured');
@@ -327,7 +350,8 @@ Deno.serve(async (req: Request) => {
     const updateResult = await supabase
       .from('tbl_withdrawal_requests')
       .update({
-        twr_status: 'processing'
+        twr_status: 'processing',
+        twr_admin_debug: null
       })
       .eq('twr_id', withdrawalId)
       .in('twr_status', ['pending', 'failed']);
@@ -341,6 +365,7 @@ Deno.serve(async (req: Request) => {
       email: adminUser.tau_email,
       name: adminUser.tau_full_name || null
     };
+    adminInfoForCatch = adminInfo;
 
     const { data: userRow } = await supabase
       .from('tbl_users')
@@ -395,7 +420,8 @@ Deno.serve(async (req: Request) => {
         twr_processed_by_admin_id: adminUser.tau_id,
         twr_processed_by_admin_email: adminUser.tau_email,
         twr_processed_by_admin_name: adminUser.tau_full_name || null,
-        twr_blockchain_tx: txHash
+        twr_blockchain_tx: txHash,
+        twr_admin_debug: `Transfer completed. tx=${txHash}`
       })
       .eq('twr_id', withdrawalId);
 
@@ -437,6 +463,34 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error: any) {
     console.error('Error processing withdrawal:', error);
+
+    // If we flipped the request into "processing" but failed before the transfer-handler
+    // updated it, persist a technical admin debug message and a customer-friendly reason.
+    try {
+      if (requestedWithdrawalId && adminInfoForCatch) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          await supabase
+            .from('tbl_withdrawal_requests')
+            .update({
+              twr_status: 'failed',
+              twr_failure_reason: formatWithdrawalFailureReason(error),
+              twr_admin_debug: formatWithdrawalAdminDebug(error),
+              twr_processed_at: new Date().toISOString(),
+              twr_processed_by_admin_id: adminInfoForCatch.id,
+              twr_processed_by_admin_email: adminInfoForCatch.email,
+              twr_processed_by_admin_name: adminInfoForCatch.name
+            })
+            .eq('twr_id', requestedWithdrawalId)
+            .eq('twr_status', 'processing');
+        }
+      }
+    } catch (persistError) {
+      console.error('Failed to persist withdrawal admin debug info:', persistError);
+    }
+
     return new Response(
       JSON.stringify({
         success: false,

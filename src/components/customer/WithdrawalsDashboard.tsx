@@ -219,7 +219,10 @@ const WithdrawalsDashboard: React.FC = () => {
 
       const { data, error, count } = await supabase
         .from('tbl_withdrawal_requests')
-        .select('*', { count: 'exact' })
+        .select(
+          'twr_id, twr_amount, twr_commission_percent, twr_commission_amount, twr_net_amount, twr_status, twr_destination_address, twr_requested_at, twr_processed_at, twr_auto_transfer, twr_blockchain_tx, twr_failure_reason',
+          { count: 'exact' }
+        )
         .eq('twr_user_id', user.id)
         .order('twr_requested_at', { ascending: false })
         .range(from, to);
@@ -601,4 +604,3 @@ const WithdrawalsDashboard: React.FC = () => {
 };
 
 export default WithdrawalsDashboard;
-

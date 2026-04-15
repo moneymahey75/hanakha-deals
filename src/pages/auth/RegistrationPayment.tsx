@@ -42,6 +42,7 @@ const RegistrationPayment: React.FC = () => {
   const [walletState, setWalletState] = useState<WalletState>(() =>
     WalletService.getInstance().getCurrentWalletState()
   );
+  const [refreshingBalances, setRefreshingBalances] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
   const [transaction, setTransaction] = useState<TransactionState>({
@@ -166,6 +167,26 @@ const RegistrationPayment: React.FC = () => {
       subscriptionContractAddress: settings.subscriptionContractAddress || '',
       subscriptionWalletAddress: settings.subscriptionWalletAddress || ''
     });
+
+    // If already connected, refresh balances using the currently configured USDT contract.
+    if (walletState.isConnected) {
+      let cancelled = false;
+      void (async () => {
+        setRefreshingBalances(true);
+        try {
+          const updated = await walletService.syncCurrentWalletState();
+          if (!cancelled) setWalletState(updated);
+        } catch (error) {
+          // ignore: UI will still show previous state; user can reconnect
+          console.warn('Failed to sync wallet balances after settings change:', error);
+        } finally {
+          if (!cancelled) setRefreshingBalances(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
   }, [settings, walletService]);
 
   useEffect(() => {
@@ -617,7 +638,20 @@ const RegistrationPayment: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <WalletInfoCard wallet={walletState} onDisconnect={handleWalletDisconnect} />
+                <WalletInfoCard
+                  wallet={walletState}
+                  onDisconnect={handleWalletDisconnect}
+                  onRefresh={async () => {
+                    setRefreshingBalances(true);
+                    try {
+                      const updated = await walletService.syncCurrentWalletState();
+                      setWalletState(updated);
+                    } finally {
+                      setRefreshingBalances(false);
+                    }
+                  }}
+                  refreshing={refreshingBalances}
+                />
               )}
             </div>
 

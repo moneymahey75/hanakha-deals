@@ -181,6 +181,15 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
         return diffDays > 0 ? diffDays : 0;
     };
 
+    const isLifetimeSubscription = (subscription: Payment['subscription']) => {
+        if (!subscription) return false;
+        const durationDays = Number(subscription.plan?.tsp_duration_days);
+        if (Number.isFinite(durationDays) && durationDays <= 0) return true;
+
+        const end = new Date(subscription.tus_end_date);
+        return Number.isFinite(end.getTime()) && end.getUTCFullYear() >= 9999;
+    };
+
     const normalizePlanFeatures = (raw: any): string[] => {
         if (!raw) return [];
         if (Array.isArray(raw)) return raw.map(String);
@@ -276,7 +285,9 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                     {payment.subscription.tus_status === 'active' && (
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       <Calendar className="h-3 w-3 mr-1" />
-                                            {getDaysRemaining(payment.subscription.tus_end_date)} days left
+                                            {isLifetimeSubscription(payment.subscription)
+                                                ? 'Lifetime'
+                                                : `${getDaysRemaining(payment.subscription.tus_end_date)} days left`}
                     </span>
                                     )}
                                 </div>
@@ -411,7 +422,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Duration:</span>
-                                                <span>{selectedPayment.subscription.plan.tsp_duration_days} days</span>
+                                                <span>{selectedPayment.subscription.plan.tsp_duration_days > 0 ? `${selectedPayment.subscription.plan.tsp_duration_days} days` : 'Lifetime'}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Status:</span>
@@ -425,13 +436,19 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">End Date:</span>
-                                                <span>{formatDateShort(selectedPayment.subscription.tus_end_date)}</span>
+                                                <span>
+                                                    {isLifetimeSubscription(selectedPayment.subscription)
+                                                        ? 'Lifetime'
+                                                        : formatDateShort(selectedPayment.subscription.tus_end_date)}
+                                                </span>
                                             </div>
                                             {selectedPayment.subscription.tus_status === 'active' && (
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Days Remaining:</span>
                                                     <span className="font-medium text-green-600">
-                            {getDaysRemaining(selectedPayment.subscription.tus_end_date)} days
+                            {isLifetimeSubscription(selectedPayment.subscription)
+                                ? 'Lifetime'
+                                : `${getDaysRemaining(selectedPayment.subscription.tus_end_date)} days`}
                           </span>
                                                 </div>
                                             )}

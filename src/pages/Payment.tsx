@@ -650,7 +650,7 @@ const Payment: React.FC = () => {
                   <span className="text-2xl font-bold text-green-300">{selectedPlan.tsp_price} USDT</span>
                 </div>
                 <p className="text-green-200 text-sm mt-1">
-                  {selectedPlan.tsp_duration_days} days subscription • BEP-20 Token
+                  {selectedPlan.tsp_duration_days > 0 ? `${selectedPlan.tsp_duration_days} days` : 'Lifetime'} subscription • BEP-20 Token
                 </p>
               </div>
             </div>

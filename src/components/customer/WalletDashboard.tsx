@@ -317,7 +317,7 @@ const WalletDashboard: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('tbl_withdrawal_requests')
-        .select('*')
+        .select('twr_id, twr_wallet_connection_id, twr_destination_address, twr_amount, twr_commission_percent, twr_commission_amount, twr_net_amount, twr_status, twr_auto_transfer, twr_requested_at, twr_processed_at, twr_blockchain_tx, twr_failure_reason')
         .eq('twr_user_id', user.id)
         .order('twr_requested_at', { ascending: false });
 

@@ -72,7 +72,13 @@ Deno.serve(async (req: Request) => {
       planType
     } = await req.json();
 
-    if (!name || !price || !durationDays || !planType) {
+    const normalizedName = String(name || '').trim();
+    const normalizedPlanType = String(planType || '').trim();
+    const normalizedPrice = Number(price);
+    const normalizedDurationDays = Number(durationDays);
+
+    // durationDays can be 0 for "lifetime"
+    if (!normalizedName || !normalizedPlanType || !Number.isFinite(normalizedPrice) || normalizedPrice <= 0 || !Number.isFinite(normalizedDurationDays) || normalizedDurationDays < 0) {
       return new Response(JSON.stringify({ success: false, error: 'Missing required fields' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -83,10 +89,10 @@ Deno.serve(async (req: Request) => {
       const { error } = await supabase
         .from('tbl_subscription_plans')
         .update({
-          tsp_name: name,
+          tsp_name: normalizedName,
           tsp_description: description,
-          tsp_price: price,
-          tsp_duration_days: durationDays,
+          tsp_price: normalizedPrice,
+          tsp_duration_days: Math.trunc(normalizedDurationDays),
           tsp_features: features,
           tsp_parent_income: parentIncome,
           tsp_is_active: isActive
@@ -100,14 +106,14 @@ Deno.serve(async (req: Request) => {
       const { error } = await supabase
         .from('tbl_subscription_plans')
         .insert({
-          tsp_name: name,
+          tsp_name: normalizedName,
           tsp_description: description,
-          tsp_price: price,
-          tsp_duration_days: durationDays,
+          tsp_price: normalizedPrice,
+          tsp_duration_days: Math.trunc(normalizedDurationDays),
           tsp_features: features,
           tsp_parent_income: parentIncome,
           tsp_is_active: isActive,
-          tsp_type: planType
+          tsp_type: normalizedPlanType
         });
 
       if (error) {

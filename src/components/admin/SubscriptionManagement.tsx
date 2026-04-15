@@ -315,7 +315,7 @@ const SubscriptionManagement: React.FC = () => {
                 )}
                 <div className="flex items-center text-gray-600">
                   <Calendar className="h-5 w-5 mr-2" />
-                  <span>{plan.tsp_duration_days} days</span>
+                  <span>{plan.tsp_duration_days > 0 ? `${plan.tsp_duration_days} days` : 'Lifetime'}</span>
                 </div>
               </div>
 

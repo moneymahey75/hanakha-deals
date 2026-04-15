@@ -24,6 +24,7 @@ interface WithdrawalRequest {
   twr_processed_at?: string | null;
   twr_blockchain_tx?: string | null;
   twr_failure_reason?: string | null;
+  twr_admin_debug?: string | null;
   user?: {
     tu_email: string;
     tbl_user_profiles?: {
@@ -54,6 +55,12 @@ const WithdrawalRequests: React.FC = () => {
   const pageSize = 10;
   const notification = useNotification();
   const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
+
+  const getOneLine = (value?: string | null, max = 120) => {
+    const line = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!line) return '';
+    return line.length > max ? `${line.slice(0, max - 3)}...` : line;
+  };
 
   const getAdminSessionToken = () => {
     const directToken = sessionStorage.getItem('admin_session_token');
@@ -397,15 +404,22 @@ const WithdrawalRequests: React.FC = () => {
                     <span title={address}>{shortAddress}</span>
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      withdrawal.twr_status === 'completed' ? 'bg-green-100 text-green-800' :
-                        withdrawal.twr_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          withdrawal.twr_status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                            withdrawal.twr_status === 'rejected' ? 'bg-red-100 text-red-800' :
-                              'bg-gray-100 text-gray-800'
-                    }`}>
-                      {withdrawal.twr_status}
-                    </span>
+                    <div className="space-y-1">
+                      <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                        withdrawal.twr_status === 'completed' ? 'bg-green-100 text-green-800' :
+                          withdrawal.twr_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            withdrawal.twr_status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                              withdrawal.twr_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                      }`}>
+                        {withdrawal.twr_status}
+                      </span>
+                      {withdrawal.twr_admin_debug && (
+                        <div className="text-[11px] text-gray-500" title={withdrawal.twr_admin_debug}>
+                          {getOneLine(withdrawal.twr_admin_debug, 120)}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {withdrawal.twr_requested_at ? new Date(withdrawal.twr_requested_at).toLocaleDateString() : 'N/A'}
@@ -575,6 +589,13 @@ const WithdrawalRequests: React.FC = () => {
                     <p className="text-xs text-gray-500">Failure Reason</p>
                     <p className="text-sm text-gray-900">{selectedWithdrawal.twr_failure_reason || 'N/A'}</p>
                   </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-gray-500">Admin Debug (raw)</p>
+                  <pre className="mt-1 max-h-56 overflow-auto rounded-lg bg-gray-50 border border-gray-200 p-3 text-xs text-gray-800 whitespace-pre-wrap break-words">
+                    {selectedWithdrawal.twr_admin_debug || 'N/A'}
+                  </pre>
                 </div>
               </div>
 

@@ -477,10 +477,13 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const durationDays = Number(registrationPlan.tsp_duration_days || 30);
+    const rawDurationDays = registrationPlan.tsp_duration_days;
+    const durationDays = Number(rawDurationDays);
     const startDate = new Date();
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + durationDays);
+    const endDate =
+      Number.isFinite(durationDays) && durationDays > 0
+        ? new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000)
+        : new Date('9999-12-31T23:59:59.999Z'); // lifetime
 
     const { data: existingSubscription } = await supabase
       .from('tbl_user_subscriptions')

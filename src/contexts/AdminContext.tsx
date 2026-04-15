@@ -20,11 +20,15 @@ interface GeneralSettings {
   jobProviderVideoUrl?: string;
   paymentMode?: boolean;
   usdtAddress?: string;
+  usdtAddressTestnet?: string;
+  usdtAddressMainnet?: string;
   subscriptionContractAddress?: string;
   investmentContractAddress?: string;
   subscriptionWalletAddress?: string;
   investmentWalletAddress?: string;
   adminPaymentWallet?: string;
+  adminPaymentWalletTestnet?: string;
+  adminPaymentWalletMainnet?: string;
   paymentWalletsEnabled?: {
     trust_wallet: boolean;
     metamask: boolean;
@@ -132,11 +136,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     jobProviderVideoUrl: '',
     paymentMode: false,
     usdtAddress: '',
+    usdtAddressTestnet: '',
+    usdtAddressMainnet: '',
     subscriptionContractAddress: '',
     investmentContractAddress: '',
     subscriptionWalletAddress: '',
     investmentWalletAddress: '',
     adminPaymentWallet: '',
+    adminPaymentWalletTestnet: '',
+    adminPaymentWalletMainnet: '',
     paymentWalletsEnabled: {
       trust_wallet: true,
       metamask: true,
@@ -315,6 +323,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'usdt_address':
                 loadedSettings.usdtAddress = value;
                 break;
+              case 'usdt_address_testnet':
+                loadedSettings.usdtAddressTestnet = value;
+                break;
+              case 'usdt_address_mainnet':
+                loadedSettings.usdtAddressMainnet = value;
+                break;
               case 'subscription_contract_address':
                 loadedSettings.subscriptionContractAddress = value;
                 break;
@@ -329,6 +343,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'admin_payment_wallet':
                 loadedSettings.adminPaymentWallet = value;
+                break;
+              case 'admin_payment_wallet_testnet':
+                loadedSettings.adminPaymentWalletTestnet = value;
+                break;
+              case 'admin_payment_wallet_mainnet':
+                loadedSettings.adminPaymentWalletMainnet = value;
                 break;
               case 'payment_wallets_enabled':
                 loadedSettings.paymentWalletsEnabled = value;
@@ -460,7 +480,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
 
         // Merge loaded settings with defaults, ensuring all settings are set
-        const mergedSettings = {
+        const mergedBase = {
           ...defaultSettings,
           ...loadedSettings,
           // Ensure numeric values have proper fallbacks
@@ -512,6 +532,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           withdrawalDisabledMessage: loadedSettings.withdrawalDisabledMessage !== undefined
             ? String(loadedSettings.withdrawalDisabledMessage || '')
             : defaultSettings.withdrawalDisabledMessage
+        };
+
+        const paymentModeValue = mergedBase.paymentMode;
+        const isLive =
+          paymentModeValue === true ||
+          paymentModeValue === 1 ||
+          paymentModeValue === '1' ||
+          paymentModeValue === 'true';
+
+        const effectiveUsdtAddress = isLive
+          ? (mergedBase.usdtAddressMainnet || mergedBase.usdtAddress || defaultSettings.usdtAddress)
+          : (mergedBase.usdtAddressTestnet || mergedBase.usdtAddress || defaultSettings.usdtAddress);
+
+        const effectiveAdminPaymentWallet = isLive
+          ? (mergedBase.adminPaymentWalletMainnet || mergedBase.adminPaymentWallet || defaultSettings.adminPaymentWallet)
+          : (mergedBase.adminPaymentWalletTestnet || mergedBase.adminPaymentWallet || defaultSettings.adminPaymentWallet);
+
+        const mergedSettings = {
+          ...mergedBase,
+          usdtAddress: effectiveUsdtAddress,
+          adminPaymentWallet: effectiveAdminPaymentWallet
         };
 
         setSettings(mergedSettings);

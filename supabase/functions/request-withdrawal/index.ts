@@ -1,6 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { ethers } from 'npm:ethers@6.10.0';
-import { formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
+import { formatWithdrawalAdminDebug, formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -304,9 +304,13 @@ Deno.serve(async (req: Request) => {
         'withdrawal_step_amount',
         'withdrawal_commission_percent',
         'withdrawal_auto_transfer',
-        'admin_payment_wallet',
         'payment_mode',
-        'usdt_address'
+        'usdt_address',
+        'usdt_address_testnet',
+        'usdt_address_mainnet',
+        'admin_payment_wallet',
+        'admin_payment_wallet_testnet',
+        'admin_payment_wallet_mainnet'
       ]);
 
     if (settingsError) {
@@ -453,9 +457,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const adminPaymentWallet = String(settingsMap.admin_payment_wallet || '').trim();
-    const usdtAddress = String(settingsMap.usdt_address || '').trim();
     const paymentMode = settingsMap.payment_mode;
+    const isMainnet = paymentMode === true || paymentMode === '1' || paymentMode === 1 || paymentMode === 'true';
+
+    const adminPaymentWallet = String(
+      (isMainnet ? settingsMap.admin_payment_wallet_mainnet : settingsMap.admin_payment_wallet_testnet) ??
+      settingsMap.admin_payment_wallet ??
+      ''
+    ).trim();
+
+    const usdtAddress = String(
+      (isMainnet ? settingsMap.usdt_address_mainnet : settingsMap.usdt_address_testnet) ??
+      settingsMap.usdt_address ??
+      ''
+    ).trim();
 
     if (!ethers.isAddress(adminPaymentWallet)) {
       throw new Error('Admin payment wallet not configured');
@@ -483,7 +498,8 @@ Deno.serve(async (req: Request) => {
         .update({
           twr_status: 'completed',
           twr_processed_at: new Date().toISOString(),
-          twr_blockchain_tx: txHash
+          twr_blockchain_tx: txHash,
+          twr_admin_debug: `Auto transfer completed. tx=${txHash}`
         })
         .eq('twr_id', requestRow.twr_id);
 
@@ -513,16 +529,22 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } catch (error: any) {
-      await supabase
+      const failureReason = formatWithdrawalFailureReason(error);
+      const adminDebug = formatWithdrawalAdminDebug(error);
+
+      const { error: updateError } = await supabase
         .from('tbl_withdrawal_requests')
         .update({
           twr_status: 'failed',
-          twr_failure_reason: formatWithdrawalFailureReason(error),
+          twr_failure_reason: failureReason,
+          twr_admin_debug: adminDebug,
           twr_processed_at: new Date().toISOString()
         })
         .eq('twr_id', requestRow.twr_id);
 
-      const failureReason = formatWithdrawalFailureReason(error);
+      if (updateError) {
+        console.error('Failed to persist withdrawal failure debug info:', updateError);
+      }
       return new Response(JSON.stringify({
         success: false,
         error: failureReason,

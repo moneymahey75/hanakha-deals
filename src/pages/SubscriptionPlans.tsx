@@ -215,7 +215,7 @@ const SubscriptionPlans: React.FC = () => {
                   
                   <div className="flex items-center justify-center space-x-2 text-gray-600">
                     <Calendar className="h-4 w-4" />
-                    <span>{plan.tsp_duration_days} days subscription</span>
+                    <span>{plan.tsp_duration_days > 0 ? `${plan.tsp_duration_days} days subscription` : 'Lifetime subscription'}</span>
                   </div>
                   
                   <p className="text-gray-600 mt-3">{plan.tsp_description}</p>
@@ -245,8 +245,8 @@ const SubscriptionPlans: React.FC = () => {
                       <div className="text-xs text-gray-600">USDT Price</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-gray-900">{plan.tsp_duration_days}</div>
-                      <div className="text-xs text-gray-600">Days Access</div>
+                      <div className="text-lg font-bold text-gray-900">{plan.tsp_duration_days > 0 ? plan.tsp_duration_days : '∞'}</div>
+                      <div className="text-xs text-gray-600">{plan.tsp_duration_days > 0 ? 'Days Access' : 'Lifetime'}</div>
                     </div>
                   </div>
                 </div>

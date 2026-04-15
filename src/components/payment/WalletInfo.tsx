@@ -6,9 +6,11 @@ import { useAdmin } from '../../contexts/AdminContext';
 interface WalletInfoProps {
   wallet: WalletState;
   onDisconnect: () => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
-export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect }) => {
+export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, onRefresh, refreshing }) => {
   const { settings } = useAdmin();
 
   const copyAddress = () => {
@@ -32,8 +34,28 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect }) 
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  const formatContract = (address: string) => {
+    if (!address) return '';
+    return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
+
   const getNetworkName = () => {
     return settings?.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet';
+  };
+
+  const openTokenInExplorer = () => {
+    const contract = String(settings?.usdtAddress || '').trim();
+    if (!contract) return;
+    const explorerUrl = settings?.paymentMode === '1'
+      ? `https://bscscan.com/token/${contract}`
+      : `https://testnet.bscscan.com/token/${contract}`;
+    window.open(explorerUrl, '_blank');
+  };
+
+  const copyTokenContract = () => {
+    const contract = String(settings?.usdtAddress || '').trim();
+    if (!contract) return;
+    navigator.clipboard.writeText(contract);
   };
 
   return (
@@ -49,6 +71,16 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect }) 
                 <Shield className="w-3 h-3 mr-1" />
                 {getNetworkName()}
               </div>
+              {onRefresh && (
+                <button
+                  onClick={onRefresh}
+                  disabled={!!refreshing}
+                  className="flex items-center space-x-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-800 rounded-lg font-medium transition-all duration-200"
+                  title="Refresh balances"
+                >
+                  <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+                </button>
+              )}
               <button
                   onClick={onDisconnect}
                   className="flex items-center space-x-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105"
@@ -101,6 +133,28 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect }) 
                 <div className="px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-gray-900 rounded border border-green-200 font-semibold">
                   {parseFloat(wallet.usdtBalance).toFixed(2)} USDT
                 </div>
+                {!!String(settings?.usdtAddress || '').trim() && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                    <span className="font-medium">USDT Contract:</span>
+                    <code className="px-2 py-1 bg-gray-50 rounded border border-gray-200 font-mono">
+                      {formatContract(String(settings?.usdtAddress || '').trim())}
+                    </code>
+                    <button
+                      onClick={copyTokenContract}
+                      className="p-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200"
+                      title="Copy contract address"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={openTokenInExplorer}
+                      className="p-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded border border-blue-200"
+                      title="View token on explorer"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

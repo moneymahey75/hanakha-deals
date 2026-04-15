@@ -156,8 +156,7 @@ export class WalletService {
   // Get USDT contract address from settings
   private getUSDTContractAddress(): string {
     if (!this.adminSettings?.usdtAddress) {
-      console.warn('USDT address not configured, using fallback');
-      return '0x71BB0Ce80bE4993BD386Df84463B1be2c2Aaf41F'; // Fallback testnet USDT
+      throw new Error('USDT contract address is not configured');
     }
     return this.adminSettings.usdtAddress;
   }
@@ -692,5 +691,41 @@ export class WalletService {
     const bnbBalance = await this.getBNBBalance(address);
     const usdtBalance = await this.getUSDTBalance(address);
     return { bnb: bnbBalance, usdt: usdtBalance };
+  }
+
+  // Refresh and persist the current wallet state balances (uses current admin settings / USDT contract).
+  async syncCurrentWalletState(): Promise<WalletState> {
+    if (!this.provider || !this.signer) {
+      throw new Error('Wallet not connected');
+    }
+
+    const address = await this.signer.getAddress();
+    const network = await this.provider.getNetwork();
+
+    const [bnbBalanceResult, usdtBalanceResult] = await Promise.allSettled([
+      this.readBNBBalance(address),
+      this.readUSDTBalance(address)
+    ]);
+
+    const balance = bnbBalanceResult.status === 'fulfilled' ? bnbBalanceResult.value : this.currentWalletState.balance || '0.00';
+    const usdtBalance = usdtBalanceResult.status === 'fulfilled' ? usdtBalanceResult.value : this.currentWalletState.usdtBalance || '0.00';
+    const hasRpcWarning =
+      (bnbBalanceResult.status === 'rejected' && this.isRpcFetchError(bnbBalanceResult.reason)) ||
+      (usdtBalanceResult.status === 'rejected' && this.isRpcFetchError(usdtBalanceResult.reason));
+    const warning = hasRpcWarning ? this.buildRpcUnavailableMessage() : null;
+
+    const newWalletState: WalletState = {
+      ...this.currentWalletState,
+      isConnected: true,
+      address,
+      chainId: Number(network.chainId),
+      balance,
+      usdtBalance,
+      warning
+    };
+
+    this.currentWalletState = newWalletState;
+    this.persistCurrentWalletState();
+    return newWalletState;
   }
 }
