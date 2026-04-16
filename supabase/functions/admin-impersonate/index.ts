@@ -163,8 +163,9 @@ Deno.serve(async (req: Request) => {
       type: 'magiclink',
       email: customer.tu_email,
       options: {
-        // Redirect back into the app so the client can exchange the auth code for a session (PKCE-safe).
-        redirectTo: `${appOrigin}/auth/callback?next=${encodeURIComponent('/customer/dashboard')}`,
+        // IMPORTANT: use app root as callback to avoid static hosting rewrite issues for deep routes like /auth/callback.
+        // The SPA will process the auth params and then navigate to `next`.
+        redirectTo: `${appOrigin}/?next=${encodeURIComponent('/customer/dashboard')}`,
       },
     });
 
