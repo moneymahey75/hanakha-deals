@@ -29,7 +29,6 @@ interface AuthContextType {
   sendOTPToUser: (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => Promise<any>;
   fetchUserData: (userId: string) => Promise<void>;
   checkVerificationStatus: (userId: string) => Promise<{ needsVerification: boolean; settings: any }>;
-  impersonateCustomer: (customerId: string) => Promise<void>;
   loading: boolean;
 }
 
@@ -855,50 +854,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const impersonateCustomer = async (customerId: string) => {
-    try {
-      console.log('🎭 Starting customer impersonation for:', customerId);
-
-      const adminSessionToken = sessionStorage.getItem('admin_session_token');
-      if (!adminSessionToken) {
-        throw new Error('Admin session not found');
-      }
-
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-impersonate`;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'X-Admin-Session': adminSessionToken,
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${anonKey}`,
-          apikey: anonKey,
-        },
-        body: JSON.stringify({ customerId, origin: window.location.origin }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Impersonation failed');
-      }
-
-      console.log('✅ Impersonation authorized, opening customer session in new tab');
-
-      if (result.signin_url) {
-        window.open(result.signin_url, '_blank', 'noopener,noreferrer');
-        notification.showSuccess('Impersonation Started', `Opening ${result.customer_email}'s account in new tab`);
-      } else {
-        throw new Error('No sign-in URL received');
-      }
-    } catch (error: any) {
-      console.error('❌ Impersonation failed:', error);
-      notification.showError('Impersonation Failed', error?.message || 'Failed to impersonate customer');
-      throw error;
-    }
-  };
-
   const value = {
     user,
     login,
@@ -910,7 +865,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sendOTPToUser,
     fetchUserData,
     checkVerificationStatus,
-    impersonateCustomer,
     loading
   };
 

@@ -53,10 +53,6 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
-[functions.admin-impersonate]
-enabled = true
-verify_jwt = false
-
 [functions.admin-delete-sub-admin]
 enabled = true
 verify_jwt = false

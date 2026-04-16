@@ -36,7 +36,6 @@ import UpcomingPlan from './pages/UpcomingPlan';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
 import GuestRoute from './components/auth/GuestRoute';
-import AuthUrlHandler from './components/auth/AuthUrlHandler';
 
 // Scroll to top component
 function ScrollToTop() {
@@ -65,7 +64,6 @@ function App() {
               <Router>
                 <div className="min-h-screen bg-gray-50">
                   <ScrollToTop />
-                  <AuthUrlHandler />
                   <Routes>
                     {/* Backpanel Routes (No Navbar/Footer) */}
                     <Route path="/backpanel/login" element={

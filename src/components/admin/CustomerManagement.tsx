@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 import {
     Users, Search, Eye, CreditCard as Edit, UserCheck, UserX, Mail, Phone,
     Calendar, DollarSign, ArrowLeft, Save, X, CheckCircle, AlertCircle,
     CreditCard, User, Settings, ChevronLeft, ChevronRight, ChevronsLeft,
-    ChevronsRight, MoreHorizontal, Key, LogIn, Wallet, Activity, ArrowDownLeft, ArrowUpRight
+    ChevronsRight, MoreHorizontal, Key, Wallet, Activity, ArrowDownLeft, ArrowUpRight
 } from 'lucide-react';
 
 let inFlightCustomersRequest: {
@@ -181,7 +180,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
     const [totalCount, setTotalCount] = useState(0);
 
     const notification = useNotification();
-    const { impersonateCustomer } = useAuth();
+    // impersonation removed
     const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
 
     useEffect(() => {
@@ -352,24 +351,6 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
         } catch (error: any) {
             console.error('Failed to reset password:', error);
             notification.showError('Reset Failed', error?.message || 'Failed to reset password');
-        }
-    };
-
-    const handleLoginAsUser = async (customer: Customer) => {
-        const customerName = customer.tbl_user_profiles?.tup_first_name
-            ? `${customer.tbl_user_profiles.tup_first_name} ${customer.tbl_user_profiles.tup_last_name || ''}`
-            : customer.tu_email;
-
-        const confirmed = window.confirm(
-            `Login as ${customerName}?\n\nThis will open the customer's account in a new tab.`
-        );
-
-        if (!confirmed) return;
-
-        try {
-            await impersonateCustomer(customer.tu_id);
-        } catch (error: any) {
-            console.error('Failed to impersonate customer:', error);
         }
     };
 
@@ -646,13 +627,6 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                             title="Reset Password"
                                         >
                                             <Key className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleLoginAsUser(customer)}
-                                            className="text-purple-600 hover:text-purple-800 p-1 rounded hover:bg-purple-50"
-                                            title="Login As User"
-                                        >
-                                            <LogIn className="h-4 w-4" />
                                         </button>
                                         <button
                                             onClick={() => handleToggleStatus(customer, customer.tu_is_active)}

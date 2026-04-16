@@ -205,14 +205,14 @@ const ReferralLinkGenerator: React.FC = () => {
 
         {/* Instructions */}
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-blue-900 mb-2">How Binary Tree Placement Works</h4>
+          <h4 className="text-sm font-medium text-blue-900 mb-2">How Referral Placement Works</h4>
           <div className="text-sm text-blue-800 space-y-2">
             <p>When someone joins using your referral link:</p>
             <ol className="list-decimal list-inside space-y-1 ml-4">
-              <li>System finds the first available position in your network</li>
-              <li>Follows top-to-bottom, left-to-right placement algorithm</li>
-              <li>Places new user in the optimal position for balanced growth</li>
-              <li>You earn commissions from their activity and network growth</li>
+              <li>Your sponsorship number is saved as their Parent A/C (direct sponsor)</li>
+              <li>After they complete registration requirements, the system updates the network automatically</li>
+              <li>Placement depends on current network rules/availability (not strictly left-to-right)</li>
+              <li>You may earn commissions based on eligible activity and configured earning rules</li>
             </ol>
           </div>
         </div>
