@@ -3,6 +3,7 @@ import { Gift, RefreshCw, Search } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
+import { useNavigate } from 'react-router-dom';
 
 interface LevelCountRow {
   tmlc_user_id: string;
@@ -14,10 +15,14 @@ interface LevelCountRow {
   total_count?: number;
   extra_level?: number | null;
   extra_level_count?: number | null;
+  meets_any_milestone?: boolean;
+  has_any_mlm_reward?: boolean;
+  user_name?: string;
 }
 
 const MLMLevelCounts: React.FC = () => {
   const notification = useNotification();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<LevelCountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [awardingSponsor, setAwardingSponsor] = useState<string | null>(null);
@@ -115,6 +120,17 @@ const MLMLevelCounts: React.FC = () => {
     if (!rows || rows.length === 0) return false;
     return rows.every((row) => row.extra_level_count === null || row.extra_level_count === undefined);
   }, [extraLevel, rows]);
+
+  const viewCustomerDetails = (row: LevelCountRow) => {
+    const userId = String(row?.tmlc_user_id || '').trim();
+    const sponsor = String(row?.tmlc_sponsorship_number || '').trim();
+    if (!userId) return;
+    const params = new URLSearchParams();
+    params.set('tab', 'customers');
+    params.set('customerId', userId);
+    if (sponsor) params.set('search', sponsor);
+    navigate(`/backpanel/dashboard?${params.toString()}`);
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
@@ -233,11 +249,11 @@ const MLMLevelCounts: React.FC = () => {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsor ID</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Name</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 1</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 2</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 3</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level {extraLevel}</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
@@ -250,21 +266,37 @@ const MLMLevelCounts: React.FC = () => {
               rows.map((row) => (
                 <tr key={row.tmlc_user_id}>
                   <td className="px-4 py-3 text-sm text-gray-700 font-mono">{row.tmlc_sponsorship_number}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{row.user_name || '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level1_count}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level2_count}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level3_count}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{row.extra_level_count ?? '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{new Date(row.tmlc_updated_at).toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
-                    <button
-                      onClick={() => awardMilestoneRewards(row.tmlc_sponsorship_number)}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50"
-                      disabled={loading || awardingSponsor === row.tmlc_sponsorship_number}
-                      title="Award missing milestone rewards"
-                    >
-                      <Gift className="h-4 w-4" />
-                      <span>{awardingSponsor === row.tmlc_sponsorship_number ? 'Checking…' : 'Award'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => viewCustomerDetails(row)}
+                        className="inline-flex items-center px-3 py-1.5 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 disabled:opacity-50"
+                        disabled={!row.tmlc_user_id}
+                        title="View customer details"
+                      >
+                        View
+                      </button>
+                      {row.meets_any_milestone && !row.has_any_mlm_reward ? (
+                        <button
+                          onClick={() => awardMilestoneRewards(row.tmlc_sponsorship_number)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50"
+                          disabled={loading || awardingSponsor === row.tmlc_sponsorship_number}
+                          title="Award missing milestone rewards"
+                        >
+                          <Gift className="h-4 w-4" />
+                          <span>{awardingSponsor === row.tmlc_sponsorship_number ? 'Checking…' : 'Award'}</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">N/A</span>
+                      )}
+
+                      
+                    </div>
                   </td>
                 </tr>
               ))

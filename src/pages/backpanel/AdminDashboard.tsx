@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { sessionUtils } from '../../utils/sessionUtils';
 import { adminApi } from '../../lib/adminApi';
 import GeneralSettings from '../../components/admin/GeneralSettings';
@@ -79,6 +79,7 @@ const AdminDashboard: React.FC = () => {
     loading: authLoading // <-- Renamed loading state for clarity
   } = useAdminAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [subAdmins, setSubAdmins] = useState<SubAdmin[]>([]);
@@ -96,6 +97,33 @@ const AdminDashboard: React.FC = () => {
     totalEarnings: 0
   });
   const [overviewRecent, setOverviewRecent] = useState<OverviewRecentItem[]>([]);
+
+  const dashboardQuery = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const queryTab = dashboardQuery.get('tab') || '';
+  const queryCustomerId = dashboardQuery.get('customerId') || '';
+  const queryCustomerSearch = dashboardQuery.get('search') || '';
+
+  useEffect(() => {
+    if (!queryTab) return;
+    const allowedTabs = new Set([
+      'overview',
+      'customers',
+      'companies',
+      'coupons',
+      'tasks',
+      'wallets',
+      'subscriptions',
+      'payments',
+      'level_counts',
+      'withdrawals',
+      'admins',
+      'settings',
+    ]);
+    if (allowedTabs.has(queryTab) && queryTab !== activeTab) {
+      setActiveTab(queryTab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryTab]);
 
   const [newSubAdmin, setNewSubAdmin] = useState({
     email: '',
@@ -307,6 +335,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'wallets' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
+    { id: 'level_counts', label: 'Level Counts', icon: BarChart3, permission: 'mlm' },
     { id: 'withdrawals', label: 'Withdrawals', icon: RefreshCw, permission: 'withdrawals' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
     { id: 'settings', label: 'Settings', icon: Settings, permission: 'settings' }
@@ -326,8 +355,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'general', label: 'General Settings', icon: Globe, permission: 'settings' },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck, permission: 'settings' },
     { id: 'payment', label: 'Payment Settings', icon: FileText, permission: 'settings' },
-    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp, permission: 'mlm' },
-    { id: 'level_counts', label: 'Level Counts', icon: BarChart3, permission: 'mlm' }
+    { id: 'earning', label: 'Earning Distribution', icon: TrendingUp, permission: 'mlm' }
   ];
 
   const visibleSettingsTabs = settingsTabs.filter((tab: any) => hasPermission(tab.permission as any, 'read'));
@@ -533,7 +561,10 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {activeTab === 'customers' && hasPermission('customers', 'read') && (
-                <CustomerManagement />
+                <CustomerManagement
+                  initialSearchTerm={queryCustomerSearch || undefined}
+                  openCustomerId={queryCustomerId || undefined}
+                />
             )}
 
             {activeTab === 'companies' && hasPermission('companies', 'read') && (
@@ -558,6 +589,10 @@ const AdminDashboard: React.FC = () => {
 
             {activeTab === 'payments' && hasPermission('payments', 'read') && (
                 <PendingPayments />
+            )}
+
+            {activeTab === 'level_counts' && hasPermission('mlm' as any, 'read') && (
+                <MLMLevelCounts />
             )}
 
             {activeTab === 'withdrawals' && hasPermission('withdrawals' as any, 'read') && (
@@ -601,7 +636,6 @@ const AdminDashboard: React.FC = () => {
 	                      {settingsTab === 'registration' && hasPermission('settings' as any, 'read') && <RegistrationSettings />}
 	                      {settingsTab === 'payment' && hasPermission('settings' as any, 'read') && <PaymentSettings />}
 	                      {settingsTab === 'earning' && hasPermission('mlm' as any, 'read') && <EarningDistributionSettings />}
-	                      {settingsTab === 'level_counts' && hasPermission('mlm' as any, 'read') && <MLMLevelCounts />}
                         {settingsTab === 'general' && !hasPermission('settings' as any, 'read') && (
                           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                             <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -630,15 +664,6 @@ const AdminDashboard: React.FC = () => {
                           </div>
                         )}
                         {settingsTab === 'earning' && !hasPermission('mlm' as any, 'read') && (
-                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <Shield className="h-8 w-8 text-red-600" />
-                            </div>
-                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-                            <p className="text-gray-600">You don't have permission to access this section.</p>
-                          </div>
-                        )}
-                        {settingsTab === 'level_counts' && !hasPermission('mlm' as any, 'read') && (
                           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                             <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                               <Shield className="h-8 w-8 text-red-600" />

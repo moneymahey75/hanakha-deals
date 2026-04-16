@@ -94,6 +94,106 @@ Deno.serve(async (req: Request) => {
     const totalCount = count || 0;
     const rows = (data || []) as any[];
 
+    // Attach user display names (from profiles) to show in admin list.
+    const userIdsForNames = rows
+      .map((row) => String(row?.tmlc_user_id || '').trim())
+      .filter(Boolean);
+
+    const userNameById = new Map<string, string>();
+    if (userIdsForNames.length > 0) {
+      try {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_user_id, tup_first_name, tup_last_name, tup_username')
+          .in('tup_user_id', userIdsForNames)
+          .limit(10000);
+
+        if (!profilesError) {
+          for (const p of profiles || []) {
+            const id = String((p as any)?.tup_user_id || '').trim();
+            if (!id) continue;
+            const first = String((p as any)?.tup_first_name || '').trim();
+            const last = String((p as any)?.tup_last_name || '').trim();
+            const username = String((p as any)?.tup_username || '').trim();
+            const fullName = `${first} ${last}`.trim();
+            const display = fullName || username || '—';
+            userNameById.set(id, display);
+          }
+        }
+      } catch {
+        // If profile access fails for any reason, keep names empty.
+      }
+    }
+
+    // Eligibility helpers for Award button:
+    // - show only when sponsor meets at least one active milestone
+    // - and sponsor has not received ANY mlm_level_reward yet
+    type Milestone = {
+      level1: number;
+      level2: number;
+      level3: number;
+      amount: number;
+    };
+
+    let milestones: Milestone[] = [];
+    let milestonesAvailable = true;
+    try {
+      const { data: milestonesData, error: milestonesError } = await supabase
+        .from('tbl_mlm_reward_milestones')
+        .select('tmm_level1_required, tmm_level2_required, tmm_level3_required, tmm_reward_amount, tmm_is_active')
+        .eq('tmm_is_active', true);
+
+      if (milestonesError) {
+        const message = String((milestonesError as any)?.message || '').toLowerCase();
+        if (message.includes('schema cache') || message.includes('could not find') || message.includes('relation')) {
+          milestonesAvailable = false;
+        } else {
+          throw milestonesError;
+        }
+      } else {
+        milestones = ((milestonesData || []) as any[])
+          .map((row) => ({
+            level1: Number(row?.tmm_level1_required || 0),
+            level2: Number(row?.tmm_level2_required || 0),
+            level3: Number(row?.tmm_level3_required || 0),
+            amount: Number(row?.tmm_reward_amount || 0),
+          }))
+          .filter((m) => m.amount > 0);
+      }
+    } catch {
+      // Be conservative: if we can't read milestones, hide Award button.
+      milestonesAvailable = false;
+      milestones = [];
+    }
+
+    const userIds = rows
+      .map((row) => String(row?.tmlc_user_id || '').trim())
+      .filter(Boolean);
+
+    let rewardCheckOk = true;
+    const rewardedUserIds = new Set<string>();
+    if (userIds.length > 0) {
+      try {
+        const { data: rewardTx, error: rewardTxError } = await supabase
+          .from('tbl_wallet_transactions')
+          .select('twt_user_id')
+          .in('twt_user_id', userIds)
+          .eq('twt_reference_type', 'mlm_level_reward')
+          .limit(10000);
+
+        if (rewardTxError) {
+          rewardCheckOk = false;
+        } else {
+          for (const item of rewardTx || []) {
+            const id = String((item as any)?.twt_user_id || '').trim();
+            if (id) rewardedUserIds.add(id);
+          }
+        }
+      } catch {
+        rewardCheckOk = false;
+      }
+    }
+
     let extraCountsMap = new Map<string, number>();
     let extraCountsAvailable = true;
     if (requestedExtraLevel && requestedExtraLevel > 3 && rows.length > 0) {
@@ -137,11 +237,24 @@ Deno.serve(async (req: Request) => {
               : (extraCountsAvailable ? (extraCountsMap.get(sponsorshipKey) ?? 0) : null))
         : null;
 
+      const level1 = Number(row?.tmlc_level1_count || 0);
+      const level2 = Number(row?.tmlc_level2_count || 0);
+      const level3 = Number(row?.tmlc_level3_count || 0);
+      const userId = String(row?.tmlc_user_id || '').trim();
+      const userName = userId ? (userNameById.get(userId) ?? '—') : '—';
+      const hasAnyMlmReward = rewardCheckOk ? rewardedUserIds.has(userId) : true;
+      const meetsAnyMilestone = milestonesAvailable
+        ? milestones.some((m) => level1 >= m.level1 && level2 >= m.level2 && level3 >= m.level3 && m.amount > 0)
+        : false;
+
       return {
         ...row,
         total_count: totalCount,
         extra_level: requestedExtraLevel,
-        extra_level_count: extraLevelCount
+        extra_level_count: extraLevelCount,
+        user_name: userName,
+        meets_any_milestone: meetsAnyMilestone,
+        has_any_mlm_reward: hasAnyMlmReward,
       };
     });
 

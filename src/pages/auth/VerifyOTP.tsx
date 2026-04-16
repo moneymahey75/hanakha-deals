@@ -100,19 +100,36 @@ const VerifyOTP: React.FC = () => {
         // Determine initial OTP type based on settings and available contact info
         let initialType: 'email' | 'mobile' = 'email';
 
-        if (settings.mobileRequired && state.mobile) {
+        if (settings.eitherRequired) {
+          // For either required, prefer mobile if available, otherwise email
+          initialType = (state.mobile && String(state.mobile).trim()) ? 'mobile' : 'email';
+        } else if (settings.mobileRequired && !settings.emailRequired) {
+          // Mobile-only should never default to email (even if mobile missing)
+          initialType = 'mobile';
+        } else if (settings.emailRequired && !settings.mobileRequired) {
+          initialType = 'email';
+        } else if (settings.mobileRequired && state.mobile) {
           initialType = 'mobile';
         } else if (settings.emailRequired && (state.email || user?.email)) {
           initialType = 'email';
-        } else if (settings.eitherRequired) {
-          // For either required, prefer mobile if available, otherwise email
-          initialType = (state.mobile && state.mobile.trim()) ? 'mobile' : 'email';
         }
 
         setOtpType(initialType);
 
         // Update progress
         updateVerificationProgress(settings, completedVerifications);
+
+        // If mobile-only is configured but mobile is unavailable, surface the issue immediately.
+        if (!settings.eitherRequired && settings.mobileRequired && !settings.emailRequired) {
+          const mobileValue = String(state.mobile || '').trim();
+          if (!mobileValue) {
+            setError('Mobile verification is required, but no mobile number is available for this account.');
+            notification.showError(
+              'Mobile Required',
+              'Mobile verification is required, but this account has no mobile number. Please add a mobile number to the profile, then try again.'
+            );
+          }
+        }
 
       } else if (user) {
         // Regular user session
@@ -134,7 +151,7 @@ const VerifyOTP: React.FC = () => {
     if (componentInitialized.current && currentUserId && !user) {
       console.log('User logged out during verification, redirecting to login');
       notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
-      navigate('/login', { 
+      navigate('/customer/login', {
         state: { returnTo: '/verify-otp', message: 'Session expired. Please login again.' }
       });
     }
@@ -226,7 +243,7 @@ const VerifyOTP: React.FC = () => {
     if (!user) {
       console.log('User logged out, redirecting to login');
       notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
-      navigate('/login', { 
+      navigate('/customer/login', {
         state: { returnTo: location.pathname, message: 'Please login to continue verification' }
       });
       return;
@@ -294,7 +311,7 @@ const VerifyOTP: React.FC = () => {
     if (!user) {
       console.log('User logged out, redirecting to login');
       notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
-      navigate('/login', { 
+      navigate('/customer/login', {
         state: { returnTo: location.pathname, message: 'Please login to continue verification' }
       });
       return;
@@ -340,7 +357,15 @@ const VerifyOTP: React.FC = () => {
           await fetchUserData(user.id);
         }
         notification.showSuccess('Account Verified', 'Your account has been fully verified!');
-        navigate('/registration-payment', { state: { requiresSubscription: true } });
+        const state = location.state as any;
+        const returnTo =
+          typeof state?.returnTo === 'string' && state.returnTo.trim()
+            ? state.returnTo
+            : state?.from?.pathname
+              ? `${state.from.pathname || ''}${state.from.search || ''}`
+              : '/customer/dashboard';
+
+        navigate(returnTo, { replace: true });
       } else {
         // Reset for next verification
         setOtp(['', '', '', '', '', '']);

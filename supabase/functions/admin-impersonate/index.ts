@@ -6,6 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Session',
 };
 
+const resolveAppOrigin = (req: Request, body: any): string | null => {
+  const fromBody = String(body?.origin || '').trim();
+  if (fromBody) return fromBody.replace(/\/+$/, '');
+  const origin = String(req.headers.get('origin') || '').trim();
+  if (origin) return origin.replace(/\/+$/, '');
+  const referer = String(req.headers.get('referer') || '').trim();
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -73,7 +89,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { customerId } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { customerId } = body || {};
 
     if (!customerId) {
       return new Response(
@@ -83,6 +100,14 @@ Deno.serve(async (req: Request) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
+    }
+
+    const appOrigin = resolveAppOrigin(req, body);
+    if (!appOrigin) {
+      return new Response(JSON.stringify({ success: false, error: 'Could not determine app origin' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const { data: customer, error: customerError } = await supabase
@@ -138,7 +163,8 @@ Deno.serve(async (req: Request) => {
       type: 'magiclink',
       email: customer.tu_email,
       options: {
-        redirectTo: `${supabaseUrl.replace('.supabase.co', '')}/customer/dashboard`,
+        // Redirect back into the app so the client can exchange the auth code for a session (PKCE-safe).
+        redirectTo: `${appOrigin}/auth/callback?next=${encodeURIComponent('/customer/dashboard')}`,
       },
     });
 
@@ -146,12 +172,17 @@ Deno.serve(async (req: Request) => {
       throw linkError;
     }
 
+    const actionLink = String(linkData?.properties?.action_link || '').trim();
+    if (!actionLink) {
+      throw new Error('Failed to generate impersonation sign-in link');
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         customer_id: customer.tu_id,
         customer_email: customer.tu_email,
-        signin_url: linkData.properties?.action_link || linkData.properties?.hashed_token,
+        signin_url: actionLink,
       }),
       {
         headers: {

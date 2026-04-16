@@ -155,7 +155,12 @@ const Loader: React.FC = () => {
     );
 };
 
-const CustomerManagement: React.FC = () => {
+type CustomerManagementProps = {
+    initialSearchTerm?: string;
+    openCustomerId?: string;
+};
+
+const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTerm, openCustomerId }) => {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
     const [listLoading, setListLoading] = useState(false);
@@ -178,6 +183,23 @@ const CustomerManagement: React.FC = () => {
     const notification = useNotification();
     const { impersonateCustomer } = useAuth();
     const topRef = useScrollToTopOnChange([currentPage], { smooth: true });
+
+    useEffect(() => {
+        if (!initialSearchTerm) return;
+        setSearchTerm(initialSearchTerm);
+        setCurrentPage(1);
+    }, [initialSearchTerm]);
+
+    useEffect(() => {
+        if (!openCustomerId) return;
+        if (showCustomerDetails && selectedCustomer?.tu_id === openCustomerId) return;
+        if (loading) return;
+        const match = customers.find(c => c.tu_id === openCustomerId);
+        if (match) {
+            handleViewCustomer(match);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openCustomerId, customers, loading]);
 
     const loadCustomers = async () => {
         try {

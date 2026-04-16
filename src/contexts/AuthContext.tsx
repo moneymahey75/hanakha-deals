@@ -875,7 +875,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           Authorization: `Bearer ${anonKey}`,
           apikey: anonKey,
         },
-        body: JSON.stringify({ customerId }),
+        body: JSON.stringify({ customerId, origin: window.location.origin }),
       });
 
       const result = await response.json();
@@ -887,7 +887,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('✅ Impersonation authorized, opening customer session in new tab');
 
       if (result.signin_url) {
-        window.open(result.signin_url, '_blank');
+        window.open(result.signin_url, '_blank', 'noopener,noreferrer');
         notification.showSuccess('Impersonation Started', `Opening ${result.customer_email}'s account in new tab`);
       } else {
         throw new Error('No sign-in URL received');
