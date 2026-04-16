@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Search } from 'lucide-react';
+import { Gift, RefreshCw, Search } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
@@ -20,6 +20,7 @@ const MLMLevelCounts: React.FC = () => {
   const notification = useNotification();
   const [rows, setRows] = useState<LevelCountRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [awardingSponsor, setAwardingSponsor] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -65,6 +66,31 @@ const MLMLevelCounts: React.FC = () => {
       notification.showError('Recompute Failed', error.message || 'Failed to recompute level counts');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const awardMilestoneRewards = async (sponsorshipNumber: string) => {
+    const sponsor = String(sponsorshipNumber || '').trim();
+    if (!sponsor) return;
+    if (!confirm(`Award missing MLM milestone rewards for sponsor ${sponsor}?`)) return;
+    setAwardingSponsor(sponsor);
+    try {
+      const result = await adminApi.post<{
+        inserted?: Array<{ milestoneId: string; title: string; amount: number }>;
+        insertedAmount?: number;
+      }>('admin-award-mlm-milestone-rewards', { sponsorshipNumber: sponsor });
+
+      const insertedCount = Array.isArray(result?.inserted) ? result.inserted.length : 0;
+      const insertedAmount = Number(result?.insertedAmount || 0);
+      notification.showSuccess(
+        'Rewards checked',
+        insertedCount > 0 ? `Credited ${insertedAmount} USDT across ${insertedCount} milestone(s).` : 'No missing milestone rewards found.'
+      );
+      loadCounts();
+    } catch (error: any) {
+      notification.showError('Award Failed', error.message || 'Failed to award milestone rewards');
+    } finally {
+      setAwardingSponsor(null);
     }
   };
 
@@ -212,13 +238,14 @@ const MLMLevelCounts: React.FC = () => {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level 3</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level {extraLevel}</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">Loading...</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">Loading...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">No counts found.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">No counts found.</td></tr>
             ) : (
               rows.map((row) => (
                 <tr key={row.tmlc_user_id}>
@@ -228,6 +255,17 @@ const MLMLevelCounts: React.FC = () => {
                   <td className="px-4 py-3 text-sm text-gray-700">{row.tmlc_level3_count}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{row.extra_level_count ?? '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{new Date(row.tmlc_updated_at).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
+                    <button
+                      onClick={() => awardMilestoneRewards(row.tmlc_sponsorship_number)}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50"
+                      disabled={loading || awardingSponsor === row.tmlc_sponsorship_number}
+                      title="Award missing milestone rewards"
+                    >
+                      <Gift className="h-4 w-4" />
+                      <span>{awardingSponsor === row.tmlc_sponsorship_number ? 'Checking…' : 'Award'}</span>
+                    </button>
+                  </td>
                 </tr>
               ))
             )}

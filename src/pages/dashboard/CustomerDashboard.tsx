@@ -459,7 +459,8 @@ const CustomerDashboard: React.FC = () => {
                 Welcome back, {user?.firstName || 'User'}!
               </h1>
               <p className="text-gray-600 mt-2">
-                Sponsorship Number: <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
+                Sponsorship Number:{' '}
+                <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
               </p>
             </div>
 
@@ -548,6 +549,12 @@ const CustomerDashboard: React.FC = () => {
 
                 {activeTab === 'network' && (
                     <div>
+                      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+                        <p className="text-gray-600">
+                          Parent Account Sponsorship Number:{' '}
+                          <span className="font-semibold text-indigo-600">{user?.parentId || 'N/A'}</span>
+                        </p>
+                      </div>
                       {/* FIXED: Now uses the new MyNetwork component */}
                       <MyNetwork userId={user?.id || ''} />
                     </div>

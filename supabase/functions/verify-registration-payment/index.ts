@@ -621,6 +621,7 @@ Deno.serve(async (req: Request) => {
           const { count, error: countError } = await supabase
             .from('tbl_wallet_transactions')
             .select('twt_id', { count: 'exact', head: true })
+            .eq('twt_user_id', userId)
             .eq('twt_reference_id', referenceId)
             .eq('twt_reference_type', referenceType);
 

@@ -446,17 +446,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isEmail = emailOrUsername.includes('@');
       let actualEmail = emailOrUsername;
 
-      // If username provided, get the email from user_profiles using RPC
+      // If username/sponsor id provided, resolve the email using RPC
       if (!isEmail) {
-        console.log('🔎 Looking up email for username:', emailOrUsername);
-        const { data: profileData, error: profileError } = await supabase
-            .rpc('get_email_by_username', { p_username: emailOrUsername });
+        const handle = String(emailOrUsername || '').trim();
 
-        if (profileError || !profileData || profileData.length === 0) {
-          throw new Error('Username not found');
+        console.log('🔎 Looking up email for username:', handle);
+        const { data: usernameData, error: usernameError } = await supabase
+          .rpc('get_email_by_username', { p_username: handle });
+
+        if (!usernameError && usernameData && usernameData.length > 0) {
+          actualEmail = usernameData[0].email;
+          console.log('✅ Email resolved from username');
+        } else {
+          console.log('🔎 Looking up email for sponsorship number:', handle);
+          const { data: sponsorData, error: sponsorError } = await supabase
+            .rpc('get_email_by_sponsorship', { p_sponsorship: handle });
+
+          if (sponsorError || !sponsorData || sponsorData.length === 0) {
+            throw new Error('Username or Sponsor ID not found');
+          }
+
+          actualEmail = sponsorData[0].email;
+          console.log('✅ Email resolved from sponsorship number');
         }
-        actualEmail = profileData[0].email;
-        console.log('✅ Email resolved from username');
       }
 
       // Authenticate with Supabase (with extended timeout for network issues)
