@@ -68,7 +68,7 @@ export const adminSessionManager = {
           return;
         }
 
-        console.log('💾 Saving admin session to sessionStorage:', adminId);
+        console.log('💾 Saving admin session:', adminId);
 
         const existingToken = sessionStorage.getItem('admin_session_token');
         const existingSessionData = sessionStorage.getItem('admin_session_data');
@@ -101,10 +101,16 @@ export const adminSessionManager = {
           timestamp: Date.now()
         };
 
-        sessionStorage.setItem('admin_session_data', JSON.stringify(sessionData));
+        const serialized = JSON.stringify(sessionData);
+        sessionStorage.setItem('admin_session_data', serialized);
+        localStorage.setItem('admin_session_data', serialized);
+
         if (sessionData.sessionToken) {
           sessionStorage.setItem('admin_session_token', sessionData.sessionToken);
+          localStorage.setItem('admin_session_token', sessionData.sessionToken);
         }
+
+        // Keep admin marker per-tab for routing guards, but also persist in localStorage for other tabs.
         sessionStorage.setItem('session_type', 'admin');
 
         console.log('✅ Admin session saved successfully');
@@ -117,11 +123,8 @@ export const adminSessionManager = {
   getSession: () => {
     if (typeof window !== 'undefined') {
       try {
-        const sessionData = sessionStorage.getItem('admin_session_data');
-        if (!sessionData) {
-          console.log('ℹ️ No admin_session_data in sessionStorage');
-          return null;
-        }
+        const sessionData = sessionStorage.getItem('admin_session_data') || localStorage.getItem('admin_session_data');
+        if (!sessionData) return null;
 
         const session = JSON.parse(sessionData);
         // Backward/legacy compatibility: normalize adminId if possible
@@ -149,6 +152,17 @@ export const adminSessionManager = {
           return null;
         }
 
+        // Ensure current tab has the session cached in sessionStorage for faster access.
+        try {
+          sessionStorage.setItem('admin_session_data', JSON.stringify(session));
+          if (session.sessionToken) sessionStorage.setItem('admin_session_token', session.sessionToken);
+          if (sessionStorage.getItem('session_type') !== 'customer') {
+            sessionStorage.setItem('session_type', 'admin');
+          }
+        } catch {
+          // ignore
+        }
+
         return session;
       } catch (error) {
         console.error('❌ Failed to get admin session:', error);
@@ -165,6 +179,8 @@ export const adminSessionManager = {
         console.log('🗑️ Removing admin session');
         sessionStorage.removeItem('admin_session_data');
         sessionStorage.removeItem('admin_session_token');
+        localStorage.removeItem('admin_session_data');
+        localStorage.removeItem('admin_session_token');
 
         // Only remove session_type if it's admin
         if (sessionStorage.getItem('session_type') === 'admin') {
