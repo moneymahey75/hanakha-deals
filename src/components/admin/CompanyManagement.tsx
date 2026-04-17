@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
-import { Building, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Mail, Phone, Globe, FileText, Calendar, ArrowLeft, Save, Key, LogIn, X, AlertTriangle, User, Settings, Plus, RefreshCw } from 'lucide-react';
+import { Building, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Mail, Phone, Globe, FileText, Calendar, ArrowLeft, Save, Key, X, AlertTriangle, User, Settings, Plus, RefreshCw } from 'lucide-react';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 
 let inFlightCompaniesRequest: Promise<any[]> | null = null;
@@ -173,33 +173,6 @@ const CompanyManagement: React.FC = () => {
     } catch (error: any) {
       console.error('Failed to reset password:', error);
       notification.showError('Reset Failed', error?.message || 'Failed to reset password');
-    }
-  };
-
-  const handleLoginAsCompany = async (company: Company) => {
-    const confirmed = window.confirm(
-      `Login as ${company.tc_company_name}?\n\nThis will log you out of the admin panel and log you in as this company.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      await adminApi.post('admin-get-user-auth-info', {
-        userId: company.tc_user_id
-      });
-
-      notification.showInfo(
-        'Impersonation Notice',
-        'This feature requires the company password. Please reset the password first, then login as the company from the frontend.'
-      );
-
-      const resetPassword = window.confirm('Would you like to reset this company\'s password now?');
-      if (resetPassword) {
-        await handleResetCompanyPassword(company);
-      }
-    } catch (error: any) {
-      console.error('Failed to get company info:', error);
-      notification.showError('Failed', error?.message || 'Failed to login as company');
     }
   };
 
@@ -524,13 +497,6 @@ const CompanyManagement: React.FC = () => {
                               title="Reset Password"
                           >
                             <Key className="h-4 w-4" />
-                          </button>
-                          <button
-                              onClick={() => handleLoginAsCompany(company)}
-                              className="text-purple-600 hover:text-purple-800 p-1 rounded hover:bg-purple-50"
-                              title="Login As Company"
-                          >
-                            <LogIn className="h-4 w-4" />
                           </button>
                           <button
                               onClick={() => handleDeleteCompany(company.tc_id)}
