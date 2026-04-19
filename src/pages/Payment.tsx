@@ -632,7 +632,12 @@ const Payment: React.FC = () => {
               Secure blockchain payment processing
               {settings && (
                   <span className="ml-2 px-2 py-1 bg-purple-600/30 rounded-md text-sm">
-                {settings.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet'}
+                {settings.paymentMode === true ||
+                settings.paymentMode === 1 ||
+                settings.paymentMode === '1' ||
+                settings.paymentMode === 'true'
+                  ? 'BSC Mainnet'
+                  : 'BSC Testnet'}
               </span>
               )}
             </p>

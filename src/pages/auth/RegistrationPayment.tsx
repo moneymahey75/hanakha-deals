@@ -8,7 +8,7 @@ import { WalletService } from '../../services/walletService';
 import { getSponsorStatusBySponsorshipNumber } from '../../lib/supabase';
 import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../../types/wallet';
 import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
-import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink } from 'lucide-react';
+import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink, Copy, PlusCircle } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../../utils/edgeFunctionError';
 
 interface RegistrationPlan {
@@ -242,6 +242,35 @@ const RegistrationPayment: React.FC = () => {
   const adminReceivingWallet = useMemo(() => {
     return String(settings?.adminPaymentWallet || '').trim();
   }, [settings?.adminPaymentWallet]);
+
+  const formatAddress = useCallback((address: string) => {
+    if (!address) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }, []);
+
+  const copyToClipboard = useCallback(async (value: string) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return;
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      notification.showSuccess('Copied', 'Copied to clipboard');
+    } catch {
+      // ignore (clipboard may be blocked); user can still select text
+    }
+  }, [notification]);
+
+  const handleAddUsdtToken = useCallback(async () => {
+    try {
+      const added = await walletService.watchUSDTToken();
+      if (added) {
+        notification.showSuccess('Token Added', 'USDT token was added to your wallet.');
+      } else {
+        notification.showError('Not Added', 'Token was not added. Please add it manually using the contract address.');
+      }
+    } catch (error: any) {
+      notification.showError('Unable to Add Token', error?.message || 'Please add the token manually using the contract address.');
+    }
+  }, [walletService, notification]);
 
   const payNowDisabledReason = useMemo(() => {
     if (settingsLoading) return 'Loading payment settings...';
@@ -771,6 +800,48 @@ const RegistrationPayment: React.FC = () => {
                       : 'BSC Testnet'}
                   </span>
                 </div>
+                {!!adminReceivingWallet && (
+                  <div className="flex justify-between items-center gap-3">
+                    <span>Receiving Wallet</span>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-xs">
+                        {formatAddress(adminReceivingWallet)}
+                      </code>
+                      <button
+                        onClick={() => void copyToClipboard(adminReceivingWallet)}
+                        className="p-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200"
+                        title="Copy receiving wallet"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {!!String(settings?.usdtAddress || '').trim() && (
+                  <div className="flex justify-between items-center gap-3">
+                    <span>USDT Contract</span>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-xs">
+                        {formatAddress(String(settings?.usdtAddress || '').trim())}
+                      </code>
+                      <button
+                        onClick={() => void copyToClipboard(String(settings?.usdtAddress || '').trim())}
+                        className="p-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200"
+                        title="Copy USDT contract"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => void handleAddUsdtToken()}
+                        disabled={!walletState.isConnected}
+                        className="p-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded border border-blue-200 disabled:opacity-50"
+                        title={walletState.isConnected ? 'Add USDT token to wallet' : 'Connect wallet to add token'}
+                      >
+                        <PlusCircle className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-gray-900 border-t pt-3">
                   <span>Total</span>
                   <span className="text-blue-600">{plan.tsp_price} USDT</span>

@@ -240,32 +240,36 @@ const PaymentSettings: React.FC = () => {
 
                     <div>
                         <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
-                            USDT Contract Address (Testnet) *
+                            USDT Token Contract Address (Testnet) *
                         </label>
                         <input
                             type="text"
                             id="usdtAddressTestnet"
                             name="usdtAddressTestnet"
                             required
+                            pattern="^0x[a-fA-F0-9]{40}$"
+                            title="Enter a valid contract address (0x + 40 hex characters)"
                             value={formData.usdtAddressTestnet}
                             onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Enter USDT token contract address for BSC Testnet"
                         />
                         <p className="text-xs text-gray-500 mt-2">
-                            MetaMask may show multiple tokens named “USDT”. The system uses the contract address configured here.
+                            This is the token contract address (same for all customers). MetaMask may show multiple tokens named “USDT” — the system uses the contract configured here.
                         </p>
                     </div>
 
                     <div className="mt-6">
                         <label htmlFor="usdtAddressMainnet" className="block text-sm font-medium text-gray-700 mb-2">
-                            USDT Contract Address (Mainnet) *
+                            USDT Token Contract Address (Mainnet) *
                         </label>
                         <input
                             type="text"
                             id="usdtAddressMainnet"
                             name="usdtAddressMainnet"
                             required
+                            pattern="^0x[a-fA-F0-9]{40}$"
+                            title="Enter a valid contract address (0x + 40 hex characters)"
                             value={formData.usdtAddressMainnet}
                             onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -277,32 +281,36 @@ const PaymentSettings: React.FC = () => {
                 <div className="border border-gray-200 rounded-lg p-6">
                     <div>
                         <label htmlFor="adminPaymentWallet" className="block text-sm font-medium text-gray-700 mb-2">
-                            Registration USDT Receiving Address (Testnet) *
+                            Admin Wallet Address (Receives Registration USDT) — Testnet *
                         </label>
                         <input
                             type="text"
                             id="adminPaymentWalletTestnet"
                             name="adminPaymentWalletTestnet"
                             required
+                            pattern="^0x[a-fA-F0-9]{40}$"
+                            title="Enter a valid wallet address (0x + 40 hex characters)"
                             value={formData.adminPaymentWalletTestnet}
                             onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Enter receiving wallet for registration payments (testnet)"
                         />
                         <p className="text-xs text-gray-500 mt-2">
-                            Users will send registration USDT payments directly to this address.
+                            This must be your wallet address (not a token contract address). Customers will transfer USDT to this address during registration.
                         </p>
                     </div>
 
                     <div className="mt-6">
                         <label htmlFor="adminPaymentWalletMainnet" className="block text-sm font-medium text-gray-700 mb-2">
-                            Registration USDT Receiving Address (Mainnet) *
+                            Admin Wallet Address (Receives Registration USDT) — Mainnet *
                         </label>
                         <input
                             type="text"
                             id="adminPaymentWalletMainnet"
                             name="adminPaymentWalletMainnet"
                             required
+                            pattern="^0x[a-fA-F0-9]{40}$"
+                            title="Enter a valid wallet address (0x + 40 hex characters)"
                             value={formData.adminPaymentWalletMainnet}
                             onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"

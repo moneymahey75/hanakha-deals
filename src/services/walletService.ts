@@ -60,6 +60,7 @@ export class WalletService {
   private static instance: WalletService;
   private provider: ethers.BrowserProvider | null = null;
   private signer: ethers.JsonRpcSigner | null = null;
+  private externalProvider: any | null = null;
   private isConnecting: boolean = false;
   private adminSettings: AdminSettings | null = null;
   // FIX: Store the current wallet state internally to restore on re-render
@@ -141,6 +142,26 @@ export class WalletService {
 
   private isLivePaymentMode(paymentMode: AdminSettings['paymentMode'] | undefined | null): boolean {
     return paymentMode === true || paymentMode === 1 || paymentMode === '1' || paymentMode === 'true';
+  }
+
+  private getExpectedChainId(): number {
+    const chainIdHex = this.getNetworkConfig().chainId;
+    return Number.parseInt(chainIdHex, 16);
+  }
+
+  private async assertCorrectNetwork(): Promise<void> {
+    if (!this.provider) {
+      throw new Error('Provider not initialized');
+    }
+
+    const network = await this.provider.getNetwork();
+    const currentChainId = Number(network.chainId);
+    const expectedChainId = this.getExpectedChainId();
+
+    if (currentChainId !== expectedChainId) {
+      const expectedName = this.getNetworkConfig().chainName;
+      throw new Error(`Wrong network selected in wallet. Expected ${expectedName} (chainId ${expectedChainId}), but wallet is on chainId ${currentChainId}. Please switch network and try again.`);
+    }
   }
 
   private buildRpcUnavailableMessage(): string {
@@ -262,6 +283,7 @@ export class WalletService {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Initialize provider
+      this.externalProvider = walletProvider;
       this.provider = new ethers.BrowserProvider(walletProvider);
 
       // Request account access
@@ -344,6 +366,7 @@ export class WalletService {
       // Ensure internal state is cleared on failure
       this.provider = null;
       this.signer = null;
+      this.externalProvider = null;
       this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null, warning: null };
       this.persistCurrentWalletState();
 
@@ -462,6 +485,7 @@ export class WalletService {
     const signerAddress = await this.signer.getAddress();
 
     console.log('Starting USDT distribution process...');
+    await this.assertCorrectNetwork();
 
     // Use subscription wallet address from settings
     const recipients = [this.getSubscriptionWalletAddress()];
@@ -609,6 +633,8 @@ export class WalletService {
     const steps: string[] = [];
     const signerAddress = await this.signer.getAddress();
 
+    await this.assertCorrectNetwork();
+
     const usdtContractAddress = this.getUSDTContractAddress();
     const usdtContract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.signer);
 
@@ -649,11 +675,60 @@ export class WalletService {
     }
   }
 
+  async watchUSDTToken(): Promise<boolean> {
+    if (!this.provider) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (!this.externalProvider?.request) {
+      throw new Error('Your wallet does not support adding tokens automatically.');
+    }
+
+    await this.assertCorrectNetwork();
+
+    const tokenAddress = this.getUSDTContractAddress();
+    const tokenContract = new ethers.Contract(
+      tokenAddress,
+      ['function decimals() view returns (uint8)', 'function symbol() view returns (string)'],
+      this.provider
+    );
+
+    let decimals = 18;
+    let symbol = 'USDT';
+
+    try {
+      decimals = Number(await tokenContract.decimals());
+    } catch {
+      // ignore (fallback to 18)
+    }
+
+    try {
+      symbol = String(await tokenContract.symbol()) || 'USDT';
+    } catch {
+      // ignore (fallback to USDT)
+    }
+
+    const result = await this.externalProvider.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: tokenAddress,
+          symbol,
+          decimals
+        }
+      }
+    });
+
+    return Boolean(result);
+  }
+
   // Disconnect wallet
   disconnect(): void {
     console.log('Disconnecting wallet...');
     this.provider = null;
     this.signer = null;
+    this.externalProvider = null;
     this.isConnecting = false;
     // Clear internal state on disconnect
     this.currentWalletState = { isConnected: false, address: null, chainId: null, balance: '0', usdtBalance: '0', walletName: null, warning: null };

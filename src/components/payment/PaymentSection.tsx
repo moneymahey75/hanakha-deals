@@ -24,9 +24,15 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                                                   settings,
                                                                   onGoToDashboard,
                                                               }) => {
+    const isLive =
+      settings?.paymentMode === true ||
+      settings?.paymentMode === 1 ||
+      settings?.paymentMode === '1' ||
+      settings?.paymentMode === 'true';
+
     const openTransaction = () => {
         if (transaction.hash) {
-            const explorerUrl = settings?.paymentMode === '1'
+            const explorerUrl = isLive
                 ? `https://bscscan.com/tx/${transaction.hash}`
                 : `https://testnet.bscscan.com/tx/${transaction.hash}`;
             window.open(explorerUrl, '_blank', 'noopener,noreferrer');
@@ -34,7 +40,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     };
 
     const getNetworkName = () => {
-        return settings?.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet';
+        return isLive ? 'BSC Mainnet' : 'BSC Testnet';
     };
 
     const getUSDTContractAddress = () => {
