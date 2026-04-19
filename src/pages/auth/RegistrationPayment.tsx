@@ -9,7 +9,7 @@ import { getSponsorStatusBySponsorshipNumber } from '../../lib/supabase';
 import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../../types/wallet';
 import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
 import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink } from 'lucide-react';
-import { extractEdgeFunctionErrorMessage } from '../../utils/edgeFunctionError';
+import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../../utils/edgeFunctionError';
 
 interface RegistrationPlan {
   tsp_id: string;
@@ -264,27 +264,55 @@ const RegistrationPayment: React.FC = () => {
 	  const saveWalletConnection = useCallback(async (address: string, walletName: string, walletType: string, chainId: number | null) => {
 	    if (!user || !address) return;
 
-	    try {
-	      const { data, error } = await supabase.functions.invoke('upsert-wallet-connection', {
-	        body: {
-	          wallet_address: address,
-	          wallet_name: walletName,
-	          wallet_type: walletType,
-	          chain_id: chainId
+	    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+	    const maxAttempts = 3;
+	    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+	      try {
+	        // If session isn't hydrated yet, Supabase may not send Authorization. Wait briefly and retry.
+	        const { data: sessionData } = await supabase.auth.getSession();
+	        if (!sessionData.session?.access_token) {
+	          if (attempt < maxAttempts) {
+	            await sleep(300 * attempt);
+	            continue;
+	          }
+	          console.warn('Skipping wallet connection upsert: no active session yet.');
+	          return;
 	        }
-	      });
 
-		      if (error) {
-		        const message = await extractEdgeFunctionErrorMessage(error);
-		        throw new Error(message || 'Failed to save wallet connection');
-		      }
+	        const { data, error } = await supabase.functions.invoke('upsert-wallet-connection', {
+	          body: {
+	            wallet_address: address,
+	            wallet_name: walletName,
+	            wallet_type: walletType,
+	            chain_id: chainId
+	          }
+	        });
 
-	      if (!data?.success) {
-	        throw new Error(data?.error || 'Failed to save wallet connection');
+	        if (error) {
+	          if (isRetryableEdgeFunctionError(error) && attempt < maxAttempts) {
+	            await sleep(500 * attempt);
+	            continue;
+	          }
+	          const message = await extractEdgeFunctionErrorMessage(error);
+	          console.warn('Failed to save wallet connection (non-fatal):', message);
+	          return;
+	        }
+
+	        if (!data?.success) {
+	          console.warn('Failed to save wallet connection (non-fatal):', data?.error || 'Unknown error');
+	          return;
+	        }
+
+	        return;
+	      } catch (error) {
+	        if (attempt < maxAttempts) {
+	          await sleep(500 * attempt);
+	          continue;
+	        }
+	        console.warn('Error saving wallet connection (non-fatal):', error);
+	        return;
 	      }
-	    } catch (error) {
-	      console.error('Error saving wallet connection:', error);
-	      throw error;
 	    }
 	  }, [user]);
 
@@ -294,6 +322,8 @@ const RegistrationPayment: React.FC = () => {
 		    setIsConnecting(true);
 		    try {
 		      const wallet = await walletService.connectWallet(provider);
+		      setWalletState(wallet);
+
 	      if (wallet.address) {
 	        const walletType = provider.isMetaMask
 	          ? 'metamask'
@@ -303,15 +333,14 @@ const RegistrationPayment: React.FC = () => {
               ? 'safepal'
               : 'web3';
 
-	        await saveWalletConnection(
+	        // Best-effort: don't fail wallet connection if this transiently fails (502 etc).
+	        void saveWalletConnection(
 	          wallet.address,
 	          wallet.walletName || 'Unknown Wallet',
 	          walletType,
 	          wallet.chainId
 	        );
 	      }
-	
-		      setWalletState(wallet);
 
 	      notification.showSuccess('Wallet Connected', `Connected to ${wallet.walletName}`);
 	    } catch (error: any) {

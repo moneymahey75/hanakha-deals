@@ -10,6 +10,19 @@ const getResponseFromContext = (context: unknown): Response | null => {
   return null;
 };
 
+export const getEdgeFunctionErrorStatus = (error: unknown): number | null => {
+  if (!error || typeof error !== 'object') return null;
+  const anyError = error as AnyRecord;
+  const response = getResponseFromContext(anyError.context);
+  return response ? response.status : null;
+};
+
+export const isRetryableEdgeFunctionError = (error: unknown): boolean => {
+  const status = getEdgeFunctionErrorStatus(error);
+  if (status === null) return false;
+  return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+};
+
 export const extractEdgeFunctionErrorMessage = async (error: unknown): Promise<string> => {
   if (!error || typeof error !== 'object') return 'Request failed';
 
@@ -34,4 +47,3 @@ export const extractEdgeFunctionErrorMessage = async (error: unknown): Promise<s
 
   return 'Request failed';
 };
-

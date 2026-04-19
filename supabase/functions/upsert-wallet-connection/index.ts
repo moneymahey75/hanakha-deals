@@ -1,5 +1,4 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { ethers } from 'npm:ethers@6.10.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +8,8 @@ const corsHeaders = {
 
 const normalizeAddress = (address?: string | null) => (address || '').trim();
 const normalizeAddressLower = (address?: string | null) => normalizeAddress(address).toLowerCase();
+
+const isEvmAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value);
 
 const parseSetting = (raw: unknown) => {
   if (raw === null || raw === undefined) return raw;
@@ -64,7 +65,7 @@ Deno.serve(async (req: Request) => {
     const walletType = typeof body.wallet_type === 'string' ? body.wallet_type : 'web3';
     const chainId = body.chain_id === null || body.chain_id === undefined ? null : Number(body.chain_id);
 
-    if (!walletAddressRaw || !ethers.isAddress(walletAddressRaw)) {
+    if (!walletAddressRaw || !isEvmAddress(walletAddressRaw)) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid wallet address' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
