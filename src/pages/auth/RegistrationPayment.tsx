@@ -539,7 +539,11 @@ const RegistrationPayment: React.FC = () => {
 
   const openTransaction = () => {
     if (!transaction.hash) return;
-    const isMainnet = settings?.paymentMode === true || settings?.paymentMode === '1';
+    const isMainnet =
+      settings?.paymentMode === true ||
+      settings?.paymentMode === 1 ||
+      settings?.paymentMode === '1' ||
+      settings?.paymentMode === 'true';
     const explorerUrl = isMainnet
       ? `https://bscscan.com/tx/${transaction.hash}`
       : `https://testnet.bscscan.com/tx/${transaction.hash}`;
@@ -729,7 +733,14 @@ const RegistrationPayment: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>Network</span>
-                  <span className="font-medium">{settings?.paymentMode === true || settings?.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet'}</span>
+                  <span className="font-medium">
+                    {settings?.paymentMode === true ||
+                    settings?.paymentMode === 1 ||
+                    settings?.paymentMode === '1' ||
+                    settings?.paymentMode === 'true'
+                      ? 'BSC Mainnet'
+                      : 'BSC Testnet'}
+                  </span>
                 </div>
                 <div className="flex justify-between font-bold text-gray-900 border-t pt-3">
                   <span>Total</span>

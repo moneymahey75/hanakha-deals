@@ -49,7 +49,7 @@ const DISTRIBUTION_ABI = [
 
 // Admin Settings Interface
 interface AdminSettings {
-  paymentMode: string;
+  paymentMode: string | number | boolean;
   usdtAddress: string;
   subscriptionContractAddress: string;
   subscriptionWalletAddress: string;
@@ -113,9 +113,10 @@ export class WalletService {
   // Method to set admin settings from context
   setAdminSettings(settings: AdminSettings): void {
     this.adminSettings = settings;
+    const isLive = this.isLivePaymentMode(settings.paymentMode);
     console.log('Admin settings configured:', {
       paymentMode: settings.paymentMode,
-      network: settings.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet',
+      network: isLive ? 'BSC Mainnet' : 'BSC Testnet',
       usdtAddress: settings.usdtAddress?.substring(0, 10) + '...',
       subscriptionContract: settings.subscriptionContractAddress?.substring(0, 10) + '...',
       subscriptionWallet: settings.subscriptionWalletAddress?.substring(0, 10) + '...'
@@ -134,8 +135,12 @@ export class WalletService {
 
   // Get network config based on payment mode
   private getNetworkConfig() {
-    const isLive = this.adminSettings?.paymentMode === '1';
+    const isLive = this.isLivePaymentMode(this.adminSettings?.paymentMode);
     return isLive ? BSC_MAINNET_CONFIG : BSC_TESTNET_CONFIG;
+  }
+
+  private isLivePaymentMode(paymentMode: AdminSettings['paymentMode'] | undefined | null): boolean {
+    return paymentMode === true || paymentMode === 1 || paymentMode === '1' || paymentMode === 'true';
   }
 
   private buildRpcUnavailableMessage(): string {
@@ -479,7 +484,7 @@ export class WalletService {
     const usdtContract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.signer);
 
     steps.push("=== USDT Distribution Process Started ===");
-    steps.push(`Network: ${this.adminSettings.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet'}`);
+    steps.push(`Network: ${this.isLivePaymentMode(this.adminSettings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet'}`);
     steps.push(`USDT Contract: ${usdtContractAddress}`);
     steps.push(`Distribution Contract: ${distributionContractAddress}`);
     steps.push(`Plan Price: ${planPrice} USDT`);
@@ -608,7 +613,7 @@ export class WalletService {
     const usdtContract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.signer);
 
     steps.push("=== USDT Transfer Started ===");
-    steps.push(`Network: ${this.adminSettings.paymentMode === '1' ? 'BSC Mainnet' : 'BSC Testnet'}`);
+    steps.push(`Network: ${this.isLivePaymentMode(this.adminSettings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet'}`);
     steps.push(`USDT Contract: ${usdtContractAddress}`);
     steps.push(`From: ${signerAddress}`);
     steps.push(`To: ${toAddress}`);
