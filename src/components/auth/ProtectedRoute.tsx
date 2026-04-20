@@ -108,9 +108,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check if user is authenticated
   if (!user) {
+    // If we have a valid live session but user data hasn't hydrated yet, don't redirect.
+    if (hasValidSession) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Restoring session...</p>
+          </div>
+        </div>
+      );
+    }
+
     console.log('🔒 No user found, redirecting to login');
-    // Clear any stale session data
-    sessionUtils.clearAllSessions();
     return <Navigate to={`/${userType}/login`} replace state={{ from: location }} />;
   }
 

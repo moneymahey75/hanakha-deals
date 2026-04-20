@@ -48,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isInitialized, setIsInitialized] = useState(false);
   const [otpService] = useState(() => OTPService.getInstance());
   const notification = useNotification();
-  const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+  const withTimeout = useCallback(async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
     let timeoutId: number | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = window.setTimeout(() => {
@@ -60,7 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       if (timeoutId) window.clearTimeout(timeoutId);
     }
-  };
+  }, []);
 
   const fetchUserData = useCallback(async (userId: string) => {
     if (!userId) {
@@ -184,10 +184,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(user);
     } catch (error) {
       console.error('❌ Error fetching user data:', error);
-      // Don't throw error, just set user to null
-      setUser(null);
+      // Non-fatal: keep existing user state to avoid auth flicker/redirect loops.
+      setUser((prev) => {
+        if (!prev) return null;
+        if (prev.id && prev.id !== userId) return null;
+        return prev;
+      });
     }
   }, []);
+
+  const safeFetchUserData = useCallback(async (userId: string, label: string) => {
+    try {
+      await withTimeout(fetchUserData(userId), 20000, label);
+    } catch (error) {
+      // Non-fatal: a slow DB/RPC should not log the user out or cause route guards to redirect.
+      console.warn(`⚠️ ${label} failed (non-fatal):`, error);
+    }
+  }, [fetchUserData, withTimeout]);
 
   const logout = useCallback(() => {
     setLoading(true);
@@ -273,12 +286,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (mounted) setUser(null);
             } else {
               sessionManager.saveSession(existingSession);
-              await withTimeout(fetchUserData(existingSession.user.id), 15000, 'Initial user data load');
+              await safeFetchUserData(existingSession.user.id, 'Initial user data load');
             }
           } catch (error) {
             console.log('ℹ️ Admin check failed, assuming regular user:', error);
             sessionManager.saveSession(existingSession);
-            await withTimeout(fetchUserData(existingSession.user.id), 15000, 'Initial user data load');
+            await safeFetchUserData(existingSession.user.id, 'Initial user data load');
           }
         } else {
           console.log('🔍 Checking sessionStorage for saved session...');
@@ -290,7 +303,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (restoredSession?.user) {
             console.log('✅ Session restored from sessionStorage:', restoredSession.user.id);
-            await withTimeout(fetchUserData(restoredSession.user.id), 15000, 'Restored user data load');
+            await safeFetchUserData(restoredSession.user.id, 'Restored user data load');
           } else if (mounted) {
             console.log('ℹ️ No existing session found');
             setUser(null);
@@ -313,7 +326,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       mounted = false;
     };
-  }, [fetchUserData, isInitialized]);
+  }, [fetchUserData, isInitialized, safeFetchUserData, withTimeout]);
 
   useEffect(() => {
     if (!isInitialized) return;
@@ -325,7 +338,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (event === 'SIGNED_IN' && session?.user) {
           console.log('✅ User signed in, saving session');
           sessionManager.saveSession(session);
-          await withTimeout(fetchUserData(session.user.id), 15000, 'Auth change user load');
+          // Non-blocking; avoid timeouts causing auth flicker.
+          void safeFetchUserData(session.user.id, 'Auth change user load');
         } else if (event === 'SIGNED_OUT') {
           console.log('👋 User signed out, clearing session');
           sessionManager.removeSession(user?.id);
@@ -334,13 +348,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('🔄 Token refreshed, updating session');
           sessionManager.saveSession(session);
           if (!user || user.id !== session.user.id) {
-            await withTimeout(fetchUserData(session.user.id), 15000, 'Token refresh user load');
+            void safeFetchUserData(session.user.id, 'Token refresh user load');
           }
         }
       } catch (error) {
         console.error('❌ Error handling auth state change:', error);
-        sessionManager.removeSession();
-        setUser(null);
+        // Non-fatal: do not clear session or force logout on transient errors.
       }
     });
 
@@ -377,7 +390,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('✅ Session restored after tab became visible');
           sessionManager.saveSession(restoredSession);
           if (restoredSession.user.id !== user.id) {
-            await withTimeout(fetchUserData(restoredSession.user.id), 15000, 'Visibility user reload');
+            void safeFetchUserData(restoredSession.user.id, 'Visibility user reload');
           }
           return;
         }
@@ -395,7 +408,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchUserData, isInitialized, logout, user]);
+  }, [fetchUserData, isInitialized, logout, safeFetchUserData, user, withTimeout]);
 
   const login = async (emailOrUsername: string, password: string, userType: string) => {
     setLoading(true);

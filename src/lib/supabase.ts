@@ -109,11 +109,15 @@ export const sessionManager = {
 
         const session = JSON.parse(sessionData);
 
-        // Check if session is expired
-        if (session.expires_at && new Date(session.expires_at * 1000) <= new Date()) {
-          console.log('⏰ Session expired, removing from localStorage');
-          sessionManager.removeSession(currentUserId);
-          return null;
+        // Check if session is expired (with small grace period to avoid auth flicker during refresh)
+        if (session.expires_at) {
+          const now = Math.floor(Date.now() / 1000);
+          const graceSeconds = 90;
+          if (Number(session.expires_at) <= now - graceSeconds) {
+            console.log('⏰ Session expired, removing from localStorage');
+            sessionManager.removeSession(currentUserId);
+            return null;
+          }
         }
 
         return session;
