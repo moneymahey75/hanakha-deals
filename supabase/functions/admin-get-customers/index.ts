@@ -64,6 +64,15 @@ const chunk = <T>(items: T[], size: number) => {
   return chunks;
 };
 
+const normalizeSponsorshipKey = (value: unknown) => {
+  const raw = normalizeString(value);
+  if (!raw) return '';
+  if (raw.toLowerCase().startsWith('sp')) {
+    return raw.slice(2).trim().toLowerCase();
+  }
+  return raw.toLowerCase();
+};
+
 const getAdminBySession = async (supabase: ReturnType<typeof createClient>, token: string) => {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
@@ -265,12 +274,42 @@ Deno.serve(async (req: Request) => {
         profiles.push(...(batch || []));
       }
 
+      const parentAccountKeys = Array.from(new Set(
+        (profiles || [])
+          .map((p: any) => normalizeString(p?.tup_parent_account))
+          .filter(Boolean)
+      ));
+
+      const parentProfiles: any[] = [];
+      if (parentAccountKeys.length > 0) {
+        const expanded = Array.from(new Set(parentAccountKeys.flatMap(expandCaseVariants))).filter(Boolean);
+        for (const keyChunk of chunk(expanded, 50)) {
+          const or = buildOrIlike('tup_sponsorship_number', keyChunk);
+          if (!or) continue;
+          const { data: batch, error: parentError } = await supabase
+            .from('tbl_user_profiles')
+            .select('tup_user_id, tup_first_name, tup_last_name, tup_username, tup_sponsorship_number')
+            .or(or);
+          if (parentError) throw parentError;
+          parentProfiles.push(...(batch || []));
+        }
+      }
+
+      const parentProfileByKey = new Map<string, any>();
+      for (const p of parentProfiles || []) {
+        const key = normalizeSponsorshipKey((p as any).tup_sponsorship_number);
+        if (!key) continue;
+        if (!parentProfileByKey.has(key)) parentProfileByKey.set(key, p);
+      }
+
       const profileMap = new Map((profiles || []).map((p: any) => [p.tup_user_id, p]));
       const levelMap = new Map(filteredByLevel.map((n) => [n.userId, n.level]));
 
       const combined = (users || [])
         .map((u: any) => {
           const p = profileMap.get(u.tu_id) || null;
+          const parentKey = normalizeSponsorshipKey(p?.tup_parent_account);
+          const parentProfile = parentKey ? (parentProfileByKey.get(parentKey) || null) : null;
           const pSponsorship = String(p?.tup_sponsorship_number || '');
           const searchBlob = [
             u.tu_email,
@@ -301,6 +340,11 @@ Deno.serve(async (req: Request) => {
               tup_gender: p.tup_gender,
               tup_sponsorship_number: p.tup_sponsorship_number,
               tup_parent_account: p.tup_parent_account,
+              tup_parent_name: parentProfile
+                ? String(`${parentProfile.tup_first_name || ''} ${parentProfile.tup_last_name || ''}`).trim() || null
+                : null,
+              tup_parent_username: parentProfile?.tup_username || null,
+              tup_parent_sponsorship_number: parentProfile?.tup_sponsorship_number || null,
               tup_created_at: p.tup_created_at,
               tup_updated_at: p.tup_updated_at
             } : null,

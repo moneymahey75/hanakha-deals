@@ -33,6 +33,9 @@ interface Customer {
         tup_sponsorship_number: string;
         tup_gender: string;
         tup_parent_account?: string;
+        tup_parent_name?: string | null;
+        tup_parent_username?: string | null;
+        tup_parent_sponsorship_number?: string | null;
     } | null;
 }
 
@@ -543,6 +546,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                         {parentAccountFilter.trim() && (
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
                         )}
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -581,6 +585,18 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                         </span>
                                     </td>
                                 )}
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm text-gray-900">
+                                        {customer.tbl_user_profiles?.tup_parent_name ||
+                                          customer.tbl_user_profiles?.tup_parent_username ||
+                                          '—'}
+                                    </div>
+                                    <div className="text-xs text-gray-500 font-mono">
+                                        {customer.tbl_user_profiles?.tup_parent_sponsorship_number ||
+                                          customer.tbl_user_profiles?.tup_parent_account ||
+                                          ''}
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="text-sm text-gray-900">{customer.tu_email}</div>
                                     <div className="text-sm text-gray-500">{customer.tbl_user_profiles?.tup_mobile}</div>
