@@ -23,6 +23,7 @@ interface Customer {
     tu_email_verified: boolean;
     tu_mobile_verified: boolean;
     tu_is_active: boolean;
+    tu_is_dummy?: boolean;
     tu_created_at: string;
     downline_level?: number;
     tbl_user_profiles: {
@@ -172,6 +173,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
     const [levelFilter, setLevelFilter] = useState<'all' | string>('all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [verificationFilter, setVerificationFilter] = useState('all');
+    const [dummyFilter, setDummyFilter] = useState<'all' | 'real' | 'dummy'>('all');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [showCustomerDetails, setShowCustomerDetails] = useState(false);
     const [editMode, setEditMode] = useState(false);
@@ -216,6 +218,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                 levelFilter: levelFilter === 'all' ? null : Number(levelFilter),
                 statusFilter,
                 verificationFilter,
+                dummyFilter,
                 offset,
                 limit: itemsPerPage
             };
@@ -244,6 +247,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                     tu_email_verified: row.tu_email_verified,
                     tu_mobile_verified: row.tu_mobile_verified,
                     tu_is_active: row.tu_is_active,
+                    tu_is_dummy: row.tu_is_dummy ?? false,
                     tu_created_at: row.tu_created_at,
                     downline_level: row.downline_level ?? row.level ?? null,
                     tbl_user_profiles: row.profile_data
@@ -266,6 +270,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                 levelFilter: levelFilter === 'all' ? null : Number(levelFilter),
                 statusFilter,
                 verificationFilter,
+                dummyFilter,
                 offset,
                 limit: itemsPerPage
             });
@@ -279,11 +284,11 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
 
     useEffect(() => {
         loadCustomers();
-    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, currentPage, itemsPerPage]);
+    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, dummyFilter, currentPage, itemsPerPage]);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter]);
+    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, dummyFilter]);
 
     const handleViewCustomer = (customer: Customer) => {
         setSelectedCustomer(customer);
@@ -465,7 +470,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                 </div>
 
                 {/* Search and Filters */}
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
                     <div className="md:col-span-2">
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -512,6 +517,18 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                             <option value="all">All Status</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select
+                            value={dummyFilter}
+                            onChange={(e) => setDummyFilter(e.target.value as 'all' | 'real' | 'dummy')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            title="Filter dummy/fake customer accounts"
+                        >
+                            <option value="all">All Accounts</option>
+                            <option value="real">Real Only</option>
+                            <option value="dummy">Dummy Only</option>
                         </select>
                     </div>
                     <div>
@@ -573,6 +590,13 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                             <div className="text-sm font-medium text-gray-900">
                                                 {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
                                             </div>
+                                            {customer.tu_is_dummy ? (
+                                              <div className="mt-1">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                                                  Dummy Account
+                                                </span>
+                                              </div>
+                                            ) : null}
                                             <div className="text-sm text-gray-500">@{customer.tbl_user_profiles?.tup_username}</div>
                                             <div className="text-xs text-gray-400">{customer.tbl_user_profiles?.tup_sponsorship_number}</div>
                                         </div>
@@ -746,6 +770,7 @@ const CustomerDetails: React.FC<{
         gender: customer.tbl_user_profiles?.tup_gender || '',
         email: customer.tu_email,
         is_active: customer.tu_is_active,
+        is_dummy: customer.tu_is_dummy ?? false,
         email_verified: customer.tu_email_verified,
         mobile_verified: customer.tu_mobile_verified
     });
@@ -828,7 +853,8 @@ const CustomerDetails: React.FC<{
                 isVerified: editData.email_verified || editData.mobile_verified,
                 emailVerified: editData.email_verified,
                 mobileVerified: editData.mobile_verified,
-                isActive: editData.is_active
+                isActive: editData.is_active,
+                isDummy: editData.is_dummy
             });
 
             await adminApi.post('admin-update-customer-profile', {
@@ -848,6 +874,7 @@ const CustomerDetails: React.FC<{
                 tu_email_verified: editData.email_verified,
                 tu_mobile_verified: editData.mobile_verified,
                 tu_is_verified: editData.email_verified || editData.mobile_verified,
+                tu_is_dummy: editData.is_dummy,
                 tbl_user_profiles: customer.tbl_user_profiles
                     ? {
                         ...customer.tbl_user_profiles,
@@ -921,6 +948,13 @@ const CustomerDetails: React.FC<{
                             <h3 className="text-lg font-semibold text-gray-900">
                                 {customer.tbl_user_profiles?.tup_first_name} {customer.tbl_user_profiles?.tup_last_name}
                             </h3>
+                            {customer.tu_is_dummy ? (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                                  Dummy Account
+                                </span>
+                              </div>
+                            ) : null}
                             <p className="text-gray-600">Customer Details & Management</p>
                         </div>
                     </div>
@@ -1095,6 +1129,28 @@ const CustomerDetails: React.FC<{
                                                 )}
                                             </span>
                                         )}
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Dummy/Fake Account</label>
+                                        {editMode && hasPermission('customers' as any, 'write') ? (
+                                            <label className="relative inline-flex items-center cursor-pointer mt-2">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={!!editData.is_dummy}
+                                                    onChange={(e) => setEditData(prev => ({ ...prev, is_dummy: e.target.checked }))}
+                                                />
+                                                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-500 peer-checked:bg-orange-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                                                <span className="ml-3 text-sm text-gray-700">{editData.is_dummy ? 'Dummy' : 'Real'}</span>
+                                            </label>
+                                        ) : (
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${customer.tu_is_dummy ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                {customer.tu_is_dummy ? 'Dummy' : 'Real'}
+                                            </span>
+                                        )}
+                                        {editMode && !hasPermission('customers' as any, 'write') ? (
+                                            <p className="text-xs text-gray-500 mt-1">You don’t have permission to change this.</p>
+                                        ) : null}
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Verification Status</label>

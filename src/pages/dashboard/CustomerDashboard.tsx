@@ -386,16 +386,6 @@ const CustomerDashboard: React.FC = () => {
 
   return (
       <div className="min-h-screen bg-gray-50 flex">
-        {/* Mobile menu button */}
-        <div className="lg:hidden fixed top-4 left-4 z-50">
-          <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-md bg-indigo-600 text-white shadow-lg"
-          >
-            {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-        </div>
-
         {/* Sidebar Navigation */}
         <div className={`
         fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
@@ -454,14 +444,26 @@ const CustomerDashboard: React.FC = () => {
         <div className="flex-1 overflow-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             {/* Header */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900">
-                Welcome back, {user?.firstName || 'User'}!
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Sponsorship Number:{' '}
-                <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
-              </p>
+            <div className="mb-8 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  Welcome back, {user?.firstName || 'User'}!
+                </h1>
+                <p className="text-gray-600 mt-2">
+                  Sponsorship Number:{' '}
+                  <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
+                </p>
+              </div>
+
+              {/* Mobile sidebar toggle (in-flow so it won't overlap content) */}
+              <button
+                onClick={() => setIsSidebarOpen((v) => !v)}
+                className="lg:hidden inline-flex items-center justify-center h-10 w-10 rounded-xl border border-gray-200 bg-white text-indigo-700 shadow-sm hover:bg-indigo-50"
+                aria-label={isSidebarOpen ? 'Close menu' : 'Open menu'}
+                title={isSidebarOpen ? 'Close menu' : 'Open menu'}
+              >
+                {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
             </div>
 
             {/* Stats Grid - Only show on overview tab */}

@@ -27,6 +27,7 @@ const MLMLevelCounts: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [awardingSponsor, setAwardingSponsor] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [accountScope, setAccountScope] = useState<'real' | 'dummy' | 'all'>('real');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [extraLevel, setExtraLevel] = useState(4);
@@ -41,6 +42,7 @@ const MLMLevelCounts: React.FC = () => {
       const offset = (page - 1) * pageSize;
       const data = await adminApi.post<LevelCountRow[]>('admin-get-earning-level-counts', {
         searchTerm: searchTerm.trim() || null,
+        accountScope,
         offset,
         limit: pageSize,
         extraLevel,
@@ -61,6 +63,7 @@ const MLMLevelCounts: React.FC = () => {
       const data = await adminApi.post<LevelCountRow[]>('admin-get-earning-level-counts', {
         recompute: true,
         searchTerm: searchTerm.trim() || null,
+        accountScope,
         offset,
         limit: pageSize,
         extraLevel,
@@ -102,11 +105,11 @@ const MLMLevelCounts: React.FC = () => {
   useEffect(() => {
     loadCounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, extraLevel]);
+  }, [page, pageSize, extraLevel, accountScope]);
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, pageSize, extraLevel]);
+  }, [searchTerm, pageSize, extraLevel, accountScope]);
 
   useEffect(() => {
     loadCounts();
@@ -173,6 +176,18 @@ const MLMLevelCounts: React.FC = () => {
               className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
+        </div>
+        <div className="w-full lg:w-40">
+          <select
+            value={accountScope}
+            onChange={(e) => setAccountScope(e.target.value as 'real' | 'dummy' | 'all')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            title="Filter dummy/fake accounts"
+          >
+            <option value="real">Real Only</option>
+            <option value="dummy">Dummy Only</option>
+            <option value="all">All Accounts</option>
+          </select>
         </div>
         <div className="w-full lg:w-28">
           <select

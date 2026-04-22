@@ -59,12 +59,16 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data, error } = await supabase
+    const body = await req.json().catch(() => ({}));
+    const dummyFilterRaw = String(body?.dummyFilter ?? body?.accountScope ?? 'all').trim().toLowerCase();
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw) ? dummyFilterRaw : 'all';
+
+    let query = supabase
       .from('tbl_payments')
       .select(
         `
         *,
-        user:tp_user_id(tu_email),
+        user:tp_user_id(tu_email, tu_is_dummy),
         subscription:tp_subscription_id(
           tus_id,
           plan:tus_plan_id(tsp_name, tsp_type)
@@ -74,9 +78,11 @@ Deno.serve(async (req: Request) => {
       .eq('tp_payment_status', 'pending')
       .order('tp_created_at', { ascending: false });
 
-    if (error) {
-      throw error;
-    }
+    if (dummyFilter === 'real') query = query.eq('user.tu_is_dummy', false);
+    if (dummyFilter === 'dummy') query = query.eq('user.tu_is_dummy', true);
+
+    const { data, error } = await query;
+    if (error) throw error;
 
     return new Response(JSON.stringify({ success: true, data }), {
       status: 200,

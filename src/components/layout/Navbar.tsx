@@ -87,7 +87,7 @@ const Navbar: React.FC = () => {
               className="flex items-center space-x-2 px-4 py-2 rounded-xl text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 font-medium"
             >
               <Rocket className="h-4 w-4" />
-              <span>Upcoming Plan</span>
+              <span>Plans</span>
             </Link>
 
             {!user ? (
@@ -275,7 +275,7 @@ const Navbar: React.FC = () => {
               onClick={() => setIsMenuOpen(false)}
             >
               <Rocket className="h-5 w-5" />
-              <span className="font-medium">Upcoming Plan</span>
+              <span className="font-medium">Plans</span>
             </Link>
 
             {!user ? (

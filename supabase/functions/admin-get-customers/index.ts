@@ -130,6 +130,10 @@ Deno.serve(async (req: Request) => {
     const searchTerm = normalizeString(body.searchTerm) || null;
     const statusFilter = normalizeString(body.statusFilter) || 'all';
     const verificationFilter = normalizeString(body.verificationFilter) || 'all';
+    const dummyFilterRaw = normalizeString(body.dummyFilter || body.accountScope) || 'all';
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw.toLowerCase())
+      ? dummyFilterRaw.toLowerCase()
+      : 'all';
     const parentAccount = normalizeString(body.parentAccount) || null;
     const levelFilterRaw = body.levelFilter;
     const levelFilter = Number.isFinite(Number(levelFilterRaw)) && Number(levelFilterRaw) > 0
@@ -250,7 +254,7 @@ Deno.serve(async (req: Request) => {
       for (const ids of chunk(downlineIds, 500)) {
         let usersQuery = supabase
           .from('tbl_users')
-          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_is_active, tu_created_at, tu_updated_at')
+          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_is_active, tu_is_dummy, tu_created_at, tu_updated_at')
           .in('tu_id', ids)
           .eq('tu_user_type', 'customer');
 
@@ -258,6 +262,8 @@ Deno.serve(async (req: Request) => {
         if (statusFilter === 'inactive') usersQuery = usersQuery.eq('tu_is_active', false);
         if (verificationFilter === 'verified') usersQuery = usersQuery.eq('tu_is_verified', true);
         if (verificationFilter === 'unverified') usersQuery = usersQuery.eq('tu_is_verified', false);
+        if (dummyFilter === 'real') usersQuery = usersQuery.eq('tu_is_dummy', false);
+        if (dummyFilter === 'dummy') usersQuery = usersQuery.eq('tu_is_dummy', true);
 
         const { data: batch, error: usersError } = await usersQuery;
         if (usersError) throw usersError;
@@ -329,6 +335,7 @@ Deno.serve(async (req: Request) => {
             tu_email_verified: u.tu_email_verified,
             tu_mobile_verified: u.tu_mobile_verified,
             tu_is_active: u.tu_is_active,
+            tu_is_dummy: !!u.tu_is_dummy,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {
@@ -377,7 +384,8 @@ Deno.serve(async (req: Request) => {
       p_status_filter: statusFilter || 'all',
       p_verification_filter: verificationFilter || 'all',
       p_offset: offset,
-      p_limit: limit
+      p_limit: limit,
+      p_dummy_filter: dummyFilter
     });
 
     if (error) {

@@ -10,7 +10,9 @@ const GeneralSettings: React.FC = () => {
         siteName: settings.siteName,
         logoUrl: settings.logoUrl,
         dateFormat: settings.dateFormat,
-        timezone: settings.timezone
+        timezone: settings.timezone,
+        maintenanceMode: settings.maintenanceMode,
+        maintenanceMessage: settings.maintenanceMessage
     });
     const [saving, setSaving] = useState(false);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -21,7 +23,9 @@ const GeneralSettings: React.FC = () => {
             siteName: settings.siteName,
             logoUrl: settings.logoUrl,
             dateFormat: settings.dateFormat,
-            timezone: settings.timezone
+            timezone: settings.timezone,
+            maintenanceMode: settings.maintenanceMode,
+            maintenanceMessage: settings.maintenanceMessage
         });
     }, [settings]);
 
@@ -36,7 +40,9 @@ const GeneralSettings: React.FC = () => {
                 { key: 'site_name', value: JSON.stringify(formData.siteName) },
                 { key: 'logo_url', value: JSON.stringify(formData.logoUrl) },
                 { key: 'date_format', value: JSON.stringify(formData.dateFormat) },
-                { key: 'timezone', value: JSON.stringify(formData.timezone) }
+                { key: 'timezone', value: JSON.stringify(formData.timezone) },
+                { key: 'maintenance_mode', value: JSON.stringify(Boolean(formData.maintenanceMode)) },
+                { key: 'maintenance_message', value: JSON.stringify(String(formData.maintenanceMessage || '')) }
             ];
 
             await adminApi.post('admin-upsert-settings', {
@@ -72,6 +78,13 @@ const GeneralSettings: React.FC = () => {
         setFormData(prev => ({
             ...prev,
             [e.target.name]: e.target.value
+        }));
+    };
+
+    const handleToggle = (name: 'maintenanceMode') => (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData(prev => ({
+            ...prev,
+            [name]: e.target.checked
         }));
     };
 
@@ -325,6 +338,38 @@ const GeneralSettings: React.FC = () => {
                     </div>
                 </div>
 
+                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-900">Maintenance Mode</h4>
+                            <p className="text-xs text-gray-600 mt-1">When enabled, the public site shows a maintenance page.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={!!formData.maintenanceMode}
+                                onChange={handleToggle('maintenanceMode')}
+                            />
+                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-500 peer-checked:bg-amber-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </label>
+                    </div>
+
+                    <div className="mt-4">
+                        <label htmlFor="maintenanceMessage" className="block text-sm font-medium text-gray-700 mb-2">
+                            Maintenance Message
+                        </label>
+                        <textarea
+                            id="maintenanceMessage"
+                            name="maintenanceMessage"
+                            value={formData.maintenanceMessage}
+                            onChange={(e) => setFormData(prev => ({ ...prev, maintenanceMessage: e.target.value }))}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            rows={3}
+                            placeholder="We’re doing some maintenance right now. Please check back shortly."
+                        />
+                    </div>
+                </div>
 
                 <div className="flex justify-end">
                     <button

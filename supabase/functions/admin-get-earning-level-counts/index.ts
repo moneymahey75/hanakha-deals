@@ -73,13 +73,18 @@ Deno.serve(async (req: Request) => {
     const extraLevelRaw = body?.extraLevel;
     const extraLevel = Number.isFinite(Number(extraLevelRaw)) ? Number(extraLevelRaw) : null;
     const requestedExtraLevel = extraLevel && extraLevel >= 1 && extraLevel <= 50 ? extraLevel : null;
+    const dummyFilterRaw = String(body?.dummyFilter ?? body?.accountScope ?? 'all').trim().toLowerCase();
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw) ? dummyFilterRaw : 'all';
 
     let query = supabase
       .from('tbl_mlm_level_counts')
-      .select('*', { count: 'exact' })
+      .select('*, tbl_users!inner(tu_is_dummy)', { count: 'exact' })
       .order('tmlc_level1_count', { ascending: false })
       .order('tmlc_updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (dummyFilter === 'real') query = query.eq('tbl_users.tu_is_dummy', false);
+    if (dummyFilter === 'dummy') query = query.eq('tbl_users.tu_is_dummy', true);
 
     if (searchTerm) {
       query = query.ilike('tmlc_sponsorship_number', `%${searchTerm}%`);
@@ -225,6 +230,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const withTotal = rows.map((row: any) => {
+      const { tbl_users: _user, ...restRow } = row || {};
       const sponsorship = String(row?.tmlc_sponsorship_number || '').trim();
       const sponsorshipKey = sponsorship.toLowerCase();
       const extraLevelCount = requestedExtraLevel
@@ -248,7 +254,7 @@ Deno.serve(async (req: Request) => {
         : false;
 
       return {
-        ...row,
+        ...restRow,
         total_count: totalCount,
         extra_level: requestedExtraLevel,
         extra_level_count: extraLevelCount,

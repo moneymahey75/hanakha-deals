@@ -66,17 +66,23 @@ Deno.serve(async (req: Request) => {
       minAmount,
       maxAmount,
       searchText,
+      dummyFilter: dummyFilterInput,
+      accountScope,
       from,
       to
     } = await req.json();
+
+    const dummyFilterRaw = String(dummyFilterInput ?? accountScope ?? 'all').trim().toLowerCase();
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw) ? dummyFilterRaw : 'all';
 
     let query = supabase
       .from('tbl_withdrawal_requests')
       .select(
         `
         *,
-        user:twr_user_id(
+        user:twr_user_id!inner(
           tu_email,
+          tu_is_dummy,
           tbl_user_profiles (
             tup_first_name,
             tup_last_name,
@@ -87,6 +93,13 @@ Deno.serve(async (req: Request) => {
         { count: 'exact' }
       )
       .order('twr_requested_at', { ascending: false });
+
+    if (dummyFilter === 'real') {
+      query = query.eq('user.tu_is_dummy', false);
+    }
+    if (dummyFilter === 'dummy') {
+      query = query.eq('user.tu_is_dummy', true);
+    }
 
     if (statusFilter && statusFilter !== 'all') {
       query = query.eq('twr_status', statusFilter);

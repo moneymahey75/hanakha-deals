@@ -258,6 +258,7 @@ export interface User {
   tu_email_verified: boolean
   tu_mobile_verified: boolean
   tu_is_active: boolean
+  tu_is_dummy?: boolean
   tu_created_at: string
   tu_updated_at: string
 }

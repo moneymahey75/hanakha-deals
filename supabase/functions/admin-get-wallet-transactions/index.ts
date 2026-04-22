@@ -59,7 +59,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { limit } = await req.json();
+    const { limit, dummyFilter: dummyFilterInput, accountScope } = await req.json();
+    const dummyFilterRaw = String(dummyFilterInput ?? accountScope ?? 'all').trim().toLowerCase();
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw) ? dummyFilterRaw : 'all';
 
     const { data: transactionsData, error: transactionsError } = await supabase
       .from('tbl_wallet_transactions')
@@ -97,6 +99,7 @@ Deno.serve(async (req: Request) => {
         tu_id,
         tu_email,
         tu_user_type,
+        tu_is_dummy,
         tbl_user_profiles (
           tup_first_name,
           tup_last_name
@@ -118,6 +121,11 @@ Deno.serve(async (req: Request) => {
           companiesMap.set(company.tc_user_id, company.tc_company_name);
         });
       }
+    }
+
+    const dummyByUserId = new Map<string, boolean>();
+    for (const user of (usersData || []) as any[]) {
+      dummyByUserId.set(String(user.tu_id), !!user.tu_is_dummy);
     }
 
     const formattedTransactions = transactionsData.map((tx: any) => {
@@ -142,12 +150,21 @@ Deno.serve(async (req: Request) => {
           email: user?.tu_email || 'Unknown Email',
           name: userName,
           type: userType,
-          company_name: companyName
+          company_name: companyName,
+          is_dummy: dummyByUserId.get(String(tx.twt_user_id)) ?? false
         }
       };
     });
 
-    return new Response(JSON.stringify({ success: true, data: formattedTransactions }), {
+    const filteredTransactions =
+      dummyFilter === 'all'
+        ? formattedTransactions
+        : formattedTransactions.filter((tx: any) => {
+          const isDummy = !!tx?.user_info?.is_dummy;
+          return dummyFilter === 'dummy' ? isDummy : !isDummy;
+        });
+
+    return new Response(JSON.stringify({ success: true, data: filteredTransactions }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

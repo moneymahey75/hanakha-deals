@@ -6,6 +6,7 @@ import { NotificationProvider } from './components/ui/NotificationProvider';
 import SessionWarning from './components/ui/SessionWarning';
 import { MLMProvider } from './contexts/MLMContext';
 import { AdminProvider } from './contexts/AdminContext';
+import { useAdmin } from './contexts/AdminContext';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
@@ -33,6 +34,7 @@ import FAQ from './pages/FAQ';
 import JoinAsCustomer from './pages/JoinAsCustomer';
 import JoinAsCompany from './pages/JoinAsCompany';
 import UpcomingPlan from './pages/UpcomingPlan';
+import Maintenance from './pages/Maintenance';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
 import GuestRoute from './components/auth/GuestRoute';
@@ -78,86 +80,7 @@ function App() {
                     } />
                     
                     {/* Main App Routes (With Navbar/Footer) */}
-                    <Route path="/*" element={
-                      <>
-                        <Navbar />
-                        <main className="pt-16">
-                          <Routes>
-                            <Route path="/" element={<Home />} />
-                            
-                            {/* Static Pages */}
-                            <Route path="/contact" element={<ContactUs />} />
-                            <Route path="/about" element={<AboutUs />} />
-                            <Route path="/policies" element={<SitePolicies />} />
-                            <Route path="/faq" element={<FAQ />} />
-                            <Route path="/join-customer" element={<JoinAsCustomer />} />
-                            <Route path="/join-company" element={<JoinAsCompany />} />
-                            <Route path="/upcoming-plan" element={<UpcomingPlan />} />
-                            
-                            {/* Customer Routes */}
-                            <Route path="/customer/login" element={
-                              <GuestRoute>
-                                <CustomerLogin />
-                              </GuestRoute>
-                            } />
-                            <Route path="/customer/register" element={
-                              <GuestRoute>
-                                <CustomerRegister />
-                              </GuestRoute>
-                            } />
-                            <Route path="/registration-payment" element={
-                              <ProtectedRoute userType="customer">
-                                <RegistrationPayment />
-                              </ProtectedRoute>
-                            } />
-                            <Route path="/registration-payment-success" element={
-                              <ProtectedRoute userType="customer" requiresSubscription={false}>
-                                <RegistrationPaymentSuccess />
-                              </ProtectedRoute>
-                            } />
-                            <Route path="/customer/dashboard" element={
-                              <ProtectedRoute userType="customer">
-                                <CustomerDashboard />
-                              </ProtectedRoute>
-                            } />
-                            
-                            {/* Company Routes */}
-                            <Route path="/company/login" element={
-                              <GuestRoute>
-                                <CompanyLogin />
-                              </GuestRoute>
-                            } />
-                            <Route path="/company/register" element={
-                              <GuestRoute>
-                                <CompanyRegister />
-                              </GuestRoute>
-                            } />
-                            <Route path="/company/dashboard" element={
-                              <ProtectedRoute userType="company">
-                                <CompanyDashboard />
-                              </ProtectedRoute>
-                            } />
-                            
-                            {/* Shared Routes */}
-                            <Route path="/forgot-password" element={<ForgotPassword />} />
-                            <Route path="/reset-password" element={<ResetPassword />} />
-                            <Route path="/auth/callback" element={<AuthCallback />} />
-                            <Route path="/verify-otp" element={<VerifyOTP />} />
-                            <Route path="/subscription-plans" element={
-                              <SubscriptionPlans />
-                            } />
-                            <Route path="/payment" element={
-                              <ProtectedRoute userType="customer">
-                                <Payment />
-                              </ProtectedRoute>
-                            } />
-                            
-                            <Route path="*" element={<Navigate to="/" replace />} />
-                          </Routes>
-                        </main>
-                        <Footer />
-                      </>
-                    } />
+                    <Route path="/*" element={<MainSite />} />
                   </Routes>
                 </div>
               </Router>
@@ -168,5 +91,93 @@ function App() {
     </NotificationProvider>
   );
 }
+
+const MainSite: React.FC = () => {
+  const { settings } = useAdmin();
+  const maintenanceEnabled = Boolean(settings?.maintenanceMode);
+
+  if (maintenanceEnabled) {
+    return <Maintenance />;
+  }
+
+  return (
+    <>
+      <Navbar />
+      <main className="pt-16">
+        <Routes>
+          <Route path="/" element={<Home />} />
+
+          {/* Static Pages */}
+          <Route path="/contact" element={<ContactUs />} />
+          <Route path="/about" element={<AboutUs />} />
+          <Route path="/policies" element={<SitePolicies />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/join-customer" element={<JoinAsCustomer />} />
+          <Route path="/join-company" element={<JoinAsCompany />} />
+          <Route path="/upcoming-plan" element={<UpcomingPlan />} />
+
+          {/* Customer Routes */}
+          <Route path="/customer/login" element={
+            <GuestRoute>
+              <CustomerLogin />
+            </GuestRoute>
+          } />
+          <Route path="/customer/register" element={
+            <GuestRoute>
+              <CustomerRegister />
+            </GuestRoute>
+          } />
+          <Route path="/registration-payment" element={
+            <ProtectedRoute userType="customer">
+              <RegistrationPayment />
+            </ProtectedRoute>
+          } />
+          <Route path="/registration-payment-success" element={
+            <ProtectedRoute userType="customer" requiresSubscription={false}>
+              <RegistrationPaymentSuccess />
+            </ProtectedRoute>
+          } />
+          <Route path="/customer/dashboard" element={
+            <ProtectedRoute userType="customer">
+              <CustomerDashboard />
+            </ProtectedRoute>
+          } />
+
+          {/* Company Routes */}
+          <Route path="/company/login" element={
+            <GuestRoute>
+              <CompanyLogin />
+            </GuestRoute>
+          } />
+          <Route path="/company/register" element={
+            <GuestRoute>
+              <CompanyRegister />
+            </GuestRoute>
+          } />
+          <Route path="/company/dashboard" element={
+            <ProtectedRoute userType="company">
+              <CompanyDashboard />
+            </ProtectedRoute>
+          } />
+
+          {/* Shared Routes */}
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/verify-otp" element={<VerifyOTP />} />
+          <Route path="/subscription-plans" element={<SubscriptionPlans />} />
+          <Route path="/payment" element={
+            <ProtectedRoute userType="customer">
+              <Payment />
+            </ProtectedRoute>
+          } />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      <Footer />
+    </>
+  );
+};
 
 export default App;

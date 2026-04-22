@@ -27,6 +27,7 @@ interface WithdrawalRequest {
   twr_admin_debug?: string | null;
   user?: {
     tu_email: string;
+    tu_is_dummy?: boolean;
     tbl_user_profiles?: {
       tup_first_name?: string | null;
       tup_last_name?: string | null;
@@ -47,6 +48,7 @@ const WithdrawalRequests: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'rejected' | 'failed'>('all');
+  const [accountScope, setAccountScope] = useState<'real' | 'dummy' | 'all'>('real');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [minAmount, setMinAmount] = useState('');
@@ -84,8 +86,15 @@ const WithdrawalRequests: React.FC = () => {
   }, [currentPage]);
 
   useEffect(() => {
+    // If we're already on page 1, changing filters won't trigger the `currentPage` effect.
+    // So fetch directly; otherwise, reset to page 1 (which will fetch via the `currentPage` effect).
+    if (currentPage === 1) {
+      loadWithdrawals();
+      return;
+    }
     setCurrentPage(1);
-  }, [statusFilter, dateFrom, dateTo, minAmount, maxAmount, searchText]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, accountScope, dateFrom, dateTo, minAmount, maxAmount, searchText]);
 
   const loadWithdrawals = async () => {
     setWithdrawalsLoading(true);
@@ -94,6 +103,7 @@ const WithdrawalRequests: React.FC = () => {
       const to = from + pageSize - 1;
       const requestPayload = {
         statusFilter,
+        accountScope,
         dateFrom,
         dateTo,
         minAmount,
@@ -126,6 +136,7 @@ const WithdrawalRequests: React.FC = () => {
       const to = from + pageSize - 1;
       const requestKey = JSON.stringify({
         statusFilter,
+        accountScope,
         dateFrom,
         dateTo,
         minAmount,
@@ -265,7 +276,7 @@ const WithdrawalRequests: React.FC = () => {
       </div>
 
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
           <div className="flex flex-col">
             <label className="text-xs text-gray-600 mb-1">Status</label>
             <select
@@ -279,6 +290,19 @@ const WithdrawalRequests: React.FC = () => {
               <option value="completed">Completed</option>
               <option value="rejected">Rejected</option>
               <option value="failed">Failed</option>
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-600 mb-1">Accounts</label>
+            <select
+              value={accountScope}
+              onChange={(event) => setAccountScope(event.target.value as 'real' | 'dummy' | 'all')}
+              className="px-3 py-2 rounded border border-gray-200 text-sm bg-white"
+              title="Filter dummy/fake customer accounts"
+            >
+              <option value="real">Real Only</option>
+              <option value="dummy">Dummy Only</option>
+              <option value="all">All</option>
             </select>
           </div>
           <div className="flex flex-col">
@@ -392,6 +416,13 @@ const WithdrawalRequests: React.FC = () => {
                     <div className="text-sm font-medium text-gray-900">
                       {fullName || 'Unknown Customer'}
                     </div>
+                    {withdrawal.user?.tu_is_dummy ? (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                          Dummy
+                        </span>
+                      </div>
+                    ) : null}
                     <div className="text-xs text-gray-500">Sponsor ID: {sponsorId}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">

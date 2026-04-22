@@ -65,14 +65,14 @@ const UpcomingPlan: React.FC = () => {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-10">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-white">
             <Rocket className="h-4 w-4 text-emerald-300" />
-            <span className="text-sm font-semibold">Prelaunch • Upcoming Plan</span>
+            <span className="text-sm font-semibold">Prelaunch • Plans</span>
           </div>
 
           <h1 className="mt-5 text-3xl sm:text-5xl font-extrabold text-white leading-tight">
             A big opportunity for all MLM leaders
           </h1>
           <p className="mt-3 text-white/80 text-lg">
-            ShopClick is in a prelaunch period. Join early and build your team before launch.
+            ShopClix is in a prelaunch period. Join early and build your team before launch.
           </p>
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
@@ -83,15 +83,6 @@ const UpcomingPlan: React.FC = () => {
               Register Now
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <a
-              href="https://www.shopclick.live"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-5 py-3 font-semibold text-white hover:bg-white/15 transition-colors border border-white/15"
-            >
-              Visit website: shopclick.live
-              <ArrowRight className="h-4 w-4" />
-            </a>
           </div>
         </div>
       </div>
@@ -99,6 +90,18 @@ const UpcomingPlan: React.FC = () => {
       {/* Content */}
       <div className="bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+          <section className="rounded-3xl border border-emerald-100 bg-gradient-to-b from-emerald-50/60 to-white shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-6 pt-6">
+              <div className="flex items-center gap-3">
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <h2 className="text-xl font-extrabold text-gray-900">Pre Launch Plan</h2>
+              </div>
+              <div className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-600/10 text-emerald-800 px-3 py-1 text-xs font-semibold border border-emerald-200">
+                Before launch
+              </div>
+            </div>
+            <div className="px-6 pb-6 pt-5 space-y-6">
+
           {/* Prelaunch highlights */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6">
@@ -156,12 +159,26 @@ const UpcomingPlan: React.FC = () => {
               ))}
             </div>
           </div>
+            </div>
+          </section>
 
-          {/* SHOPCLICK PLAN */}
+          <section className="rounded-3xl border border-indigo-100 bg-gradient-to-b from-indigo-50/60 to-white shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-6 pt-6">
+              <div className="flex items-center gap-3">
+                <div className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                <h2 className="text-xl font-extrabold text-gray-900">After Launch Plan</h2>
+              </div>
+              <div className="inline-flex w-fit items-center gap-2 rounded-full bg-indigo-600/10 text-indigo-800 px-3 py-1 text-xs font-semibold border border-indigo-200">
+                After launch
+              </div>
+            </div>
+            <div className="px-6 pb-6 pt-5 space-y-6">
+
+          {/* SHOPCLIX PLAN */}
           <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6">
             <div className="flex items-center gap-3">
               <Rocket className="h-5 w-5 text-indigo-600" />
-              <h2 className="text-lg font-semibold text-gray-900">SHOPCLICK Plan (Launch)</h2>
+              <h2 className="text-lg font-semibold text-gray-900">SHOPCLIX Plan (Launch)</h2>
             </div>
 
             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -256,7 +273,7 @@ const UpcomingPlan: React.FC = () => {
               <ul className="mt-3 space-y-2 text-sm text-emerald-900">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
-                  <span>You can open your 1st level with 1 direct only.</span>
+                  <span>You can open your 1 level with 1 direct only.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
@@ -269,6 +286,8 @@ const UpcomingPlan: React.FC = () => {
               </ul>
             </div>
           </div>
+            </div>
+          </section>
 
           {/* CTA */}
           <div className="rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-900 px-6 py-8 text-white shadow-sm">
@@ -293,4 +312,3 @@ const UpcomingPlan: React.FC = () => {
 };
 
 export default UpcomingPlan;
-

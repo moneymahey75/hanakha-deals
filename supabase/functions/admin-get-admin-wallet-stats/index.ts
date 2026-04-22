@@ -138,21 +138,21 @@ Deno.serve(async (req: Request) => {
     const [paymentsCreatedRes, paymentsVerifiedRes, withdrawalsRequestedRes] = await Promise.all([
       supabase
         .from('tbl_payments')
-        .select('tp_id, tp_amount, tp_payment_status, tp_created_at')
+        .select('tp_id, tp_user_id, tp_amount, tp_payment_status, tp_created_at')
         .eq('tp_payment_status', 'completed')
         .gte('tp_created_at', startIso)
         .lte('tp_created_at', endIso)
         .limit(5000),
       supabase
         .from('tbl_payments')
-        .select('tp_id, tp_amount, tp_payment_status, tp_verified_at')
+        .select('tp_id, tp_user_id, tp_amount, tp_payment_status, tp_verified_at')
         .eq('tp_payment_status', 'completed')
         .gte('tp_verified_at', startIso)
         .lte('tp_verified_at', endIso)
         .limit(5000),
       supabase
         .from('tbl_withdrawal_requests')
-        .select('twr_id, twr_amount, twr_status, twr_requested_at')
+        .select('twr_id, twr_user_id, twr_amount, twr_status, twr_requested_at')
         .gte('twr_requested_at', startIso)
         .lte('twr_requested_at', endIso)
         .limit(5000),
@@ -162,22 +162,64 @@ Deno.serve(async (req: Request) => {
     if (paymentsVerifiedRes.error) throw paymentsVerifiedRes.error;
     if (withdrawalsRequestedRes.error) throw withdrawalsRequestedRes.error;
 
-    const paymentsMap = new Map<string, number>();
+    const paymentsMap = new Map<string, { amount: number; userId: string | null }>();
     for (const row of (paymentsCreatedRes.data || []) as any[]) {
       if (!row?.tp_id) continue;
-      paymentsMap.set(String(row.tp_id), toNumber(row.tp_amount));
+      paymentsMap.set(String(row.tp_id), { amount: toNumber(row.tp_amount), userId: row?.tp_user_id ? String(row.tp_user_id) : null });
     }
     for (const row of (paymentsVerifiedRes.data || []) as any[]) {
       if (!row?.tp_id) continue;
-      paymentsMap.set(String(row.tp_id), toNumber(row.tp_amount));
+      paymentsMap.set(String(row.tp_id), { amount: toNumber(row.tp_amount), userId: row?.tp_user_id ? String(row.tp_user_id) : null });
     }
-    const todayEarnings = Array.from(paymentsMap.values()).reduce((sum, v) => sum + v, 0);
+    const payments = Array.from(paymentsMap.values());
 
-    const todayWithdrawalsRequested = (withdrawalsRequestedRes.data || []).reduce(
-      (sum: number, row: any) => sum + toNumber(row?.twr_amount),
-      0
-    );
-    const todayWithdrawalsCount = (withdrawalsRequestedRes.data || []).length;
+    const withdrawals = (withdrawalsRequestedRes.data || []) as any[];
+
+    const userIds = Array.from(new Set([
+      ...payments.map((p) => p.userId).filter(Boolean),
+      ...withdrawals.map((w) => w?.twr_user_id ? String(w.twr_user_id) : null).filter(Boolean),
+    ])) as string[];
+
+    const userDummyMap = new Map<string, boolean>();
+    const chunk = <T>(items: T[], size: number) => {
+      const chunks: T[][] = [];
+      for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+      return chunks;
+    };
+
+    for (const ids of chunk(userIds, 500)) {
+      const { data: usersData, error: usersError } = await supabase
+        .from('tbl_users')
+        .select('tu_id, tu_is_dummy')
+        .in('tu_id', ids);
+      if (usersError) throw usersError;
+      for (const u of usersData || []) {
+        userDummyMap.set(String((u as any).tu_id), !!(u as any).tu_is_dummy);
+      }
+    }
+
+    const todayEarningsAll = payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
+    const todayEarningsDummy = payments.reduce((sum, p) => {
+      const isDummy = p.userId ? (userDummyMap.get(p.userId) ?? false) : false;
+      return sum + (isDummy ? toNumber(p.amount) : 0);
+    }, 0);
+    const todayEarningsReal = todayEarningsAll - todayEarningsDummy;
+
+    const todayWithdrawalsRequestedAll = withdrawals.reduce((sum: number, row: any) => sum + toNumber(row?.twr_amount), 0);
+    const todayWithdrawalsRequestedDummy = withdrawals.reduce((sum: number, row: any) => {
+      const userId = row?.twr_user_id ? String(row.twr_user_id) : null;
+      const isDummy = userId ? (userDummyMap.get(userId) ?? false) : false;
+      return sum + (isDummy ? toNumber(row?.twr_amount) : 0);
+    }, 0);
+    const todayWithdrawalsRequestedReal = todayWithdrawalsRequestedAll - todayWithdrawalsRequestedDummy;
+
+    const todayWithdrawalsCountAll = withdrawals.length;
+    const todayWithdrawalsCountDummy = withdrawals.reduce((count: number, row: any) => {
+      const userId = row?.twr_user_id ? String(row.twr_user_id) : null;
+      const isDummy = userId ? (userDummyMap.get(userId) ?? false) : false;
+      return count + (isDummy ? 1 : 0);
+    }, 0);
+    const todayWithdrawalsCountReal = todayWithdrawalsCountAll - todayWithdrawalsCountDummy;
 
     return new Response(JSON.stringify({
       success: true,
@@ -185,9 +227,18 @@ Deno.serve(async (req: Request) => {
         walletAddress,
         walletUsdtBalance,
         walletNativeBalance,
-        todayEarnings,
-        todayWithdrawalsRequested,
-        todayWithdrawalsCount,
+        todayEarnings: todayEarningsAll,
+        todayEarningsAll,
+        todayEarningsReal,
+        todayEarningsDummy,
+        todayWithdrawalsRequested: todayWithdrawalsRequestedAll,
+        todayWithdrawalsRequestedAll,
+        todayWithdrawalsRequestedReal,
+        todayWithdrawalsRequestedDummy,
+        todayWithdrawalsCount: todayWithdrawalsCountAll,
+        todayWithdrawalsCountAll,
+        todayWithdrawalsCountReal,
+        todayWithdrawalsCountDummy,
         startIso,
         endIso
       }
@@ -202,4 +253,3 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
-

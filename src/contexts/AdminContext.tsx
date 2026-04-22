@@ -9,6 +9,8 @@ interface GeneralSettings {
   logoUrl: string;
   dateFormat: string;
   timezone: string;
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
   emailVerificationRequired: boolean;
   mobileVerificationRequired: boolean;
   eitherVerificationRequired: boolean;
@@ -121,10 +123,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Default settings as fallback
   const defaultSettings: GeneralSettings = {
-    siteName: 'ShopClick',
+    siteName: 'ShopClix',
     logoUrl: '/shopclick_logo.png',
     dateFormat: 'DD/MM/YYYY',
     timezone: 'UTC',
+    maintenanceMode: false,
+    maintenanceMessage: 'We’re doing some maintenance right now. Please check back shortly.',
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
     eitherVerificationRequired: true,
@@ -289,6 +293,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'timezone':
                 loadedSettings.timezone = value;
+                break;
+              case 'maintenance_mode':
+                loadedSettings.maintenanceMode = Boolean(value);
+                break;
+              case 'maintenance_message':
+                loadedSettings.maintenanceMessage = String(value || '');
                 break;
               case 'email_verification_required':
                 loadedSettings.emailVerificationRequired = value;

@@ -13,7 +13,7 @@ import {
   Download
 } from 'lucide-react';
 
-let inFlightPendingPaymentsRequest: Promise<Payment[]> | null = null;
+let inFlightPendingPaymentsRequest: { key: string; promise: Promise<Payment[]> } | null = null;
 let inFlightAdminUsersRequest: Promise<AdminUser[]> | null = null;
 let inFlightAdminEarningsRequest: {
   key: string;
@@ -31,6 +31,7 @@ interface Payment {
   tp_verified_at?: string;
   user?: {
     tu_email: string;
+    tu_is_dummy?: boolean;
   };
   subscription?: {
     tus_id: string;
@@ -62,6 +63,7 @@ interface AdminEarning {
   tp_processed_by_admin_name?: string | null;
   user?: {
     tu_email: string;
+    tu_is_dummy?: boolean;
   };
 }
 
@@ -70,8 +72,17 @@ type AdminWalletStats = {
   walletUsdtBalance: number;
   walletNativeBalance: number;
   todayEarnings: number;
+  todayEarningsAll?: number;
+  todayEarningsReal?: number;
+  todayEarningsDummy?: number;
   todayWithdrawalsRequested: number;
+  todayWithdrawalsRequestedAll?: number;
+  todayWithdrawalsRequestedReal?: number;
+  todayWithdrawalsRequestedDummy?: number;
   todayWithdrawalsCount: number;
+  todayWithdrawalsCountAll?: number;
+  todayWithdrawalsCountReal?: number;
+  todayWithdrawalsCountDummy?: number;
 };
 
 const PendingPayments: React.FC = () => {
@@ -81,6 +92,7 @@ const PendingPayments: React.FC = () => {
   const [verifying, setVerifying] = useState<string | null>(null);
   const [adminEarnings, setAdminEarnings] = useState<AdminEarning[]>([]);
   const [earningsLoading, setEarningsLoading] = useState(false);
+  const [accountScope, setAccountScope] = useState<'real' | 'dummy' | 'all'>('real');
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [earningsAdminFilter, setEarningsAdminFilter] = useState('all');
   const [earningsStartDate, setEarningsStartDate] = useState('');
@@ -91,7 +103,8 @@ const PendingPayments: React.FC = () => {
 
   useEffect(() => {
     loadPayments();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountScope]);
 
   useEffect(() => {
     loadAdmins();
@@ -99,7 +112,8 @@ const PendingPayments: React.FC = () => {
 
   useEffect(() => {
     loadAdminEarnings();
-  }, [earningsAdminFilter, earningsStartDate, earningsEndDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [earningsAdminFilter, earningsStartDate, earningsEndDate, accountScope]);
 
   useEffect(() => {
     loadWalletStats();
@@ -108,14 +122,25 @@ const PendingPayments: React.FC = () => {
   const loadPayments = async () => {
     setLoading(true);
     try {
-      const requestPromise = inFlightPendingPaymentsRequest ?? adminApi.post<Payment[]>('admin-get-pending-payments');
-      inFlightPendingPaymentsRequest = requestPromise;
+      const requestKey = JSON.stringify({ accountScope });
+      const requestPromise =
+        inFlightPendingPaymentsRequest?.key === requestKey
+          ? inFlightPendingPaymentsRequest.promise
+          : adminApi.post<Payment[]>('admin-get-pending-payments', { accountScope });
+
+      if (inFlightPendingPaymentsRequest?.key !== requestKey) {
+        inFlightPendingPaymentsRequest = { key: requestKey, promise: requestPromise };
+      }
+
       const data = await requestPromise;
       setPayments(data || []);
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
-      inFlightPendingPaymentsRequest = null;
+      const requestKey = JSON.stringify({ accountScope });
+      if (inFlightPendingPaymentsRequest?.key === requestKey) {
+        inFlightPendingPaymentsRequest = null;
+      }
       setLoading(false);
     }
   };
@@ -165,7 +190,8 @@ const PendingPayments: React.FC = () => {
       const requestPayload = {
         adminId: earningsAdminFilter,
         startDate: earningsStartDate || null,
-        endDate: earningsEndDate || null
+        endDate: earningsEndDate || null,
+        accountScope
       };
       const requestKey = JSON.stringify(requestPayload);
       const requestPromise =
@@ -189,7 +215,8 @@ const PendingPayments: React.FC = () => {
       const requestKey = JSON.stringify({
         adminId: earningsAdminFilter,
         startDate: earningsStartDate || null,
-        endDate: earningsEndDate || null
+        endDate: earningsEndDate || null,
+        accountScope
       });
       if (inFlightAdminEarningsRequest?.key === requestKey) {
         inFlightAdminEarningsRequest = null;
@@ -327,6 +354,53 @@ const PendingPayments: React.FC = () => {
     { gross: 0, adminIncome: 0, commission: 0 }
   );
 
+  const resolvedWalletStats = (() => {
+    if (!walletStats) return null;
+    const earningsAll = Number(walletStats.todayEarningsAll ?? walletStats.todayEarnings ?? 0) || 0;
+    const earningsDummy = Number(walletStats.todayEarningsDummy ?? 0) || 0;
+    const earningsReal = Number(walletStats.todayEarningsReal ?? (earningsAll - earningsDummy)) || 0;
+
+    const withdrawalsAll = Number(walletStats.todayWithdrawalsRequestedAll ?? walletStats.todayWithdrawalsRequested ?? 0) || 0;
+    const withdrawalsDummy = Number(walletStats.todayWithdrawalsRequestedDummy ?? 0) || 0;
+    const withdrawalsReal = Number(walletStats.todayWithdrawalsRequestedReal ?? (withdrawalsAll - withdrawalsDummy)) || 0;
+
+    const withdrawalsCountAll = Number(walletStats.todayWithdrawalsCountAll ?? walletStats.todayWithdrawalsCount ?? 0) || 0;
+    const withdrawalsCountDummy = Number(walletStats.todayWithdrawalsCountDummy ?? 0) || 0;
+    const withdrawalsCountReal = Number(walletStats.todayWithdrawalsCountReal ?? (withdrawalsCountAll - withdrawalsCountDummy)) || 0;
+
+    const primary =
+      accountScope === 'dummy'
+        ? {
+          earnings: earningsDummy,
+          withdrawalsAmount: withdrawalsDummy,
+          withdrawalsCount: withdrawalsCountDummy,
+        }
+        : accountScope === 'all'
+          ? {
+            earnings: earningsAll,
+            withdrawalsAmount: withdrawalsAll,
+            withdrawalsCount: withdrawalsCountAll,
+          }
+          : {
+            earnings: earningsReal,
+            withdrawalsAmount: withdrawalsReal,
+            withdrawalsCount: withdrawalsCountReal,
+          };
+
+    return {
+      earningsAll,
+      earningsReal,
+      earningsDummy,
+      withdrawalsAll,
+      withdrawalsReal,
+      withdrawalsDummy,
+      withdrawalsCountAll,
+      withdrawalsCountReal,
+      withdrawalsCountDummy,
+      primary,
+    };
+  })();
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
@@ -344,16 +418,28 @@ const PendingPayments: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-900">Pending Registration Payments</h2>
             <p className="text-gray-600 mt-1">Review and approve customer registration payments</p>
           </div>
-          <button
-          onClick={() => {
-            loadPayments();
-            loadWalletStats();
-          }}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
-        >
-          <RefreshCw className="h-5 w-5" />
-          <span>Refresh</span>
-        </button>
+          <div className="flex items-center space-x-3">
+            <select
+              value={accountScope}
+              onChange={(e) => setAccountScope(e.target.value as 'real' | 'dummy' | 'all')}
+              className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              title="Filter dummy/fake customer payments"
+            >
+              <option value="real">Real Only</option>
+              <option value="dummy">Dummy Only</option>
+              <option value="all">All Accounts</option>
+            </select>
+            <button
+              onClick={() => {
+                loadPayments();
+                loadWalletStats();
+              }}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
+            >
+              <RefreshCw className="h-5 w-5" />
+              <span>Refresh</span>
+            </button>
+          </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6">
@@ -381,13 +467,27 @@ const PendingPayments: React.FC = () => {
               <p className="text-xs text-indigo-600 mt-1 truncate">{walletStats.walletAddress}</p>
             </div>
             <div className="bg-green-50 rounded-lg p-4">
-              <p className="text-xs text-green-700">Total Earnings Today</p>
-              <p className="text-lg font-semibold text-green-900">{walletStats.todayEarnings.toFixed(2)} USDT</p>
+              <p className="text-xs text-green-700">
+                {accountScope === 'dummy' ? 'Dummy Earnings Today' : accountScope === 'all' ? 'Total Earnings Today' : 'Real Earnings Today'}
+              </p>
+              <p className="text-lg font-semibold text-green-900">
+                {(resolvedWalletStats?.primary.earnings ?? 0).toFixed(2)} USDT
+              </p>
+              <p className="text-xs text-green-700 mt-1">
+                Real: {(resolvedWalletStats?.earningsReal ?? 0).toFixed(2)} • Dummy: {(resolvedWalletStats?.earningsDummy ?? 0).toFixed(2)}
+              </p>
             </div>
             <div className="bg-amber-50 rounded-lg p-4">
               <p className="text-xs text-amber-700">Withdrawals Today</p>
-              <p className="text-lg font-semibold text-amber-900">{walletStats.todayWithdrawalsRequested.toFixed(2)} USDT</p>
-              <p className="text-xs text-amber-700 mt-1">{walletStats.todayWithdrawalsCount} requests</p>
+              <p className="text-lg font-semibold text-amber-900">
+                {(resolvedWalletStats?.primary.withdrawalsAmount ?? 0).toFixed(2)} USDT
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                {(resolvedWalletStats?.primary.withdrawalsCount ?? 0)} requests
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Real: {(resolvedWalletStats?.withdrawalsReal ?? 0).toFixed(2)} • Dummy: {(resolvedWalletStats?.withdrawalsDummy ?? 0).toFixed(2)}
+              </p>
             </div>
           </div>
         ) : (
@@ -442,6 +542,13 @@ const PendingPayments: React.FC = () => {
                           <div className="text-sm font-medium text-gray-900">
                             {payment.user?.tu_email || 'N/A'}
                           </div>
+                          {payment.user?.tu_is_dummy ? (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                                Dummy
+                              </span>
+                            </div>
+                          ) : null}
                           <div className="text-sm text-gray-500">User Payment</div>
                         </div>
                       </div>
@@ -663,7 +770,14 @@ const PendingPayments: React.FC = () => {
                         {displayDate ? new Date(displayDate).toLocaleDateString() : 'N/A'}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {earning.user?.tu_email || 'N/A'}
+                        <div className="flex items-center gap-2">
+                          <span>{earning.user?.tu_email || 'N/A'}</span>
+                          {earning.user?.tu_is_dummy ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                              Dummy
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {earning.tp_amount ?? 0} {earning.tp_currency ?? 'USDT'}

@@ -13,7 +13,7 @@ When everything is configured correctly:
    - Development mode shows the actual OTP code for testing
 
 3. **SMS Received**
-   - You receive SMS: "Your ShopClick verification code is: 123456. This code expires in 10 minutes. Do not share this code with anyone."
+   - You receive SMS: "Your ShopClix verification code is: 123456. This code expires in 10 minutes. Do not share this code with anyone."
 
 4. **Enter OTP**
    - Input fields become enabled

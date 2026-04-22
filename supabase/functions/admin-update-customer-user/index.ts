@@ -24,7 +24,7 @@ Deno.serve(async (req: Request) => {
     const adminSessionToken = req.headers.get('X-Admin-Session');
     const admin = await requireAdminSession(supabase, adminSessionToken);
 
-    const { userId, email, isVerified, emailVerified, mobileVerified, isActive } = await req.json();
+    const { userId, email, isVerified, emailVerified, mobileVerified, isActive, isDummy } = await req.json();
     if (!userId || !email) {
       return new Response(JSON.stringify({ success: false, error: 'Missing parameters' }), {
         status: 400,
@@ -32,16 +32,30 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const updatePayload: Partial<{
+      tu_email: string;
+      tu_is_verified: boolean;
+      tu_email_verified: boolean;
+      tu_mobile_verified: boolean;
+      tu_is_active: boolean;
+      tu_is_dummy: boolean;
+      tu_updated_at: string;
+    }> = {
+      tu_email: email,
+      tu_is_verified: isVerified,
+      tu_email_verified: emailVerified,
+      tu_mobile_verified: mobileVerified,
+      tu_is_active: isActive,
+      tu_updated_at: new Date().toISOString()
+    };
+
+    if (typeof isDummy === 'boolean') {
+      updatePayload.tu_is_dummy = isDummy;
+    }
+
     const { error } = await supabase
       .from('tbl_users')
-      .update({
-        tu_email: email,
-        tu_is_verified: isVerified,
-        tu_email_verified: emailVerified,
-        tu_mobile_verified: mobileVerified,
-        tu_is_active: isActive,
-        tu_updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('tu_id', userId);
 
     if (error) {
@@ -54,7 +68,8 @@ Deno.serve(async (req: Request) => {
       is_verified: isVerified,
       email_verified: emailVerified,
       mobile_verified: mobileVerified,
-      is_active: isActive
+      is_active: isActive,
+      is_dummy: typeof isDummy === 'boolean' ? isDummy : undefined
     });
 
     return new Response(JSON.stringify({ success: true, data: { userId } }), {

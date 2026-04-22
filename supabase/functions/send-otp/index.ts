@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const expires_at = new Date(Date.now() + 10 * 60 * 1000);
-    const siteName = 'ShopClick';
+    const siteName = 'ShopClix';
 
     let sendResult;
     if (otp_type === 'email') {
@@ -173,7 +173,7 @@ async function sendEmailOTP(email: string, otp: string, siteName: string) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: `${siteName} <noreply@shopclick.com>`,
+        from: `${siteName} <noreply@shopclix.live>`,
         to: [email],
         subject: emailSubject,
         html: emailBody

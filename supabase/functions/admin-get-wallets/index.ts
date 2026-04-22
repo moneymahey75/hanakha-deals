@@ -59,6 +59,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const dummyFilterRaw = String(body?.dummyFilter ?? body?.accountScope ?? 'all').trim().toLowerCase();
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw) ? dummyFilterRaw : 'all';
+
     const { data: walletsData, error: walletsError } = await supabase
       .from('tbl_wallets')
       .select('tw_user_id, tw_balance, tw_currency, tw_created_at')
@@ -85,6 +89,7 @@ Deno.serve(async (req: Request) => {
         tu_id,
         tu_email,
         tu_user_type,
+        tu_is_dummy,
         tbl_user_profiles (
           tup_first_name,
           tup_last_name
@@ -95,6 +100,17 @@ Deno.serve(async (req: Request) => {
 
     if (usersError) {
       throw usersError;
+    }
+
+    const dummyByUserId = new Map<string, boolean>();
+    for (const user of (usersData || []) as any[]) {
+      dummyByUserId.set(String(user.tu_id), !!user.tu_is_dummy);
+    }
+
+    let filteredWalletsData = walletsData as any[];
+    if (dummyFilter !== 'all') {
+      const wantDummy = dummyFilter === 'dummy';
+      filteredWalletsData = (walletsData as any[]).filter((w: any) => (dummyByUserId.get(String(w.tw_user_id)) ?? false) === wantDummy);
     }
 
     const companyUserIds = usersData?.filter((user: any) => user.tu_user_type === 'company').map((user: any) => user.tu_id) || [];
@@ -113,7 +129,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const walletsWithStats = await Promise.all(
-      walletsData.map(async (wallet: any) => {
+      filteredWalletsData.map(async (wallet: any) => {
         try {
           const { data: txData } = await supabase
             .from('tbl_wallet_transactions')
@@ -154,6 +170,7 @@ Deno.serve(async (req: Request) => {
             user_email: userEmail,
             user_name: userName,
             user_type: userType,
+            user_is_dummy: dummyByUserId.get(String(wallet.tw_user_id)) ?? false,
             wallet_balance: Number(wallet.tw_balance),
             total_earned: totalEarned,
             total_spent: totalSpent,
@@ -170,6 +187,7 @@ Deno.serve(async (req: Request) => {
               ? `${user.tbl_user_profiles[0].tup_first_name} ${user.tbl_user_profiles[0].tup_last_name || ''}`.trim()
               : user?.tu_email || 'Unknown User',
             user_type: (user?.tu_user_type as 'customer' | 'company' | 'admin') || 'customer',
+            user_is_dummy: dummyByUserId.get(String(wallet.tw_user_id)) ?? false,
             wallet_balance: Number(wallet.tw_balance),
             total_earned: 0,
             total_spent: 0,

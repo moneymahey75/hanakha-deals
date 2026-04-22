@@ -561,7 +561,7 @@ INSERT INTO tbl_email_templates (tet_name, tet_subject, tet_body, tet_template_t
 
 -- Insert default system settings
 INSERT INTO tbl_system_settings (tss_setting_key, tss_setting_value, tss_description) VALUES
-('site_name', '"ShopClick"', 'Website name'),
+('site_name', '"ShopClix"', 'Website name'),
 ('logo_url', '"https://images.pexels.com/photos/1779487/pexels-photo-1779487.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&fit=crop"', 'Logo URL'),
 ('email_verification_required', 'true', 'Require email verification'),
 ('mobile_verification_required', 'true', 'Require mobile verification'),

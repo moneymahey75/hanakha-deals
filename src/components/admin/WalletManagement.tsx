@@ -29,7 +29,7 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 
-let inFlightWalletsRequest: Promise<WalletData[]> | null = null;
+let inFlightWalletsRequest: { key: string; promise: Promise<WalletData[]> } | null = null;
 let inFlightWalletTransactionsRequest: {
   key: string;
   promise: Promise<Transaction[]>;
@@ -40,6 +40,7 @@ interface WalletData {
   user_email: string;
   user_name: string;
   user_type: 'customer' | 'company' | 'admin';
+  user_is_dummy?: boolean;
   wallet_balance: number;
   total_earned: number;
   total_spent: number;
@@ -62,6 +63,7 @@ interface Transaction {
     name: string;
     type: 'customer' | 'company' | 'admin';
     company_name?: string;
+    is_dummy?: boolean;
   };
 }
 
@@ -162,6 +164,7 @@ const WalletManagement: React.FC = () => {
   const [listLoading, setListLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'wallets' | 'transactions'>('wallets');
   const [userTypeFilter, setUserTypeFilter] = useState<'customer' | 'company'>('customer');
+  const [accountScope, setAccountScope] = useState<'real' | 'dummy' | 'all'>('real');
   const [searchTerm, setSearchTerm] = useState('');
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
@@ -186,7 +189,7 @@ const WalletManagement: React.FC = () => {
     } else {
       loadTransactions();
     }
-  }, [activeTab, userTypeFilter]);
+  }, [activeTab, userTypeFilter, accountScope]);
 
   useEffect(() => {
     if (userSearch.length > 2) {
@@ -231,8 +234,15 @@ const WalletManagement: React.FC = () => {
       setListLoading(true);
       console.log('🔍 Loading wallet data...');
 
-      const requestPromise = inFlightWalletsRequest ?? adminApi.post<WalletData[]>('admin-get-wallets');
-      inFlightWalletsRequest = requestPromise;
+      const requestKey = JSON.stringify({ accountScope });
+      const requestPromise =
+        inFlightWalletsRequest?.key === requestKey
+          ? inFlightWalletsRequest.promise
+          : adminApi.post<WalletData[]>('admin-get-wallets', { accountScope });
+
+      if (inFlightWalletsRequest?.key !== requestKey) {
+        inFlightWalletsRequest = { key: requestKey, promise: requestPromise };
+      }
 
       const walletsWithStats = await requestPromise;
       if (!walletsWithStats || walletsWithStats.length === 0) {
@@ -247,7 +257,10 @@ const WalletManagement: React.FC = () => {
       console.error('Failed to load wallets:', error);
       notification.showError('Load Failed', 'Failed to load wallet data. Please check console for details.');
     } finally {
-      inFlightWalletsRequest = null;
+      const requestKey = JSON.stringify({ accountScope });
+      if (inFlightWalletsRequest?.key === requestKey) {
+        inFlightWalletsRequest = null;
+      }
       setLoading(false);
       setListLoading(false);
     }
@@ -259,7 +272,7 @@ const WalletManagement: React.FC = () => {
       setListLoading(true);
       console.log('🔍 Loading transactions...');
 
-      const requestPayload = { limit: 100 };
+      const requestPayload = { limit: 100, accountScope };
       const requestKey = JSON.stringify(requestPayload);
       const requestPromise =
         inFlightWalletTransactionsRequest?.key === requestKey
@@ -286,7 +299,7 @@ const WalletManagement: React.FC = () => {
       console.error('Failed to load transactions:', error);
       notification.showError('Load Failed', 'Failed to load transaction data. Please check console for details.');
     } finally {
-      const requestKey = JSON.stringify({ limit: 100 });
+      const requestKey = JSON.stringify({ limit: 100, accountScope });
       if (inFlightWalletTransactionsRequest?.key === requestKey) {
         inFlightWalletTransactionsRequest = null;
       }
@@ -433,7 +446,11 @@ const WalletManagement: React.FC = () => {
 
     const matchesType = wallet.user_type === userTypeFilter;
 
-    return matchesSearch && matchesType;
+    const isDummy = !!wallet.user_is_dummy;
+    const matchesDummy =
+      accountScope === 'all' ? true : accountScope === 'dummy' ? isDummy : !isDummy;
+
+    return matchesSearch && matchesType && matchesDummy;
   });
 
   const filteredTransactions = transactions.filter(tx => {
@@ -443,7 +460,11 @@ const WalletManagement: React.FC = () => {
 
     const matchesType = tx.user_info?.type === userTypeFilter;
 
-    return matchesSearch && matchesType;
+    const isDummy = !!tx.user_info?.is_dummy;
+    const matchesDummy =
+      accountScope === 'all' ? true : accountScope === 'dummy' ? isDummy : !isDummy;
+
+    return matchesSearch && matchesType && matchesDummy;
   });
 
   // Pagination logic
@@ -514,7 +535,12 @@ const WalletManagement: React.FC = () => {
   };
 
   const getWalletStats = () => {
-    const filtered = wallets.filter(w => w.user_type === userTypeFilter);
+    const filtered = wallets.filter(w => {
+      if (w.user_type !== userTypeFilter) return false;
+      const isDummy = !!w.user_is_dummy;
+      if (accountScope === 'all') return true;
+      return accountScope === 'dummy' ? isDummy : !isDummy;
+    });
 
     const totalBalance = filtered.reduce((sum, w) => sum + w.wallet_balance, 0);
     const totalEarned = filtered.reduce((sum, w) => sum + w.total_earned, 0);
@@ -616,6 +642,19 @@ const WalletManagement: React.FC = () => {
                 </select>
               </div>
               <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-600">Accounts:</label>
+                <select
+                  value={accountScope}
+                  onChange={(e) => { setAccountScope(e.target.value as 'real' | 'dummy' | 'all'); setCurrentPage(1); }}
+                  className="border border-gray-300 rounded-lg px-3 py-1 focus:ring-2 focus:ring-green-500"
+                  title="Filter dummy/fake customer accounts"
+                >
+                  <option value="real">Real Only</option>
+                  <option value="dummy">Dummy Only</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+              <div className="flex items-center space-x-2">
                 <label className="text-sm text-gray-600">Show:</label>
                 <select
                     value={itemsPerPage}
@@ -711,6 +750,13 @@ const WalletManagement: React.FC = () => {
                                     <div className="text-sm text-gray-500">
                                       {wallet.user_email}
                                     </div>
+                                    {wallet.user_is_dummy ? (
+                                      <div className="mt-1">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                                          Dummy
+                                        </span>
+                                      </div>
+                                    ) : null}
                                     {wallet.company_name && (
                                         <div className="text-xs text-blue-600">
                                           {wallet.company_name}
@@ -862,6 +908,11 @@ const WalletManagement: React.FC = () => {
                                   <span className="text-sm text-gray-500">
                                     {transaction.user_info?.name} ({transaction.user_info?.email})
                                   </span>
+                                    {transaction.user_info?.is_dummy ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                                        Dummy
+                                      </span>
+                                    ) : null}
                                     <span className={`text-xs px-2 py-1 rounded-full font-medium capitalize ${
                                         transaction.user_info?.type === 'company'
                                             ? 'bg-blue-100 text-blue-800'

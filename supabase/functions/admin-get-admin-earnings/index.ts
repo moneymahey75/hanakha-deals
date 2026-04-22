@@ -59,7 +59,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { adminId, startDate, endDate } = await req.json();
+    const { adminId, startDate, endDate, dummyFilter: dummyFilterInput, accountScope } = await req.json();
+    const dummyFilterRaw = String(dummyFilterInput ?? accountScope ?? 'all').trim().toLowerCase();
+    const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw) ? dummyFilterRaw : 'all';
 
     let query = supabase
       .from('tbl_payments')
@@ -76,11 +78,14 @@ Deno.serve(async (req: Request) => {
         tp_processed_by_admin_id,
         tp_processed_by_admin_email,
         tp_processed_by_admin_name,
-        user:tp_user_id(tu_email)
+        user:tp_user_id(tu_email, tu_is_dummy)
       `
       )
       .eq('tp_payment_status', 'completed')
       .order('tp_verified_at', { ascending: false });
+
+    if (dummyFilter === 'real') query = query.eq('user.tu_is_dummy', false);
+    if (dummyFilter === 'dummy') query = query.eq('user.tu_is_dummy', true);
 
     if (adminId && adminId !== 'all') {
       query = query.eq('tp_processed_by_admin_id', adminId);
