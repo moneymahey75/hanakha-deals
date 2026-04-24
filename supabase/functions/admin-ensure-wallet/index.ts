@@ -73,6 +73,7 @@ Deno.serve(async (req: Request) => {
       .select('tw_id')
       .eq('tw_user_id', userId)
       .eq('tw_currency', 'USDT')
+      .eq('tw_wallet_type', 'working')
       .maybeSingle();
 
     if (checkError) {
@@ -93,7 +94,9 @@ Deno.serve(async (req: Request) => {
         tw_id: newWalletId,
         tw_user_id: userId,
         tw_balance: 0,
+        tw_reserved_balance: 0,
         tw_currency: 'USDT',
+        tw_wallet_type: 'working',
         tw_is_active: true,
         tw_created_at: new Date().toISOString(),
         tw_updated_at: new Date().toISOString()
@@ -107,6 +110,24 @@ Deno.serve(async (req: Request) => {
       user_id: userId,
       wallet_id: newWalletId
     });
+
+    // Ensure non-working wallet exists too (best-effort).
+    try {
+      await supabase
+        .from('tbl_wallets')
+        .insert({
+          tw_user_id: userId,
+          tw_balance: 0,
+          tw_reserved_balance: 0,
+          tw_currency: 'USDT',
+          tw_wallet_type: 'non_working',
+          tw_is_active: true,
+          tw_created_at: new Date().toISOString(),
+          tw_updated_at: new Date().toISOString()
+        });
+    } catch {
+      // ignore
+    }
 
     return new Response(JSON.stringify({ success: true, data: { walletId: newWalletId } }), {
       status: 200,

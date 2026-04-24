@@ -73,6 +73,7 @@ Deno.serve(async (req: Request) => {
       .select('tw_id, tw_balance')
       .eq('tw_user_id', userId)
       .eq('tw_currency', 'USDT')
+      .eq('tw_wallet_type', 'working')
       .single();
 
     if (walletError) {

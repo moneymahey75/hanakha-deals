@@ -78,31 +78,55 @@ Deno.serve(async (req: Request) => {
 
     const { data: existingWallets, error: walletsError } = await supabase
       .from('tbl_wallets')
-      .select('tw_user_id')
+      .select('tw_user_id, tw_wallet_type')
       .eq('tw_currency', 'USDT');
 
     if (walletsError) {
       throw walletsError;
     }
 
-    const existingWalletUserIds = new Set(existingWallets?.map((w: any) => w.tw_user_id) || []);
-    const usersWithoutWallets = users.filter((user: any) => !existingWalletUserIds.has(user.tu_id));
+    const existingByUser = new Map<string, Set<string>>();
+    for (const row of existingWallets || []) {
+      const userId = String((row as any).tw_user_id || '');
+      const walletType = String((row as any).tw_wallet_type || 'working');
+      if (!userId) continue;
+      if (!existingByUser.has(userId)) existingByUser.set(userId, new Set());
+      existingByUser.get(userId)!.add(walletType);
+    }
 
-    if (usersWithoutWallets.length === 0) {
+    const usersWithoutWorkingWallet = users.filter((user: any) => !(existingByUser.get(String(user.tu_id))?.has('working')));
+    const usersWithoutNonWorkingWallet = users.filter((user: any) => !(existingByUser.get(String(user.tu_id))?.has('non_working')));
+
+    if (usersWithoutWorkingWallet.length === 0 && usersWithoutNonWorkingWallet.length === 0) {
       return new Response(JSON.stringify({ success: true, data: { created: 0 } }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const creations = usersWithoutWallets.map((user: any) => ({
-      tw_user_id: user.tu_id,
-      tw_balance: 0,
-      tw_currency: 'USDT',
-      tw_is_active: true,
-      tw_created_at: new Date().toISOString(),
-      tw_updated_at: new Date().toISOString()
-    }));
+    const nowIso = new Date().toISOString();
+    const creations = [
+      ...usersWithoutWorkingWallet.map((user: any) => ({
+        tw_user_id: user.tu_id,
+        tw_balance: 0,
+        tw_reserved_balance: 0,
+        tw_currency: 'USDT',
+        tw_wallet_type: 'working',
+        tw_is_active: true,
+        tw_created_at: nowIso,
+        tw_updated_at: nowIso
+      })),
+      ...usersWithoutNonWorkingWallet.map((user: any) => ({
+        tw_user_id: user.tu_id,
+        tw_balance: 0,
+        tw_reserved_balance: 0,
+        tw_currency: 'USDT',
+        tw_wallet_type: 'non_working',
+        tw_is_active: true,
+        tw_created_at: nowIso,
+        tw_updated_at: nowIso
+      }))
+    ];
 
     const { error: createError } = await supabase.from('tbl_wallets').insert(creations);
     if (createError) {
@@ -110,10 +134,10 @@ Deno.serve(async (req: Request) => {
     }
 
     await logAdminAction(supabase, admin.tau_id, 'create_wallets_for_all', 'wallets', {
-      created: usersWithoutWallets.length
+      created: creations.length
     });
 
-    return new Response(JSON.stringify({ success: true, data: { created: usersWithoutWallets.length } }), {
+    return new Response(JSON.stringify({ success: true, data: { created: creations.length } }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

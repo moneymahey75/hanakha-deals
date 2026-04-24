@@ -54,6 +54,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .select('*')
         .eq('tw_user_id', user.id)
         .eq('tw_currency', 'USDT')
+        .eq('tw_wallet_type', 'working')
         .single();
 
       if (error && error.code !== 'PGRST116') {

@@ -559,7 +559,33 @@ Deno.serve(async (req: Request) => {
       .eq('tu_id', userId);
 
     if (sponsorUserId) {
-        const walletCache = new Map<string, { walletId: string; baseBalance: number; totalInserted: number }>();
+        const walletCache = new Map<
+          string,
+          { walletId: string; baseBalance: number; baseReservedBalance: number; totalBalanceInserted: number; totalReservedInserted: number }
+        >();
+
+        const hasActiveUpgrade = async (userId: string) => {
+          const now = new Date();
+          const { data: subs, error: subsError } = await supabase
+            .from('tbl_user_subscriptions')
+            .select('tus_end_date, tus_status, plan:tus_plan_id(tsp_type)')
+            .eq('tus_user_id', userId)
+            .eq('tus_status', 'active')
+            .limit(50);
+
+          if (subsError) {
+            console.error('Failed to load user subscriptions:', subsError);
+            return false;
+          }
+
+          return (subs || []).some((row: any) => {
+            const planType = String(row?.plan?.tsp_type || '').toLowerCase();
+            if (planType !== 'upgrade') return false;
+            const endDateRaw = row?.tus_end_date ? new Date(String(row.tus_end_date)) : null;
+            if (!endDateRaw) return true;
+            return endDateRaw.getTime() > now.getTime();
+          });
+        };
 
         const ensureWalletForUser = async (userId: string) => {
           const cached = walletCache.get(userId);
@@ -567,8 +593,9 @@ Deno.serve(async (req: Request) => {
 
           const { data: existingWallet, error: existingError } = await supabase
             .from('tbl_wallets')
-            .select('tw_id, tw_balance')
+            .select('tw_id, tw_balance, tw_reserved_balance')
             .eq('tw_user_id', userId)
+            .eq('tw_wallet_type', 'working')
             .maybeSingle();
 
           if (existingError) {
@@ -578,6 +605,7 @@ Deno.serve(async (req: Request) => {
 
           let resolvedWalletId = existingWallet?.tw_id || null;
           let resolvedBalance = parseFloat(String(existingWallet?.tw_balance || 0));
+          let resolvedReservedBalance = parseFloat(String((existingWallet as any)?.tw_reserved_balance || 0));
 
           if (!resolvedWalletId) {
             const { data: createdWallet, error: createError } = await supabase
@@ -585,7 +613,9 @@ Deno.serve(async (req: Request) => {
               .insert({
                 tw_user_id: userId,
                 tw_balance: 0,
-                tw_currency: 'USDT'
+                tw_reserved_balance: 0,
+                tw_currency: 'USDT',
+                tw_wallet_type: 'working'
               })
               .select()
               .single();
@@ -597,21 +627,32 @@ Deno.serve(async (req: Request) => {
 
             resolvedWalletId = createdWallet?.tw_id || null;
             resolvedBalance = 0;
+            resolvedReservedBalance = 0;
           }
 
           if (!resolvedWalletId) return null;
 
-          const entry = { walletId: resolvedWalletId, baseBalance: resolvedBalance, totalInserted: 0 };
+          const entry = {
+            walletId: resolvedWalletId,
+            baseBalance: resolvedBalance,
+            baseReservedBalance: resolvedReservedBalance,
+            totalBalanceInserted: 0,
+            totalReservedInserted: 0
+          };
           walletCache.set(userId, entry);
           return entry;
         };
 
         const insertWalletTxIfMissing = async (
           userId: string,
-          referenceType: 'registration_parent_income' | 'mlm_level_reward',
+          referenceType:
+            | 'registration_parent_income'
+            | 'registration_parent_income_reserved'
+            | 'mlm_level_reward',
           amount: number,
           description: string,
-          referenceId: string
+          referenceId: string,
+          bucket: 'available' | 'reserved' = 'available'
         ) => {
           if (amount <= 0) return 0;
 
@@ -652,18 +693,49 @@ Deno.serve(async (req: Request) => {
             return 0;
           }
 
-          walletInfo.totalInserted += amount;
+          if (bucket === 'reserved') {
+            walletInfo.totalReservedInserted += amount;
+          } else {
+            walletInfo.totalBalanceInserted += amount;
+          }
           return amount;
         };
 
         if (parentIncomeApplied > 0 && sponsorUserId && !isDefaultParent) {
-          await insertWalletTxIfMissing(
-            sponsorUserId,
-            'registration_parent_income',
-            parentIncomeApplied,
-            `Registration commission from ${childDisplayName}`,
-            paymentId || sponsorUserId
-          );
+          const sponsorUpgraded = await hasActiveUpgrade(sponsorUserId);
+          const refId = String(paymentId || txHash || sponsorUserId);
+
+          if (sponsorUpgraded) {
+            await insertWalletTxIfMissing(
+              sponsorUserId,
+              'registration_parent_income',
+              parentIncomeApplied,
+              `Registration commission from ${childDisplayName}`,
+              refId,
+              'available'
+            );
+          } else {
+            const availablePortion = Number((parentIncomeApplied * 0.5).toFixed(6));
+            const reservedPortion = Number((parentIncomeApplied - availablePortion).toFixed(6));
+
+            await insertWalletTxIfMissing(
+              sponsorUserId,
+              'registration_parent_income',
+              availablePortion,
+              `Registration commission from ${childDisplayName}`,
+              refId,
+              'available'
+            );
+
+            await insertWalletTxIfMissing(
+              sponsorUserId,
+              'registration_parent_income_reserved',
+              reservedPortion,
+              `Reserved from registration commission (for future upgrade) from ${childDisplayName}`,
+              refId,
+              'reserved'
+            );
+          }
         }
 
         if (childSponsorshipNumber) {
@@ -739,11 +811,13 @@ Deno.serve(async (req: Request) => {
         }
 
         for (const [userId, walletInfo] of walletCache.entries()) {
-          if (walletInfo.totalInserted <= 0) continue;
-          const newBalance = walletInfo.baseBalance + walletInfo.totalInserted;
+          const totalInserted = walletInfo.totalBalanceInserted + walletInfo.totalReservedInserted;
+          if (totalInserted <= 0) continue;
+          const newBalance = walletInfo.baseBalance + totalInserted;
+          const newReservedBalance = walletInfo.baseReservedBalance + walletInfo.totalReservedInserted;
           const { error: updateWalletError } = await supabase
             .from('tbl_wallets')
-            .update({ tw_balance: newBalance })
+            .update({ tw_balance: newBalance, tw_reserved_balance: newReservedBalance })
             .eq('tw_id', walletInfo.walletId);
 
           if (updateWalletError) {

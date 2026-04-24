@@ -35,6 +35,7 @@ const TransactionsDashboard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [walletBalance, setWalletBalance] = useState(0);
+    const [walletReservedBalance, setWalletReservedBalance] = useState(0);
     const [pendingWithdrawalTotal, setPendingWithdrawalTotal] = useState(0);
     const [dateFrom, setDateFrom] = useState(() => {
         const d = new Date();
@@ -60,12 +61,14 @@ const TransactionsDashboard: React.FC = () => {
         try {
             const { data, error } = await supabase
                 .from('tbl_wallets')
-                .select('tw_balance')
+                .select('tw_balance, tw_reserved_balance')
                 .eq('tw_user_id', user.id)
                 .eq('tw_currency', 'USDT')
+                .eq('tw_wallet_type', 'working')
                 .maybeSingle();
             if (error) throw error;
             setWalletBalance(Number(data?.tw_balance ?? 0));
+            setWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
         } catch (error) {
             console.error('Failed to load wallet balance:', error);
         }
@@ -78,6 +81,7 @@ const TransactionsDashboard: React.FC = () => {
                 .from('tbl_withdrawal_requests')
                 .select('twr_amount, twr_status')
                 .eq('twr_user_id', user.id)
+                .eq('twr_wallet_type', 'working')
                 .in('twr_status', ['pending', 'processing', 'approved']);
             if (error) throw error;
             const total = (data || []).reduce((sum: number, row: any) => sum + Number(row.twr_amount || 0), 0);
@@ -223,8 +227,8 @@ const TransactionsDashboard: React.FC = () => {
         return Array.from(map.entries());
     }, [pagedTransactions]);
     const withdrawableBalance = useMemo(() => {
-        return Math.max(0, Number(walletBalance || 0) - Number(pendingWithdrawalTotal || 0));
-    }, [walletBalance, pendingWithdrawalTotal]);
+        return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(pendingWithdrawalTotal || 0));
+    }, [walletBalance, walletReservedBalance, pendingWithdrawalTotal]);
 
     if (loading) {
         return (

@@ -25,6 +25,7 @@ const ensureWalletForUser = async (
     .select('tw_id, tw_balance')
     .eq('tw_user_id', userId)
     .eq('tw_currency', 'USDT')
+    .eq('tw_wallet_type', 'working')
     .maybeSingle();
 
   if (walletError) {
@@ -41,7 +42,9 @@ const ensureWalletForUser = async (
     tw_id: newWalletId,
     tw_user_id: userId,
     tw_balance: 0,
+    tw_reserved_balance: 0,
     tw_currency: 'USDT',
+    tw_wallet_type: 'working',
     tw_is_active: true,
     tw_created_at: new Date().toISOString(),
     tw_updated_at: new Date().toISOString(),
@@ -237,4 +240,3 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
-

@@ -69,9 +69,10 @@ Deno.serve(async (req: Request) => {
 
     const { data: wallet, error: walletError } = await supabase
       .from('tbl_wallets')
-      .select('tw_id, tw_balance, tw_currency, tw_created_at, tw_updated_at, tw_is_active')
+      .select('tw_id, tw_balance, tw_reserved_balance, tw_currency, tw_created_at, tw_updated_at, tw_is_active, tw_wallet_type')
       .eq('tw_user_id', userId)
       .eq('tw_currency', 'USDT')
+      .eq('tw_wallet_type', 'working')
       .maybeSingle();
 
     if (walletError) {
@@ -125,7 +126,8 @@ Deno.serve(async (req: Request) => {
     const { data: withdrawals, error: withdrawalsError } = await supabase
       .from('tbl_withdrawal_requests')
       .select('twr_amount, twr_status')
-      .eq('twr_user_id', userId);
+      .eq('twr_user_id', userId)
+      .eq('twr_wallet_type', 'working');
 
     if (withdrawalsError) {
       throw withdrawalsError;
@@ -136,7 +138,8 @@ Deno.serve(async (req: Request) => {
       .reduce((sum: number, w: any) => sum + Number(w.twr_amount || 0), 0);
 
     const walletBalance = Number(wallet?.tw_balance || 0);
-    const withdrawableBalance = Math.max(0, walletBalance - reservedWithdrawals);
+    const reservedBalance = Number((wallet as any)?.tw_reserved_balance || 0);
+    const withdrawableBalance = Math.max(0, walletBalance - reservedBalance - reservedWithdrawals);
 
     return new Response(
       JSON.stringify({
@@ -146,6 +149,7 @@ Deno.serve(async (req: Request) => {
             ? {
                 ...wallet,
                 tw_balance: walletBalance,
+                tw_reserved_balance: reservedBalance,
               }
             : null,
           walletConnections: walletConnections || [],
@@ -153,6 +157,7 @@ Deno.serve(async (req: Request) => {
             walletBalance,
             withdrawableBalance,
             reservedWithdrawals,
+            reservedBalance,
             totalEarned,
             totalDebited,
           },
@@ -167,4 +172,3 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
-

@@ -59,7 +59,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { userId } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const userId = body?.userId;
+    const walletTypeRaw = String(body?.walletType || body?.wallet_type || 'working').trim().toLowerCase();
+    const walletType = walletTypeRaw === 'non_working' ? 'non_working' : 'working';
     if (!userId) {
       return new Response(JSON.stringify({ success: false, error: 'Missing userId' }), {
         status: 400,
@@ -72,6 +75,7 @@ Deno.serve(async (req: Request) => {
       .select('tw_id')
       .eq('tw_user_id', userId)
       .eq('tw_currency', 'USDT')
+      .eq('tw_wallet_type', walletType)
       .maybeSingle();
 
     if (walletError) {

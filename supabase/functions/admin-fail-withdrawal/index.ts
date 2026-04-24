@@ -34,11 +34,13 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
   const amount = Number(withdrawal?.twr_amount || 0);
   if (!Number.isFinite(amount) || amount <= 0) return { refunded: false, reason: 'invalid_amount' };
 
+  const walletType = String(withdrawal?.twr_wallet_type || 'working') === 'non_working' ? 'non_working' : 'working';
   const { data: wallet, error: walletError } = await supabase
     .from('tbl_wallets')
     .select('tw_id, tw_balance')
     .eq('tw_user_id', withdrawal.twr_user_id)
     .eq('tw_currency', 'USDT')
+    .eq('tw_wallet_type', walletType)
     .maybeSingle();
   if (walletError || !wallet?.tw_id) return { refunded: false, reason: 'wallet_not_found' };
 
@@ -185,4 +187,3 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
-

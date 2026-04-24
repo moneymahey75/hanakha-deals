@@ -19,6 +19,7 @@ interface SubscriptionPlan {
   tsp_description: string;
   tsp_price: number;
   tsp_duration_days: number;
+  tsp_type?: string;
   tsp_features: string[];
 }
 
@@ -55,6 +56,9 @@ const Payment: React.FC = () => {
     walletName: null,
   });
 
+  const [workingWalletReservedBalance, setWorkingWalletReservedBalance] = useState(0);
+  const [useReservedBalance, setUseReservedBalance] = useState(false);
+
   // FIX: Initialize transaction state from session storage
   const initialTransactionState: TransactionState = (() => {
     try {
@@ -87,7 +91,28 @@ const Payment: React.FC = () => {
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
   const hasActivePlan = user?.hasActiveSubscription;
-  const hasPaidSuccessfully = hasActivePlan || (transaction.status === 'success' && !!transaction.hash);
+  const hasPaidSuccessfully = hasActivePlan || transaction.status === 'success';
+  const isUpgradePlanUi = String(selectedPlan?.tsp_type || '').toLowerCase() === 'upgrade';
+  const canUseReservedForUpgradeUi =
+    isUpgradePlanUi && workingWalletReservedBalance >= Number(selectedPlan?.tsp_price || 0);
+
+  const loadWorkingWalletReservedBalance = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('tbl_wallets')
+        .select('tw_reserved_balance')
+        .eq('tw_user_id', user.id)
+        .eq('tw_currency', 'USDT')
+        .eq('tw_wallet_type', 'working')
+        .maybeSingle();
+      if (error) throw error;
+      setWorkingWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
+    } catch (error) {
+      console.error('Failed to load reserved wallet balance:', error);
+      setWorkingWalletReservedBalance(0);
+    }
+  }, [user?.id]);
 
   // Load saved wallet connections on component mount
   useEffect(() => {
@@ -114,6 +139,10 @@ const Payment: React.FC = () => {
 
     loadSavedWalletConnections();
   }, [user]);
+
+  useEffect(() => {
+    loadWorkingWalletReservedBalance();
+  }, [loadWorkingWalletReservedBalance]);
 
   // Configure wallet service with admin settings
   useEffect(() => {
@@ -175,6 +204,14 @@ const Payment: React.FC = () => {
     const wallets = walletService.detectWallets();
     setAvailableWallets(wallets);
   }, [location.state, navigate, notification, walletService]);
+
+  useEffect(() => {
+    const isUpgrade = String(selectedPlan?.tsp_type || '').toLowerCase() === 'upgrade';
+    const canUseReserved = isUpgrade && workingWalletReservedBalance >= Number(selectedPlan?.tsp_price || 0);
+    if (!canUseReserved) {
+      setUseReservedBalance(false);
+    }
+  }, [selectedPlan?.tsp_id, selectedPlan?.tsp_type, selectedPlan?.tsp_price, workingWalletReservedBalance]);
 
 	  // FIX: Restore wallet state from service on re-render if connection is active
 	  useEffect(() => {
@@ -345,12 +382,86 @@ const Payment: React.FC = () => {
       return;
     }
 
+    const planType = String(selectedPlan.tsp_type || '').toLowerCase();
+    const isUpgradePlan = planType === 'upgrade';
+
     // FIX: Re-check active subscription before payment
-    if (user.hasActiveSubscription) {
+    if (user.hasActiveSubscription && !isUpgradePlan) {
       notification.showInfo('Already Subscribed', 'You already have an active subscription.');
       // Set local state to success to enforce the success UI path immediately
       setTransaction(prev => ({ ...prev, status: 'success' }));
       return;
+    }
+
+    if (useReservedBalance && isUpgradePlan) {
+      if (workingWalletReservedBalance < selectedPlan.tsp_price) {
+        notification.showError(
+          'Insufficient Reserved Balance',
+          `Reserved balance is ${workingWalletReservedBalance.toFixed(2)} USDT, but the plan costs ${selectedPlan.tsp_price} USDT.`
+        );
+        return;
+      }
+
+      setTransaction({
+        isProcessing: true,
+        hash: null,
+        status: 'pending',
+        error: null,
+        distributionSteps: ['Paid from reserved balance'],
+      });
+      sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+
+      try {
+        const { data, error } = await supabase.rpc('create_subscription_payment_from_reserved', {
+          p_user_id: user.id,
+          p_plan_id: selectedPlan.tsp_id,
+          p_currency: 'USDT',
+          p_gateway_response: {
+            source: 'reserved_wallet',
+            used_reserved: selectedPlan.tsp_price,
+            processed_at: new Date().toISOString(),
+          },
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        setTransaction({
+          isProcessing: false,
+          hash: null,
+          status: 'success',
+          error: null,
+          distributionSteps: ['Paid from reserved balance'],
+        });
+
+        sessionStorage.setItem(PAYMENT_SUCCESS_KEY, JSON.stringify({
+          success: true,
+          tx: {
+            isProcessing: false,
+            hash: null,
+            status: 'success',
+            error: null,
+            distributionSteps: ['Paid from reserved balance'],
+          }
+        }));
+
+        await Promise.all([fetchUserData(user.id), loadWorkingWalletReservedBalance()]);
+        notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance.');
+        return;
+      } catch (error: any) {
+        const message = extractEdgeFunctionErrorMessage(error) || error?.message || 'Upgrade payment failed';
+        setTransaction({
+          isProcessing: false,
+          hash: null,
+          status: 'error',
+          error: message,
+          distributionSteps: ['Paid from reserved balance'],
+        });
+        sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+        notification.showError('Payment Failed', message);
+        return;
+      }
     }
 
     if (!walletState.isConnected || !walletState.address) {
@@ -689,7 +800,7 @@ const Payment: React.FC = () => {
 
             {/* Payment Section */}
             <div className="space-y-6">
-              {!walletState.isConnected && !hasActivePlan ? (
+              {!walletState.isConnected && !hasActivePlan && !canUseReservedForUpgradeUi ? (
                   <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 shadow-xl">
                     <h2 className="text-2xl font-semibold text-white mb-6 flex items-center">
                       <Wallet className="w-6 h-6 mr-3 text-purple-300" />
@@ -731,35 +842,79 @@ const Payment: React.FC = () => {
                         </div>
                     )}
 
-                    <WalletSelector
-                        wallets={availableWallets}
-                        onConnect={handleWalletConnect}
-                        isConnecting={isConnecting}
-                    />
-                  </div>
-              ) : (
-                  <>
-                    {walletState.isConnected && (
-                        <WalletInfoComponent
-                            wallet={walletState}
-                            onDisconnect={handleWalletDisconnect}
-                            settings={settings}
-                        />
-                    )}
-
-                    {/* Render PaymentSection. It will display the success UI if transaction.status is 'success' (which is enforced by hasActivePlan) */}
-                    <PaymentSection
-                        onPayment={handlePayment}
-                        // If plan is active, ensure we pass a valid transaction object
-                        // so PaymentSection can display the success UI.
-                        transaction={transaction}
-                        distributionSteps={transaction.distributionSteps}
-                        planPrice={selectedPlan.tsp_price}
-                        settings={settings}
-                        onGoToDashboard={handleGoToDashboard}
-                    />
-                  </>
-              )}
+	                    <WalletSelector
+	                        wallets={availableWallets}
+	                        onConnect={handleWalletConnect}
+	                        isConnecting={isConnecting}
+	                    />
+	                  </div>
+	              ) : (
+	                <>
+	                  {canUseReservedForUpgradeUi && !hasActivePlan && (
+	                    <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 shadow-xl">
+	                      <h2 className="text-xl font-semibold text-white mb-3">Pay From Reserved Balance</h2>
+	                      <p className="text-purple-200 text-sm mb-4">
+	                        Reserved balance (working wallet): {workingWalletReservedBalance.toFixed(2)} USDT
+	                      </p>
+	
+	                      <label className="flex items-center space-x-3 text-sm text-purple-100 mb-4">
+	                        <input
+	                          type="checkbox"
+	                          className="h-4 w-4"
+	                          checked={useReservedBalance}
+	                          onChange={(e) => setUseReservedBalance(e.target.checked)}
+	                          disabled={!canUseReservedForUpgradeUi}
+	                        />
+	                        <span>Use reserved balance for this upgrade</span>
+	                      </label>
+	
+	                      {useReservedBalance && transaction.status !== 'success' && (
+	                        <button
+	                          onClick={handlePayment}
+	                          disabled={transaction.isProcessing}
+	                          className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium transition-all duration-200 disabled:cursor-not-allowed shadow-lg"
+	                        >
+	                          <span>{transaction.isProcessing ? 'Processing...' : `Pay ${selectedPlan.tsp_price} USDT`}</span>
+	                        </button>
+	                      )}
+	
+	                      {useReservedBalance && transaction.status === 'success' && (
+	                        <button
+	                          onClick={handleGoToDashboard}
+	                          className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-medium transition-all duration-200 shadow-lg"
+	                        >
+	                          <span>Go to Dashboard</span>
+	                        </button>
+	                      )}
+	
+	                      {useReservedBalance && transaction.status === 'error' && transaction.error && (
+	                        <div className="mt-4 p-4 bg-red-500/20 border border-red-400/30 rounded-xl text-red-100 text-sm">
+	                          {transaction.error}
+	                        </div>
+	                      )}
+	                    </div>
+	                  )}
+	
+	                  {walletState.isConnected && (
+	                    <WalletInfoComponent
+	                      wallet={walletState}
+	                      onDisconnect={handleWalletDisconnect}
+	                      settings={settings}
+	                    />
+	                  )}
+	
+	                  {walletState.isConnected && (!useReservedBalance || !canUseReservedForUpgradeUi) && (
+	                    <PaymentSection
+	                      onPayment={handlePayment}
+	                      transaction={transaction}
+	                      distributionSteps={transaction.distributionSteps}
+	                      planPrice={selectedPlan.tsp_price}
+	                      settings={settings}
+	                      onGoToDashboard={handleGoToDashboard}
+	                    />
+	                  )}
+	                </>
+	              )}
             </div>
           </div>
 

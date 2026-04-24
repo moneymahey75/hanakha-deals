@@ -32,9 +32,11 @@ import {
 interface WalletData {
   tw_id: string;
   tw_balance: number;
+  tw_reserved_balance?: number;
   tw_currency: string;
   tw_wallet_address?: string;
   tw_is_active: boolean;
+  tw_wallet_type?: string;
 }
 
 interface Transaction {
@@ -160,7 +162,8 @@ const WalletDashboard: React.FC = () => {
   }, [withdrawalRequests]);
 
   const walletTotalBalance = Number(wallet?.tw_balance || 0);
-  const withdrawableBalance = Math.max(0, walletTotalBalance - Number(pendingWithdrawalTotal || 0));
+  const walletReservedBalance = Number(wallet?.tw_reserved_balance || 0);
+  const withdrawableBalance = Math.max(0, walletTotalBalance - walletReservedBalance - Number(pendingWithdrawalTotal || 0));
 
   useEffect(() => {
     if (user?.id) {
@@ -182,6 +185,7 @@ const WalletDashboard: React.FC = () => {
           .select('*')
           .eq('tw_user_id', user.id)
           .eq('tw_currency', 'USDT')
+          .eq('tw_wallet_type', 'working')
           .single();
 
       if (error && error.code !== 'PGRST116') {
@@ -319,6 +323,7 @@ const WalletDashboard: React.FC = () => {
         .from('tbl_withdrawal_requests')
         .select('twr_id, twr_wallet_connection_id, twr_destination_address, twr_amount, twr_commission_percent, twr_commission_amount, twr_net_amount, twr_status, twr_auto_transfer, twr_requested_at, twr_processed_at, twr_blockchain_tx, twr_failure_reason')
         .eq('twr_user_id', user.id)
+        .eq('twr_wallet_type', 'working')
         .order('twr_requested_at', { ascending: false });
 
       if (error) throw error;
@@ -370,8 +375,8 @@ const WalletDashboard: React.FC = () => {
     if (withdrawalAmount > withdrawableBalance) {
       notification.showError(
         'Insufficient Balance',
-        pendingWithdrawalTotal > 0
-          ? `Withdrawable balance is ${withdrawableBalance.toFixed(2)} USDT (some funds are reserved in pending withdrawals).`
+        pendingWithdrawalTotal > 0 || walletReservedBalance > 0
+          ? `Withdrawable balance is ${withdrawableBalance.toFixed(2)} USDT (some funds are reserved).`
           : 'Your wallet balance is too low for this withdrawal.'
       );
       return;
@@ -394,7 +399,8 @@ const WalletDashboard: React.FC = () => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            amount: withdrawalAmount
+            amount: withdrawalAmount,
+            walletType: 'working'
           })
         });
 

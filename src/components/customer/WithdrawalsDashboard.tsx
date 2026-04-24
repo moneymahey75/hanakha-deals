@@ -42,6 +42,7 @@ const WithdrawalsDashboard: React.FC = () => {
   const notification = useNotification();
 
   const [walletBalance, setWalletBalance] = useState(0);
+  const [walletReservedBalance, setWalletReservedBalance] = useState(0);
   const [reservedBalance, setReservedBalance] = useState(0);
   const [defaultWallet, setDefaultWallet] = useState<DefaultWalletConnection | null>(null);
 
@@ -80,8 +81,8 @@ const WithdrawalsDashboard: React.FC = () => {
   }, [user?.id, currentPage, pageSize]);
 
   const withdrawableBalance = useMemo(() => {
-    return Math.max(0, Number(walletBalance || 0) - Number(reservedBalance || 0));
-  }, [walletBalance, reservedBalance]);
+    return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(reservedBalance || 0));
+  }, [walletBalance, walletReservedBalance, reservedBalance]);
 
   const isStepValid = (amount: number, step: number) => {
     if (step <= 0) return true;
@@ -127,13 +128,15 @@ const WithdrawalsDashboard: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('tbl_wallets')
-        .select('tw_balance')
+        .select('tw_balance, tw_reserved_balance')
         .eq('tw_user_id', user.id)
         .eq('tw_currency', 'USDT')
+        .eq('tw_wallet_type', 'working')
         .maybeSingle();
 
       if (error) throw error;
       setWalletBalance(Number(data?.tw_balance ?? 0));
+      setWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
     } catch (error) {
       console.error('Failed to load wallet balance:', error);
     }
@@ -146,6 +149,7 @@ const WithdrawalsDashboard: React.FC = () => {
         .from('tbl_withdrawal_requests')
         .select('twr_amount, twr_status')
         .eq('twr_user_id', user.id)
+        .eq('twr_wallet_type', 'working')
         .in('twr_status', pendingWithdrawalStatuses);
 
       if (error) throw error;
@@ -224,6 +228,7 @@ const WithdrawalsDashboard: React.FC = () => {
           { count: 'exact' }
         )
         .eq('twr_user_id', user.id)
+        .eq('twr_wallet_type', 'working')
         .order('twr_requested_at', { ascending: false })
         .range(from, to);
 
@@ -268,8 +273,8 @@ const WithdrawalsDashboard: React.FC = () => {
     if (parsedWithdrawalAmount > withdrawableBalance) {
       notification.showError(
         'Insufficient Balance',
-        reservedBalance > 0
-          ? `Withdrawable balance is ${withdrawableBalance.toFixed(2)} USDT (some funds are reserved in pending withdrawals).`
+        reservedBalance > 0 || walletReservedBalance > 0
+          ? `Withdrawable balance is ${withdrawableBalance.toFixed(2)} USDT (some funds are reserved).`
           : 'Your wallet balance is too low for this withdrawal.'
       );
       return;
@@ -293,6 +298,7 @@ const WithdrawalsDashboard: React.FC = () => {
           },
           body: JSON.stringify({
             amount: parsedWithdrawalAmount,
+            walletType: 'working',
           }),
         });
 

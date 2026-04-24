@@ -20,6 +20,7 @@ const EarningsDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [walletReservedBalance, setWalletReservedBalance] = useState(0);
   const [reservedWithdrawals, setReservedWithdrawals] = useState(0);
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
@@ -74,13 +75,15 @@ const EarningsDashboard: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('tbl_wallets')
-        .select('tw_balance')
+        .select('tw_balance, tw_reserved_balance')
         .eq('tw_user_id', user.id)
         .eq('tw_currency', 'USDT')
+        .eq('tw_wallet_type', 'working')
         .maybeSingle();
 
       if (error) throw error;
       setWalletBalance(toAmount((data as any)?.tw_balance));
+      setWalletReservedBalance(toAmount((data as any)?.tw_reserved_balance));
     } catch (error) {
       console.error('Failed to load wallet balance:', error);
     }
@@ -93,6 +96,7 @@ const EarningsDashboard: React.FC = () => {
         .from('tbl_withdrawal_requests')
         .select('twr_amount, twr_status')
         .eq('twr_user_id', user.id)
+        .eq('twr_wallet_type', 'working')
         .in('twr_status', ['pending', 'processing', 'approved']);
 
       if (error) throw error;
@@ -104,8 +108,8 @@ const EarningsDashboard: React.FC = () => {
   };
 
   const withdrawableBalance = useMemo(() => {
-    return Math.max(0, walletBalance - reservedWithdrawals);
-  }, [walletBalance, reservedWithdrawals]);
+    return Math.max(0, walletBalance - walletReservedBalance - reservedWithdrawals);
+  }, [walletBalance, walletReservedBalance, reservedWithdrawals]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

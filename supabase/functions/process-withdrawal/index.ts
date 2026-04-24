@@ -68,6 +68,7 @@ const processTransfer = async (params: {
   amount: number;
   netAmount: number;
   destinationAddress: string;
+  walletType: 'working' | 'non_working';
   adminPaymentWallet: string;
   usdtAddress: string;
   paymentMode: any;
@@ -84,6 +85,7 @@ const processTransfer = async (params: {
     amount,
     netAmount,
     destinationAddress,
+    walletType,
     adminPaymentWallet,
     usdtAddress,
     paymentMode,
@@ -95,6 +97,7 @@ const processTransfer = async (params: {
     .select('tw_id, tw_balance')
     .eq('tw_user_id', userId)
     .eq('tw_currency', 'USDT')
+    .eq('tw_wallet_type', walletType)
     .maybeSingle();
 
   if (walletError || !wallet) {
@@ -399,6 +402,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const walletType: 'working' | 'non_working' =
+      String((withdrawal as any).twr_wallet_type || 'working') === 'non_working' ? 'non_working' : 'working';
+
     const txHash = await processTransfer({
       supabase,
       requestId: withdrawalId,
@@ -406,6 +412,7 @@ Deno.serve(async (req: Request) => {
       amount: Number(withdrawal.twr_amount),
       netAmount: Number(withdrawal.twr_net_amount),
       destinationAddress: withdrawal.twr_destination_address,
+      walletType,
       adminPaymentWallet,
       usdtAddress,
       paymentMode,

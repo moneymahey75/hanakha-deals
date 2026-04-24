@@ -65,8 +65,9 @@ Deno.serve(async (req: Request) => {
 
     const { data: walletsData, error: walletsError } = await supabase
       .from('tbl_wallets')
-      .select('tw_user_id, tw_balance, tw_currency, tw_created_at')
+      .select('tw_user_id, tw_balance, tw_reserved_balance, tw_currency, tw_created_at, tw_wallet_type')
       .eq('tw_currency', 'USDT')
+      .eq('tw_wallet_type', 'working')
       .order('tw_balance', { ascending: false });
 
     if (walletsError) {
@@ -172,6 +173,8 @@ Deno.serve(async (req: Request) => {
             user_type: userType,
             user_is_dummy: dummyByUserId.get(String(wallet.tw_user_id)) ?? false,
             wallet_balance: Number(wallet.tw_balance),
+            wallet_reserved_balance: Number(wallet.tw_reserved_balance || 0),
+            wallet_type: String(wallet.tw_wallet_type || 'working'),
             total_earned: totalEarned,
             total_spent: totalSpent,
             transaction_count: txData?.length || 0,
@@ -189,6 +192,8 @@ Deno.serve(async (req: Request) => {
             user_type: (user?.tu_user_type as 'customer' | 'company' | 'admin') || 'customer',
             user_is_dummy: dummyByUserId.get(String(wallet.tw_user_id)) ?? false,
             wallet_balance: Number(wallet.tw_balance),
+            wallet_reserved_balance: Number(wallet.tw_reserved_balance || 0),
+            wallet_type: String(wallet.tw_wallet_type || 'working'),
             total_earned: 0,
             total_spent: 0,
             transaction_count: 0,
