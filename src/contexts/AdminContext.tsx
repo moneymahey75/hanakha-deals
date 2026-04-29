@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { adminApi } from '../lib/adminApi';
 import { supabase } from '../lib/supabase';
 
@@ -11,6 +11,13 @@ interface GeneralSettings {
   timezone: string;
   maintenanceMode: boolean;
   maintenanceMessage: string;
+  maintenanceNoticeEnabled: boolean;
+  maintenanceNoticeMessage: string;
+  maintenanceWindowStartAt: string | null;
+  maintenanceWindowEndAt: string | null;
+  maintenanceAllowedIps: string[];
+  afterLaunchPlanConfig?: any;
+  launchPhase?: 'prelaunch' | 'launched';
   emailVerificationRequired: boolean;
   mobileVerificationRequired: boolean;
   eitherVerificationRequired: boolean;
@@ -120,15 +127,23 @@ export const useAdmin = () => {
 
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
+  const settingsRequestIdRef = useRef(0);
 
   // Default settings as fallback
   const defaultSettings: GeneralSettings = {
     siteName: 'ShopClix',
-    logoUrl: '/shopclick_logo.png',
+    logoUrl: '/shopclix_logo.png',
     dateFormat: 'DD/MM/YYYY',
     timezone: 'UTC',
     maintenanceMode: false,
     maintenanceMessage: 'We’re doing some maintenance right now. Please check back shortly.',
+    maintenanceNoticeEnabled: false,
+    maintenanceNoticeMessage: '',
+    maintenanceWindowStartAt: null,
+    maintenanceWindowEndAt: null,
+    maintenanceAllowedIps: [],
+    afterLaunchPlanConfig: null,
+    launchPhase: 'prelaunch',
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
     eitherVerificationRequired: true,
@@ -253,7 +268,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // Function to load settings from database
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (options?: { forceFresh?: boolean }) => {
+    const requestId = ++settingsRequestIdRef.current;
     try {
       setLoading(true);
 
@@ -262,9 +278,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
-      const fetchPromise = inFlightAdminSettingsRequest ?? fetchSettingsRows();
+      const forceFresh = options?.forceFresh === true;
+      const fetchPromise = forceFresh ? fetchSettingsRows() : (inFlightAdminSettingsRequest ?? fetchSettingsRows());
       inFlightAdminSettingsRequest = fetchPromise;
       const settingsData = await Promise.race([fetchPromise, timeoutPromise]) as any;
+
+      // Ignore stale responses (prevents older in-flight requests from overwriting newer settings)
+      if (requestId !== settingsRequestIdRef.current) return;
 
       if (settingsData && settingsData.length > 0) {
         const loadedSettings: Partial<GeneralSettings> = {};
@@ -300,6 +320,39 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'maintenance_message':
                 loadedSettings.maintenanceMessage = String(value || '');
                 break;
+              case 'maintenance_notice_enabled':
+                loadedSettings.maintenanceNoticeEnabled = Boolean(value);
+                break;
+              case 'maintenance_notice_message':
+                loadedSettings.maintenanceNoticeMessage = String(value || '');
+                break;
+              case 'maintenance_window_start_at': {
+                const v = value === null || value === undefined ? null : String(value || '').trim();
+                loadedSettings.maintenanceWindowStartAt = v ? v : null;
+                break;
+              }
+              case 'maintenance_window_end_at': {
+                const v = value === null || value === undefined ? null : String(value || '').trim();
+                loadedSettings.maintenanceWindowEndAt = v ? v : null;
+                break;
+              }
+              case 'maintenance_allowed_ips': {
+                const ips = Array.isArray(value)
+                  ? value
+                  : (typeof value === 'string' && value.trim().length > 0 ? value.split(/[,\n\r]+/g) : []);
+                loadedSettings.maintenanceAllowedIps = ips
+                  .map((ip: any) => String(ip || '').trim())
+                  .filter(Boolean);
+                break;
+              }
+              case 'after_launch_plan_config':
+                loadedSettings.afterLaunchPlanConfig = value;
+                break;
+              case 'launch_phase': {
+                const phase = String(value || '').trim().toLowerCase();
+                loadedSettings.launchPhase = phase === 'launched' ? 'launched' : 'prelaunch';
+                break;
+              }
               case 'email_verification_required':
                 loadedSettings.emailVerificationRequired = value;
                 break;
@@ -565,6 +618,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           adminPaymentWallet: effectiveAdminPaymentWallet
         };
 
+        // Ignore stale responses again after heavy processing
+        if (requestId !== settingsRequestIdRef.current) return;
+
         setSettings(mergedSettings);
         setHasLoadedSettings(true);
       } else {
@@ -579,8 +635,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSettings(defaultSettings);
       }
     } finally {
-      inFlightAdminSettingsRequest = null;
-      setLoading(false);
+      if (requestId === settingsRequestIdRef.current) {
+        inFlightAdminSettingsRequest = null;
+        setLoading(false);
+      }
     }
   }, [fetchSettingsRows]);
 
@@ -606,7 +664,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const refreshSettings = useCallback(async () => {
-    await loadSettings();
+    // Force fresh fetch so we don't reuse a stale in-flight request.
+    await loadSettings({ forceFresh: true });
   }, [loadSettings]);
 
   // Memoize the value object to prevent unnecessary re-renders of child components

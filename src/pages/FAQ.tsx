@@ -22,21 +22,21 @@ const FAQ: React.FC = () => {
       },
       {
         question: "How much money can I make?",
-        answer: "Earnings vary greatly depending on your effort, dedication, and ability to build and maintain a network. We do not guarantee specific income levels. Success with referrals requires consistent work, effective marketing, and strong relationship-building skills. Some members earn modest supplemental income while others build substantial businesses."
+        answer: "Earnings depend on your activity and referrals. We do not guarantee any specific income or results. You can track your earnings and transactions inside your dashboard."
       },
       {
         question: "Is this a pyramid scheme?",
-        answer: "No, our platform is a legitimate referral program that focuses on actual product sales and services. Unlike pyramid schemes, we have real products/services, sustainable compensation plans, and comply with applicable FTC regulations. Members earn money primarily through sales, not just recruitment."
+        answer: "We are a referral-based platform where users can earn from direct referrals based on the current plan rules shown in the app. Please review our policies and ensure participation is permitted in your region."
       },
       {
         question: "What countries do you operate in?",
-        answer: "We currently operate in over 150 countries worldwide. However, availability may vary based on local regulations. Please check our supported countries list during registration or contact support to confirm availability in your region."
+        answer: "Availability depends on local regulations and our operational support. If registration is available in your region, you’ll be able to complete signup and payments normally."
       }
     ],
     account: [
       {
         question: "How do I create an account?",
-        answer: "Creating an account is simple: 1) Click 'Join as Customer' or 'Join as Company' on our homepage, 2) Fill out the registration form with accurate information, 3) Verify your email address, 4) Complete identity verification if required, 5) Choose and pay for your subscription plan. You'll then have full access to your dashboard."
+        answer: "1) Click 'Join as Customer' or 'Join as Company', 2) Fill the registration form, 3) Verify via OTP (and email if enabled), 4) Choose and pay for your plan. You’ll then have access to your dashboard."
       },
       {
         question: "Can I change my sponsor/upline after registration?",
@@ -44,47 +44,47 @@ const FAQ: React.FC = () => {
       },
       {
         question: "What if I forget my password?",
-        answer: "Use the 'Forgot Password' link on the login page. Enter your email address and we'll send you a secure reset link. Follow the instructions in the email to create a new password. If you don't receive the email, check your spam folder or contact support."
+        answer: "Use the 'Forgot Password' link on the login page. Enter your email address and follow the reset instructions. If you don’t receive the email, check spam/junk and try again."
       },
       {
         question: "How do I update my profile information?",
-        answer: "Log into your dashboard and navigate to 'Profile Settings' or 'Account Settings'. You can update most information including contact details, payment methods, and preferences. Some changes may require verification for security purposes."
+        answer: "Log into your dashboard and open your profile/account settings. Some fields may require verification before they can be changed."
       }
     ],
     payments: [
       {
         question: "What payment methods do you accept?",
-        answer: "We accept major credit cards (Visa, MasterCard, American Express), bank transfers, and cryptocurrency payments through our secure blockchain integration. All payments are processed through encrypted, PCI-compliant systems for maximum security."
+        answer: "We currently accept cryptocurrency payments in USDT (BEP20 / Binance Smart Chain). You can pay using supported wallets like MetaMask, Trust Wallet, or SafePal."
       },
       {
         question: "When and how are commissions paid?",
-        answer: "Commissions are calculated daily and paid weekly every Friday. Payments are made to your registered payment method (bank account, digital wallet, or cryptocurrency wallet). Minimum payout threshold is $50. You can track all earnings in real-time through your dashboard."
+        answer: "Earnings are credited to your wallet based on completed/verified payments and the current plan rules. You can view all credits and debits in your Transactions and Earnings sections."
       },
       {
         question: "Are there any fees for withdrawals?",
-        answer: "Standard bank transfers have a $2 processing fee. Cryptocurrency withdrawals have network fees that vary by currency. There are no fees for the first withdrawal each month. Premium members enjoy reduced or waived fees on all transactions."
+        answer: "Withdrawal fees (if any) depend on blockchain network costs and any platform processing rules shown at the time you request a withdrawal. Withdrawals are typically processed instantly after you submit a request."
       },
       {
         question: "What is your refund policy?",
-        answer: "We offer a 30-day money-back guarantee for new subscribers who haven't earned any commissions. Refund requests must be submitted within 30 days of purchase. Processing fees may be deducted. Refunds are processed within 5-10 business days to your original payment method."
+        answer: "We offer a 30-day money-back guarantee for new subscribers who have not earned any commissions. Refund requests must be submitted within 30 days of purchase. Refunds are processed within 5–10 business days, and processing/transaction fees may be deducted."
       }
     ],
     security: [
       {
         question: "How secure is my personal information?",
-        answer: "We use bank-grade security including SSL encryption, secure data centers, and regular security audits. Your personal information is never sold to third parties. We comply with GDPR, CCPA, and other privacy regulations. All staff undergo security training and background checks."
+        answer: "We use standard security best practices such as encrypted connections and access controls. Always use a strong password and keep your account credentials private."
       },
       {
         question: "Do you offer two-factor authentication?",
-        answer: "Yes, we strongly recommend enabling two-factor authentication (2FA) for enhanced account security. You can set up 2FA using SMS, email, or authenticator apps like Google Authenticator. This adds an extra layer of protection to your account."
+        answer: "If OTP/2FA options are available in your account settings, we strongly recommend enabling them for extra protection."
       },
       {
         question: "What should I do if I suspect unauthorized access?",
-        answer: "Immediately change your password and contact our security team at security@mlmplatform.com. We'll investigate the issue, secure your account, and provide guidance on additional security measures. Monitor your account activity regularly and report any suspicious transactions."
+        answer: "Change your password immediately and review your recent logins/transactions. If you see anything suspicious, contact support from the Contact page."
       },
       {
         question: "How do you protect against fraud?",
-        answer: "We employ advanced fraud detection systems, identity verification processes, and continuous monitoring. Suspicious activities trigger automatic alerts and account reviews. We also educate members about common scams and provide reporting mechanisms for fraudulent activities."
+        answer: "We monitor for suspicious activity and may require additional verification in some cases. Never share OTPs, passwords, or private keys with anyone."
       }
     ],
     technical: [
@@ -102,7 +102,7 @@ const FAQ: React.FC = () => {
       },
       {
         question: "How do I report a technical bug?",
-        answer: "Report bugs through our support portal or email tech-support@mlmplatform.com. Include details about your browser, device, steps to reproduce the issue, and any error messages. Screenshots are helpful. We prioritize bug fixes based on severity and user impact."
+        answer: "Report bugs through the Contact page. Include your device/browser, steps to reproduce, and screenshots if possible."
       }
     ]
   };

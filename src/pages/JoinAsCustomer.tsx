@@ -23,8 +23,8 @@ const JoinAsCustomer: React.FC = () => {
     },
     {
       icon: Users,
-      title: "Binary Tree System",
-      description: "Fair and balanced compensation structure with automated left-first placement for optimal growth.",
+      title: "Referral Network",
+      description: "Build your team with direct referrals. Simple structure, transparent tracking, and easy to understand.",
       color: "from-blue-500 to-indigo-600"
     },
     {

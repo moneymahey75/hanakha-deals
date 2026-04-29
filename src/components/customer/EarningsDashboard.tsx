@@ -201,13 +201,6 @@ const EarningsDashboard: React.FC = () => {
           </div>
           <p className="text-2xl font-bold text-green-600 mt-2">{allTimeCredits.toFixed(2)} USDT</p>
         </div>
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <div className="flex items-center space-x-2">
-            <Clock className="h-5 w-5 text-blue-600" />
-            <span className="text-sm font-medium text-blue-800">This Month Earnings</span>
-          </div>
-          <p className="text-2xl font-bold text-blue-600 mt-2">{monthCredits.toFixed(2)} USDT</p>
-        </div>
         <div className="bg-indigo-50 p-4 rounded-lg">
           <div className="flex items-center space-x-2">
             <Clock className="h-5 w-5 text-indigo-600" />
@@ -222,10 +215,17 @@ const EarningsDashboard: React.FC = () => {
           </div>
           <p className="text-2xl font-bold text-red-600 mt-2">{allTimeDebits.toFixed(2)} USDT</p>
         </div>
+        <div className="bg-yellow-50 p-4 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <Clock className="h-5 w-5 text-yellow-600" />
+            <span className="text-sm font-medium text-yellow-800">Reserved (For Upgrade)</span>
+          </div>
+          <p className="text-2xl font-bold text-yellow-700 mt-2">{walletReservedBalance.toFixed(2)} USDT</p>
+        </div>
         <div className="bg-blue-50 p-4 rounded-lg">
           <div className="flex items-center space-x-2">
             <Clock className="h-5 w-5 text-blue-600" />
-            <span className="text-sm font-medium text-blue-800">Reserved Withdrawals</span>
+            <span className="text-sm font-medium text-blue-800">Pending Withdrawals</span>
           </div>
           <p className="text-2xl font-bold text-blue-600 mt-2">{reservedWithdrawals.toFixed(2)} USDT</p>
         </div>
@@ -235,7 +235,6 @@ const EarningsDashboard: React.FC = () => {
             <span className="text-sm font-medium text-indigo-800">Withdrawable</span>
           </div>
           <p className="text-2xl font-bold text-indigo-600 mt-2">{withdrawableBalance.toFixed(2)} USDT</p>
-          <p className="text-xs text-indigo-700 mt-1">Total: {walletBalance.toFixed(2)} USDT</p>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
 import { Menu, X, User, LogOut, Settings, Home, ChevronDown, Building, CreditCard, Rocket } from 'lucide-react';
+import { getMaintenanceNoticeState } from '../../utils/maintenanceWindow';
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -49,8 +50,34 @@ const Navbar: React.FC = () => {
     }
   };
 
+  const notice = getMaintenanceNoticeState(settings as any);
+
   return (
     <nav className="bg-white/95 backdrop-blur-md shadow-lg fixed w-full top-0 z-50 border-b border-gray-100">
+      {notice.showBanner && (
+        <div
+          className={
+            notice.urgent
+              ? 'bg-amber-500 text-white'
+              : 'bg-indigo-50 text-indigo-900 border-b border-indigo-100'
+          }
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 text-sm flex items-center justify-between gap-3">
+            <div className="truncate">
+              <span className="font-semibold">Maintenance Notice:</span>{' '}
+              {notice.message || 'Scheduled maintenance is planned.'}
+              {notice.startsAt ? (
+                <span className={notice.urgent ? 'ml-2 font-semibold' : 'ml-2 text-indigo-700'}>
+                  ({notice.startsAt.toLocaleString()})
+                </span>
+              ) : null}
+            </div>
+            <div className={notice.urgent ? 'text-white font-semibold whitespace-nowrap' : 'text-indigo-700 whitespace-nowrap'}>
+              {notice.urgent ? 'Starting in few minutes' : 'Upcoming'}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
@@ -63,7 +90,7 @@ const Navbar: React.FC = () => {
                   style={{ width: '180px' }}
                   onError={(e) => {
                     // Fallback to loading GIF with proper sizing
-                    (e.target as HTMLImageElement).src = '/shopclick_logo.png';
+                    (e.target as HTMLImageElement).src = '/shopclix_logo.png';
                     (e.target as HTMLImageElement).className = 'object-contain';
                   }}
                 />

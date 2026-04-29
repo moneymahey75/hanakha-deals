@@ -66,6 +66,7 @@ Deno.serve(async (req: Request) => {
       description,
       price,
       durationDays,
+      couponDays,
       features,
       parentIncome,
       isActive,
@@ -76,6 +77,7 @@ Deno.serve(async (req: Request) => {
     const normalizedPlanType = String(planType || '').trim();
     const normalizedPrice = Number(price);
     const normalizedDurationDays = Number(durationDays);
+    const normalizedCouponDays = Math.trunc(Number(couponDays ?? 0));
 
     // durationDays can be 0 for "lifetime"
     if (!normalizedName || !normalizedPlanType || !Number.isFinite(normalizedPrice) || normalizedPrice <= 0 || !Number.isFinite(normalizedDurationDays) || normalizedDurationDays < 0) {
@@ -93,6 +95,7 @@ Deno.serve(async (req: Request) => {
           tsp_description: description,
           tsp_price: normalizedPrice,
           tsp_duration_days: Math.trunc(normalizedDurationDays),
+          tsp_coupon_days: Math.max(0, normalizedCouponDays),
           tsp_features: features,
           tsp_parent_income: parentIncome,
           tsp_is_active: isActive
@@ -110,6 +113,7 @@ Deno.serve(async (req: Request) => {
           tsp_description: description,
           tsp_price: normalizedPrice,
           tsp_duration_days: Math.trunc(normalizedDurationDays),
+          tsp_coupon_days: Math.max(0, normalizedCouponDays),
           tsp_features: features,
           tsp_parent_income: parentIncome,
           tsp_is_active: isActive,

@@ -14,6 +14,7 @@ interface SubscriptionPlan {
   tsp_description: string;
   tsp_price: number;
   tsp_duration_days: number;
+  tsp_coupon_days?: number;
   tsp_features: any;
   tsp_parent_income?: number;
   tsp_is_active: boolean;
@@ -36,6 +37,7 @@ const SubscriptionManagement: React.FC = () => {
     description: '',
     price: '',
     duration_days: '30',
+    coupon_days: '0',
     parent_income: '0',
     features: [''],
     is_active: true
@@ -95,6 +97,7 @@ const SubscriptionManagement: React.FC = () => {
         description: formData.description,
         price: parseFloat(formData.price),
         durationDays: parseInt(formData.duration_days),
+        couponDays: parseInt(formData.coupon_days || '0'),
         features: featuresObj,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
@@ -131,6 +134,7 @@ const SubscriptionManagement: React.FC = () => {
         description: formData.description,
         price: parseFloat(formData.price),
         durationDays: parseInt(formData.duration_days),
+        couponDays: parseInt(formData.coupon_days || '0'),
         features: featuresObj,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
@@ -168,6 +172,7 @@ const SubscriptionManagement: React.FC = () => {
         description: plan.tsp_description,
         price: plan.tsp_price,
         durationDays: plan.tsp_duration_days,
+        couponDays: Math.trunc(Number(plan.tsp_coupon_days ?? 0)),
         features: plan.tsp_features,
         parentIncome: plan.tsp_parent_income ?? 0,
         isActive: !plan.tsp_is_active,
@@ -192,6 +197,7 @@ const SubscriptionManagement: React.FC = () => {
       description: plan.tsp_description || '',
       price: plan.tsp_price.toString(),
       duration_days: plan.tsp_duration_days.toString(),
+      coupon_days: Math.trunc(Number(plan.tsp_coupon_days ?? 0)).toString(),
       parent_income: (plan.tsp_parent_income ?? 0).toString(),
       features: featuresArray.length > 0 ? featuresArray : [''],
       is_active: plan.tsp_is_active
@@ -205,6 +211,7 @@ const SubscriptionManagement: React.FC = () => {
       description: '',
       price: '',
       duration_days: '30',
+      coupon_days: '0',
       parent_income: '0',
       features: [''],
       is_active: true
@@ -413,6 +420,21 @@ const SubscriptionManagement: React.FC = () => {
                     placeholder="30"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Coupon Days</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.coupon_days}
+                  onChange={(e) => setFormData({ ...formData, coupon_days: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Number of days user receives daily coupon eligibility from subscription start (0 = none).
+                </p>
               </div>
 
               {activeTab === 'registration' && (

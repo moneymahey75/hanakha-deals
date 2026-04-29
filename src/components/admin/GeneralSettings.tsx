@@ -11,8 +11,14 @@ const GeneralSettings: React.FC = () => {
         logoUrl: settings.logoUrl,
         dateFormat: settings.dateFormat,
         timezone: settings.timezone,
+        launchPhase: settings.launchPhase || 'prelaunch',
         maintenanceMode: settings.maintenanceMode,
-        maintenanceMessage: settings.maintenanceMessage
+        maintenanceMessage: settings.maintenanceMessage,
+        maintenanceNoticeEnabled: settings.maintenanceNoticeEnabled,
+        maintenanceNoticeMessage: settings.maintenanceNoticeMessage,
+        maintenanceWindowStartAt: settings.maintenanceWindowStartAt,
+        maintenanceWindowEndAt: settings.maintenanceWindowEndAt,
+        maintenanceAllowedIps: (settings.maintenanceAllowedIps || []).join('\n')
     });
     const [saving, setSaving] = useState(false);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -24,8 +30,14 @@ const GeneralSettings: React.FC = () => {
             logoUrl: settings.logoUrl,
             dateFormat: settings.dateFormat,
             timezone: settings.timezone,
+            launchPhase: settings.launchPhase || 'prelaunch',
             maintenanceMode: settings.maintenanceMode,
-            maintenanceMessage: settings.maintenanceMessage
+            maintenanceMessage: settings.maintenanceMessage,
+            maintenanceNoticeEnabled: settings.maintenanceNoticeEnabled,
+            maintenanceNoticeMessage: settings.maintenanceNoticeMessage,
+            maintenanceWindowStartAt: settings.maintenanceWindowStartAt,
+            maintenanceWindowEndAt: settings.maintenanceWindowEndAt,
+            maintenanceAllowedIps: (settings.maintenanceAllowedIps || []).join('\n')
         });
     }, [settings]);
 
@@ -37,12 +49,25 @@ const GeneralSettings: React.FC = () => {
         try {
             // Update settings in database
             const updates = [
-                { key: 'site_name', value: JSON.stringify(formData.siteName) },
-                { key: 'logo_url', value: JSON.stringify(formData.logoUrl) },
-                { key: 'date_format', value: JSON.stringify(formData.dateFormat) },
-                { key: 'timezone', value: JSON.stringify(formData.timezone) },
-                { key: 'maintenance_mode', value: JSON.stringify(Boolean(formData.maintenanceMode)) },
-                { key: 'maintenance_message', value: JSON.stringify(String(formData.maintenanceMessage || '')) }
+                // `tss_setting_value` is `jsonb`, so send primitives directly (not JSON-stringified strings).
+                { key: 'site_name', value: String(formData.siteName || '') },
+                { key: 'logo_url', value: String(formData.logoUrl || '') },
+                { key: 'date_format', value: String(formData.dateFormat || '') },
+                { key: 'timezone', value: String(formData.timezone || '') },
+                { key: 'launch_phase', value: String(formData.launchPhase || 'prelaunch') },
+                { key: 'maintenance_mode', value: Boolean(formData.maintenanceMode) },
+                { key: 'maintenance_message', value: String(formData.maintenanceMessage || '') },
+                { key: 'maintenance_notice_enabled', value: Boolean(formData.maintenanceNoticeEnabled) },
+                { key: 'maintenance_notice_message', value: String(formData.maintenanceNoticeMessage || '') },
+                { key: 'maintenance_window_start_at', value: formData.maintenanceWindowStartAt ? String(formData.maintenanceWindowStartAt) : null },
+                { key: 'maintenance_window_end_at', value: formData.maintenanceWindowEndAt ? String(formData.maintenanceWindowEndAt) : null },
+                {
+                    key: 'maintenance_allowed_ips',
+                    value: String(formData.maintenanceAllowedIps || '')
+                        .split(/[,\n\r]+/g)
+                        .map((ip) => ip.trim())
+                        .filter(Boolean)
+                }
             ];
 
             await adminApi.post('admin-upsert-settings', {
@@ -54,7 +79,23 @@ const GeneralSettings: React.FC = () => {
             });
 
             // Update context
-            updateSettings(formData);
+            updateSettings({
+                siteName: formData.siteName,
+                logoUrl: formData.logoUrl,
+                dateFormat: formData.dateFormat,
+                timezone: formData.timezone,
+                launchPhase: formData.launchPhase,
+                maintenanceMode: formData.maintenanceMode,
+                maintenanceMessage: formData.maintenanceMessage,
+                maintenanceNoticeEnabled: formData.maintenanceNoticeEnabled,
+                maintenanceNoticeMessage: formData.maintenanceNoticeMessage,
+                maintenanceWindowStartAt: formData.maintenanceWindowStartAt,
+                maintenanceWindowEndAt: formData.maintenanceWindowEndAt,
+                maintenanceAllowedIps: String(formData.maintenanceAllowedIps || '')
+                    .split(/[,\n\r]+/g)
+                    .map((ip) => ip.trim())
+                    .filter(Boolean)
+            });
 
             // Refresh settings from database to ensure sync
             await refreshSettings();
@@ -81,11 +122,28 @@ const GeneralSettings: React.FC = () => {
         }));
     };
 
-    const handleToggle = (name: 'maintenanceMode') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleToggle = (name: 'maintenanceMode' | 'maintenanceNoticeEnabled') => (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({
             ...prev,
             [name]: e.target.checked
         }));
+    };
+
+    const handleDateTimeLocalChange = (name: 'maintenanceWindowStartAt' | 'maintenanceWindowEndAt') =>
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const value = e.target.value;
+            setFormData(prev => ({
+                ...prev,
+                [name]: value ? new Date(value).toISOString() : null
+            }));
+        };
+
+    const toDateTimeLocalValue = (iso: string | null | undefined) => {
+        if (!iso) return '';
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '';
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
 
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,8 +399,27 @@ const GeneralSettings: React.FC = () => {
                 <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
                     <div className="flex items-center justify-between gap-4">
                         <div>
-                            <h4 className="text-sm font-semibold text-gray-900">Maintenance Mode</h4>
-                            <p className="text-xs text-gray-600 mt-1">When enabled, the public site shows a maintenance page.</p>
+                            <h4 className="text-sm font-semibold text-gray-900">Launch Phase</h4>
+                            <p className="text-xs text-gray-600 mt-1">Controls when upgrade plans are visible to customers.</p>
+                        </div>
+                        <select
+                            id="launchPhase"
+                            name="launchPhase"
+                            value={formData.launchPhase}
+                            onChange={handleChange}
+                            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        >
+                            <option value="prelaunch">Prelaunch</option>
+                            <option value="launched">Launched</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-900">Maintenance</h4>
+                            <p className="text-xs text-gray-600 mt-1">Configure scheduled maintenance, topbar notice, and access allowlist.</p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input
@@ -355,16 +432,94 @@ const GeneralSettings: React.FC = () => {
                         </label>
                     </div>
 
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label htmlFor="maintenanceWindowStartAt" className="block text-sm font-medium text-gray-700 mb-2">
+                                Scheduled Start (optional)
+                            </label>
+                            <input
+                                type="datetime-local"
+                                id="maintenanceWindowStartAt"
+                                value={toDateTimeLocalValue(formData.maintenanceWindowStartAt)}
+                                onChange={handleDateTimeLocalChange('maintenanceWindowStartAt')}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="maintenanceWindowEndAt" className="block text-sm font-medium text-gray-700 mb-2">
+                                Scheduled End (optional)
+                            </label>
+                            <input
+                                type="datetime-local"
+                                id="maintenanceWindowEndAt"
+                                value={toDateTimeLocalValue(formData.maintenanceWindowEndAt)}
+                                onChange={handleDateTimeLocalChange('maintenanceWindowEndAt')}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="mt-4">
+                        <label htmlFor="maintenanceAllowedIps" className="block text-sm font-medium text-gray-700 mb-2">
+                            Allowed IPs (bypass maintenance)
+                        </label>
+                        <textarea
+                            id="maintenanceAllowedIps"
+                            name="maintenanceAllowedIps"
+                            value={formData.maintenanceAllowedIps}
+                            onChange={(e) => setFormData(prev => ({ ...prev, maintenanceAllowedIps: e.target.value }))}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm bg-white"
+                            rows={4}
+                            placeholder="One IP per line (or comma separated)"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            During maintenance mode or during the scheduled window, only these IPs can access the site.
+                        </p>
+                    </div>
+
+                    <div className="mt-4 border-t border-gray-200 pt-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h5 className="text-sm font-semibold text-gray-900">Topbar Notice</h5>
+                                <p className="text-xs text-gray-600 mt-1">Shows a banner before the scheduled start. It highlights 15 minutes before start.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={!!formData.maintenanceNoticeEnabled}
+                                    onChange={handleToggle('maintenanceNoticeEnabled')}
+                                />
+                                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-500 peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                            </label>
+                        </div>
+
+                        <div className="mt-3">
+                            <label htmlFor="maintenanceNoticeMessage" className="block text-sm font-medium text-gray-700 mb-2">
+                                Notice Message
+                            </label>
+                            <input
+                                type="text"
+                                id="maintenanceNoticeMessage"
+                                name="maintenanceNoticeMessage"
+                                value={formData.maintenanceNoticeMessage}
+                                onChange={handleChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                placeholder="Example: Site will be under maintenance tomorrow at 10:00 AM"
+                            />
+                        </div>
+                    </div>
+
                     <div className="mt-4">
                         <label htmlFor="maintenanceMessage" className="block text-sm font-medium text-gray-700 mb-2">
-                            Maintenance Message
+                            Maintenance Page Message
                         </label>
                         <textarea
                             id="maintenanceMessage"
                             name="maintenanceMessage"
                             value={formData.maintenanceMessage}
                             onChange={(e) => setFormData(prev => ({ ...prev, maintenanceMessage: e.target.value }))}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                             rows={3}
                             placeholder="We’re doing some maintenance right now. Please check back shortly."
                         />

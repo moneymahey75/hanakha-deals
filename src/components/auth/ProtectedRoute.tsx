@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdmin } from '../../contexts/AdminContext';
 import { sessionUtils } from '../../utils/sessionUtils';
 import { supabase } from '../../lib/supabase';
 
@@ -18,6 +19,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
                                                          requiresSubscription = true
                                                        }) => {
   const { user, loading, checkVerificationStatus } = useAuth();
+  const { settings } = useAdmin();
   const location = useLocation();
   const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
@@ -205,9 +207,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
     if (!isAllowedPage) {
       console.log('🔒 No active subscription, redirecting to subscription plans');
+      const launchPhase = (settings?.launchPhase || 'prelaunch') as 'prelaunch' | 'launched';
+      const customerDestination = launchPhase === 'launched' ? '/subscription-plans' : '/registration-payment';
       return (
           <Navigate
-              to={user.userType === 'customer' ? '/registration-payment' : '/subscription-plans'}
+              to={user.userType === 'customer' ? customerDestination : '/subscription-plans'}
               replace
               state={{
                 from: location,

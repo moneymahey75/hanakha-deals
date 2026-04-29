@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAdmin } from '../contexts/AdminContext';
 import {
   ArrowRight,
   BadgeDollarSign,
@@ -12,6 +13,10 @@ import {
 } from 'lucide-react';
 
 const UpcomingPlan: React.FC = () => {
+  const { settings } = useAdmin();
+  const launchPhase = (settings?.launchPhase || 'prelaunch') as 'prelaunch' | 'launched';
+  const isLaunched = launchPhase === 'launched';
+  const afterLaunchConfig = (settings as any)?.afterLaunchPlanConfig || null;
   const rewards = [
     {
       title: 'Team Reward 1',
@@ -53,6 +58,34 @@ const UpcomingPlan: React.FC = () => {
     { level: 15, percent: '2%' },
   ];
 
+  const effectiveAfterLaunch = {
+    planTitle: afterLaunchConfig?.planTitle || 'SHOPCLIX Plan (Launch)',
+    joiningPacks: Array.isArray(afterLaunchConfig?.joiningPacks) ? afterLaunchConfig.joiningPacks : [50, 100, 200],
+    couponDays: Number.isFinite(Number(afterLaunchConfig?.couponDays)) ? Number(afterLaunchConfig.couponDays) : 200,
+    roi: {
+      dailyPercent: Number.isFinite(Number(afterLaunchConfig?.roi?.dailyPercent)) ? Number(afterLaunchConfig.roi.dailyPercent) : 1,
+      durationDays: Number.isFinite(Number(afterLaunchConfig?.roi?.durationDays)) ? Number(afterLaunchConfig.roi.durationDays) : 200,
+      targetMultiplier: Number.isFinite(Number(afterLaunchConfig?.roi?.targetMultiplier)) ? Number(afterLaunchConfig.roi.targetMultiplier) : 2,
+    },
+    directIncome: Array.isArray(afterLaunchConfig?.directIncome)
+      ? afterLaunchConfig.directIncome
+      : [
+          { label: '1st level (Direct)', percent: 7, requiresDirect: 0 },
+          { label: '2nd level (Direct)', percent: 1.5, requiresDirect: 3 },
+          { label: '3rd level (Direct)', percent: 1, requiresDirect: 9 },
+        ],
+    levelIncome: Array.isArray(afterLaunchConfig?.levelIncome) ? afterLaunchConfig.levelIncome : levelIncome,
+    packLevelsNote:
+      String(afterLaunchConfig?.packLevelsNote || '').trim() ||
+      'Pack levels: 50 USDT pack = 7 levels • 100 USDT pack = 10 levels • 200 USDT pack = 15 levels',
+    levelUnlockRules: Array.isArray(afterLaunchConfig?.levelUnlockRules)
+      ? afterLaunchConfig.levelUnlockRules
+      : ['You can open your 1 level with 1 direct only.', '9 direct = 9 levels open.', '10 direct = 15 levels open.'],
+    nonWorkingIncomeDays: Number.isFinite(Number(afterLaunchConfig?.nonWorkingIncomeDays)) ? Number(afterLaunchConfig.nonWorkingIncomeDays) : 200,
+    nonWorkingIncomeTargetMultiplier: Number.isFinite(Number(afterLaunchConfig?.nonWorkingIncomeTargetMultiplier)) ? Number(afterLaunchConfig.nonWorkingIncomeTargetMultiplier) : 2,
+    workingIncomeTargetMultiplier: Number.isFinite(Number(afterLaunchConfig?.workingIncomeTargetMultiplier)) ? Number(afterLaunchConfig.workingIncomeTargetMultiplier) : 5,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-gray-50">
       {/* Hero */}
@@ -65,22 +98,24 @@ const UpcomingPlan: React.FC = () => {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-10">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-white">
             <Rocket className="h-4 w-4 text-emerald-300" />
-            <span className="text-sm font-semibold">Prelaunch • Plans</span>
+            <span className="text-sm font-semibold">{isLaunched ? 'Launched' : 'Prelaunch'} • Plans</span>
           </div>
 
           <h1 className="mt-5 text-3xl sm:text-5xl font-extrabold text-white leading-tight">
             A big opportunity for all MLM leaders
           </h1>
           <p className="mt-3 text-white/80 text-lg">
-            ShopClix is in a prelaunch period. Join early and build your team before launch.
+            {isLaunched
+              ? 'ShopClix has launched. Choose a plan to activate coupons and earning benefits.'
+              : 'ShopClix is in a prelaunch period. Join early and build your team before launch.'}
           </p>
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <Link
-              to="/customer/register"
+              to={isLaunched ? '/subscription-plans' : '/customer/register'}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-white hover:bg-emerald-600 transition-colors"
             >
-              Register Now
+              {isLaunched ? 'Choose Plan' : 'Register Now'}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -90,6 +125,7 @@ const UpcomingPlan: React.FC = () => {
       {/* Content */}
       <div className="bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+          {!isLaunched && (
           <section className="rounded-3xl border border-emerald-100 bg-gradient-to-b from-emerald-50/60 to-white shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-6 pt-6">
               <div className="flex items-center gap-3">
@@ -161,6 +197,7 @@ const UpcomingPlan: React.FC = () => {
           </div>
             </div>
           </section>
+          )}
 
           <section className="rounded-3xl border border-indigo-100 bg-gradient-to-b from-indigo-50/60 to-white shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-6 pt-6">
@@ -178,18 +215,25 @@ const UpcomingPlan: React.FC = () => {
           <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6">
             <div className="flex items-center gap-3">
               <Rocket className="h-5 w-5 text-indigo-600" />
-              <h2 className="text-lg font-semibold text-gray-900">SHOPCLIX Plan (Launch)</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{effectiveAfterLaunch.planTitle}</h2>
             </div>
 
             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
                 <h3 className="font-semibold text-gray-900">Joining Packs</h3>
-                <p className="mt-1 text-sm text-gray-600">50 USDT • 100 USDT • 200 USDT</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {(effectiveAfterLaunch.joiningPacks || [])
+                    .map((p: any) => `${Number(p)} USDT`)
+                    .filter((s: string) => s !== 'NaN USDT')
+                    .join(' • ') || '—'}
+                </p>
                 <div className="mt-4 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5" />
                   <div>
                     <div className="font-semibold text-gray-900">Daily shopping coupons</div>
-                    <div className="text-sm text-gray-600">System provides coupons for <span className="font-semibold">200 days</span>.</div>
+                    <div className="text-sm text-gray-600">
+                      System provides coupons for <span className="font-semibold">{effectiveAfterLaunch.couponDays} days</span>.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -199,15 +243,15 @@ const UpcomingPlan: React.FC = () => {
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-white border border-gray-100 p-4">
                     <div className="text-xs text-gray-600">Daily return</div>
-                    <div className="text-xl font-extrabold text-gray-900">1%</div>
+                    <div className="text-xl font-extrabold text-gray-900">{effectiveAfterLaunch.roi.dailyPercent}%</div>
                   </div>
                   <div className="rounded-xl bg-white border border-gray-100 p-4">
                     <div className="text-xs text-gray-600">Duration</div>
-                    <div className="text-xl font-extrabold text-gray-900">200 days</div>
+                    <div className="text-xl font-extrabold text-gray-900">{effectiveAfterLaunch.roi.durationDays} days</div>
                   </div>
                 </div>
                 <p className="mt-3 text-sm text-gray-600">
-                  Target: <span className="font-semibold text-gray-900">2x</span> in 200 days.
+                  Target: <span className="font-semibold text-gray-900">{effectiveAfterLaunch.roi.targetMultiplier}x</span> in {effectiveAfterLaunch.roi.durationDays} days.
                 </p>
               </div>
             </div>
@@ -221,20 +265,21 @@ const UpcomingPlan: React.FC = () => {
             </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                <div className="text-sm text-gray-600">1st level (Direct)</div>
-                <div className="mt-1 text-2xl font-extrabold text-gray-900">7%</div>
-              </div>
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                <div className="text-sm text-gray-600">2nd level (Direct)</div>
-                <div className="mt-1 text-2xl font-extrabold text-gray-900">1.5%</div>
-                <div className="mt-1 text-xs text-gray-500">Requires 3 direct</div>
-              </div>
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                <div className="text-sm text-gray-600">3rd level (Direct)</div>
-                <div className="mt-1 text-2xl font-extrabold text-gray-900">1%</div>
-                <div className="mt-1 text-xs text-gray-500">Requires 9 direct</div>
-              </div>
+              {(effectiveAfterLaunch.directIncome || []).slice(0, 6).map((row: any) => {
+                const percentValue = Number(row?.percent);
+                const requiresDirect = Number(row?.requiresDirect || 0);
+                return (
+                  <div key={String(row?.label || Math.random())} className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                    <div className="text-sm text-gray-600">{String(row?.label || '').trim() || 'Direct income'}</div>
+                    <div className="mt-1 text-2xl font-extrabold text-gray-900">
+                      {Number.isFinite(percentValue) ? `${percentValue}%` : '—'}
+                    </div>
+                    {requiresDirect > 0 && (
+                      <div className="mt-1 text-xs text-gray-500">Requires {requiresDirect} direct</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -246,7 +291,7 @@ const UpcomingPlan: React.FC = () => {
             </div>
 
             <div className="mt-3 rounded-2xl bg-indigo-50 border border-indigo-100 p-4 text-sm text-indigo-900">
-              <span className="font-semibold">Pack levels:</span> 50 USDT pack = 7 levels • 100 USDT pack = 10 levels • 200 USDT pack = 15 levels
+              <span className="font-semibold">Pack levels:</span> {effectiveAfterLaunch.packLevelsNote.replace(/^Pack levels:\\s*/i, '')}
             </div>
 
             <div className="mt-5 overflow-x-auto">
@@ -258,7 +303,7 @@ const UpcomingPlan: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {levelIncome.map((row) => (
+                  {effectiveAfterLaunch.levelIncome.map((row: any) => (
                     <tr key={row.level} className="border-t border-gray-100">
                       <td className="px-4 py-3 font-medium text-gray-900">Level {row.level}</td>
                       <td className="px-4 py-3 text-gray-700">{row.percent}</td>
@@ -268,22 +313,33 @@ const UpcomingPlan: React.FC = () => {
               </table>
             </div>
 
-            <div className="mt-6 rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
-              <div className="font-semibold text-emerald-900">Level Unlocking Rules</div>
-              <ul className="mt-3 space-y-2 text-sm text-emerald-900">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
-                  <span>You can open your 1 level with 1 direct only.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
-                  <span>9 direct = 9 levels open.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
-                  <span>10 direct = 15 levels open.</span>
-                </li>
+            <div className="mt-6 rounded-2xl bg-indigo-50 border border-indigo-100 p-5">
+              <div className="font-semibold text-indigo-900">Level Unlocking Rules</div>
+              <ul className="mt-3 space-y-2 text-sm text-indigo-900">
+                {(effectiveAfterLaunch.levelUnlockRules || []).map((rule: any) => (
+                  <li key={String(rule)} className="flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-indigo-700" />
+                    <span>{String(rule)}</span>
+                  </li>
+                ))}
               </ul>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
+                <div className="font-semibold text-gray-900">Non-working income</div>
+                <div className="mt-1 text-sm text-gray-700">
+                  Runs for <span className="font-semibold">{effectiveAfterLaunch.nonWorkingIncomeDays} days</span> and targets{' '}
+                  <span className="font-semibold text-indigo-700">{effectiveAfterLaunch.nonWorkingIncomeTargetMultiplier}x</span>.
+                </div>
+              </div>
+              <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 p-5 shadow-sm">
+                <div className="font-semibold text-indigo-900">Working income</div>
+                <div className="mt-1 text-sm text-indigo-900">
+                  Targets <span className="font-semibold">{effectiveAfterLaunch.workingIncomeTargetMultiplier}x</span>. Days do not matter for working income.
+                  Customer will upgrade the account after receiving <span className="font-semibold">{effectiveAfterLaunch.workingIncomeTargetMultiplier}x</span> working income from the system.
+                </div>
+              </div>
             </div>
           </div>
             </div>
@@ -293,14 +349,16 @@ const UpcomingPlan: React.FC = () => {
           <div className="rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-900 px-6 py-8 text-white shadow-sm">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
-                <div className="text-xl font-extrabold">Ready for prelaunch?</div>
-                <div className="text-white/80 text-sm mt-1">Register now and start building your network.</div>
+                <div className="text-xl font-extrabold">{isLaunched ? 'Ready to start?' : 'Ready for prelaunch?'}</div>
+                <div className="text-white/80 text-sm mt-1">
+                  {isLaunched ? 'Choose a plan and activate your account.' : 'Register now and start building your network.'}
+                </div>
               </div>
               <Link
-                to="/customer/register"
+                to={isLaunched ? '/subscription-plans' : '/customer/register'}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-white hover:bg-emerald-600 transition-colors"
               >
-                Register with 5 USDT
+                {isLaunched ? 'Choose Plan' : 'Register with 5 USDT'}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>

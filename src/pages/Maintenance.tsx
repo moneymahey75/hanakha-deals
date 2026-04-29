@@ -5,7 +5,7 @@ import { Settings } from 'lucide-react';
 const Maintenance: React.FC = () => {
   const { settings } = useAdmin();
   const siteName = settings?.siteName || 'Site';
-  const logoUrl = settings?.logoUrl || '/shopclick_logo.png';
+  const logoUrl = settings?.logoUrl || '/shopclix_logo.png';
   const message =
     settings?.maintenanceMessage ||
     'We’re doing some maintenance right now. Please check back shortly.';
@@ -21,7 +21,7 @@ const Maintenance: React.FC = () => {
                 alt={siteName}
                 className="h-10 w-auto object-contain"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/shopclick_logo.png';
+                  (e.target as HTMLImageElement).src = '/shopclix_logo.png';
                 }}
               />
               <div className="ml-auto inline-flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">

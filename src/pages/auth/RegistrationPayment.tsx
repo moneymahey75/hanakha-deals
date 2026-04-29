@@ -63,6 +63,11 @@ const RegistrationPayment: React.FC = () => {
       return;
     }
 
+    if (!settingsLoading && (settings.launchPhase || 'prelaunch') === 'launched') {
+      navigate('/subscription-plans', { replace: true });
+      return;
+    }
+
     if (user.hasActiveSubscription) {
       navigate('/customer/dashboard', { replace: true });
       return;
@@ -109,7 +114,7 @@ const RegistrationPayment: React.FC = () => {
     }
 
     loadRegistrationData();
-  }, [user, navigate, notification]);
+  }, [user, settings.launchPhase, settingsLoading, navigate, notification]);
 
   useEffect(() => {
     const validateParentAccount = async () => {

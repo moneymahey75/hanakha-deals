@@ -11,13 +11,15 @@ interface SubscriptionPlan {
   tsp_description: string;
   tsp_price: number;
   tsp_duration_days: number;
-  tsp_features: string[];
+  tsp_features: any;
   tsp_is_active: boolean;
   tsp_created_at: string;
 }
 
 const SubscriptionPlans: React.FC = () => {
   const { user } = useAuth();
+  const { settings } = useAdmin();
+  const launchPhase = (settings?.launchPhase || 'prelaunch') as 'prelaunch' | 'launched';
   const navigate = useNavigate();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,12 +27,39 @@ const SubscriptionPlans: React.FC = () => {
 
   useEffect(() => {
     loadPlans();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchPhase]);
 
   const loadPlans = async () => {
     try {
       setLoading(true);
       setError(null);
+
+      if (launchPhase !== 'launched') {
+        setPlans([]);
+        return;
+      }
+
+      const normalizeFeatures = (raw: any): string[] => {
+        if (Array.isArray(raw)) return raw.map((v) => String(v));
+        if (raw === null || raw === undefined) return [];
+        if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          if (!trimmed) return [];
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) return parsed.map((v) => String(v));
+          } catch {
+            // fallthrough
+          }
+          return trimmed.split(/\r?\n+/).map((v) => v.trim()).filter(Boolean);
+        }
+        if (typeof raw === 'object') {
+          // Some rows store features as JSON object; best-effort string conversion.
+          return Object.values(raw).map((v) => String(v));
+        }
+        return [String(raw)];
+      };
 
       console.log('🔍 Loading subscription plans from database...');
       
@@ -46,8 +75,13 @@ const SubscriptionPlans: React.FC = () => {
         throw error;
       }
       
-      console.log('✅ Plans loaded successfully:', data?.length || 0, 'plans');
-      setPlans(data || []);
+      const normalized = (data || []).map((row: any) => ({
+        ...row,
+        tsp_features: normalizeFeatures(row?.tsp_features),
+      }));
+
+      console.log('✅ Plans loaded successfully:', normalized.length, 'plans');
+      setPlans(normalized);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
       setError('Failed to load subscription plans. Please try again.');
@@ -176,7 +210,19 @@ const SubscriptionPlans: React.FC = () => {
         )}
 
         {/* Plans Grid - Same format as admin panel */}
-        {plans.length > 0 ? (
+        {(launchPhase !== 'launched') ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-8 max-w-2xl mx-auto">
+            <div className="flex items-center space-x-3">
+              <div className="bg-yellow-100 p-2 rounded-lg">
+                <Package className="h-5 w-5 text-yellow-700" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-yellow-900">Plans Not Available Yet</h3>
+                <p className="text-yellow-800">Upgrade plans will be available after launch.</p>
+              </div>
+            </div>
+          </div>
+        ) : plans.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {plans.map((plan, index) => (
               <div

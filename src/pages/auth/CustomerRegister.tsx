@@ -997,14 +997,17 @@ const CustomerRegister: React.FC = () => {
         mobile: fullMobile
       }, 'customer');
 
-      // Determine verification requirements
-      const needsVerification = settings.emailVerificationRequired ||
-          settings.mobileVerificationRequired ||
-          settings.eitherVerificationRequired;
+	      // Determine verification requirements
+	      const needsVerification = settings.emailVerificationRequired ||
+	          settings.mobileVerificationRequired ||
+	          settings.eitherVerificationRequired;
+	      const nextRouteAfterVerification = (settings.launchPhase || 'prelaunch') === 'launched'
+	        ? '/subscription-plans'
+	        : '/registration-payment';
 
-      if (needsVerification) {
-        navigate('/verify-otp', {
-          state: {
+	      if (needsVerification) {
+	        navigate('/verify-otp', {
+	          state: {
             userId,
             email: finalEmail,
             mobile: fullMobile,
@@ -1012,14 +1015,14 @@ const CustomerRegister: React.FC = () => {
               emailRequired: settings.emailVerificationRequired,
               mobileRequired: settings.mobileVerificationRequired,
               eitherRequired: settings.eitherVerificationRequired
-            },
-            fromRegistration: true,
-            returnTo: '/registration-payment'
-          }
-        });
-      } else {
-        navigate('/registration-payment');
-      }
+	            },
+	            fromRegistration: true,
+	            returnTo: nextRouteAfterVerification
+	          }
+	        });
+	      } else {
+	        navigate(nextRouteAfterVerification);
+	      }
     } catch (err) {
       // Error handling is done by notification system in AuthContext
     } finally {

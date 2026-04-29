@@ -16,6 +16,7 @@ import CouponManagement from '../../components/admin/CouponManagement';
 import DailyTaskManagement from '../../components/admin/DailyTaskManagement';
 import WalletManagement from '../../components/admin/WalletManagement';
 import EarningDistributionSettings from '../../components/admin/EarningDistributionSettings';
+import AfterLaunchPlanSettings from '../../components/admin/AfterLaunchPlanSettings';
 import MLMLevelCounts from '../../components/admin/MLMLevelCounts';
 import {
   Users,
@@ -38,7 +39,8 @@ import {
   Wallet,
   Check,
   X,
-  TrendingUp
+  TrendingUp,
+  Rocket
 } from 'lucide-react';
 
 interface SubAdmin {
@@ -355,6 +357,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'general', label: 'General Settings', icon: Globe, permission: 'settings' },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck, permission: 'settings' },
     { id: 'payment', label: 'Payment Settings', icon: FileText, permission: 'settings' },
+    { id: 'after_launch_plan', label: 'After Launch Plan', icon: Rocket, permission: 'settings' },
     { id: 'earning', label: 'Earning Distribution', icon: TrendingUp, permission: 'mlm' }
   ];
 
@@ -635,6 +638,7 @@ const AdminDashboard: React.FC = () => {
 	                      {settingsTab === 'general' && hasPermission('settings' as any, 'read') && <GeneralSettings />}
 	                      {settingsTab === 'registration' && hasPermission('settings' as any, 'read') && <RegistrationSettings />}
 	                      {settingsTab === 'payment' && hasPermission('settings' as any, 'read') && <PaymentSettings />}
+	                      {settingsTab === 'after_launch_plan' && hasPermission('settings' as any, 'read') && <AfterLaunchPlanSettings />}
 	                      {settingsTab === 'earning' && hasPermission('mlm' as any, 'read') && <EarningDistributionSettings />}
                         {settingsTab === 'general' && !hasPermission('settings' as any, 'read') && (
                           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
@@ -655,6 +659,15 @@ const AdminDashboard: React.FC = () => {
                           </div>
                         )}
                         {settingsTab === 'payment' && !hasPermission('settings' as any, 'read') && (
+                          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                            <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Shield className="h-8 w-8 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+                            <p className="text-gray-600">You don't have permission to access this section.</p>
+                          </div>
+                        )}
+                        {settingsTab === 'after_launch_plan' && !hasPermission('settings' as any, 'read') && (
                           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                             <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                               <Shield className="h-8 w-8 text-red-600" />

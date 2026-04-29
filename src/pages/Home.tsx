@@ -218,7 +218,7 @@ const Home: React.FC = () => {
             {[
               {
                 icon: Users,
-                title: 'Binary Tree System',
+                title: 'Referral Network',
                 description: 'Fair and transparent direct-referral earnings with unlimited personal referrals.',
                 color: 'from-emerald-500 to-teal-600',
                 bgColor: 'bg-emerald-50',
@@ -245,8 +245,8 @@ const Home: React.FC = () => {
               },
               {
                 icon: Award,
-                title: 'Smart Contracts',
-                description: 'Blockchain-powered payments with transparent and automated transaction processing.',
+                title: 'Instant Withdrawal',
+                description: 'Fast withdrawals with transparent tracking so you can access your earnings quickly.',
                 color: 'from-rose-500 to-pink-600',
                 bgColor: 'bg-rose-50',
                 iconColor: 'text-rose-600',

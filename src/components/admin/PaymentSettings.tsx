@@ -239,7 +239,7 @@ const PaymentSettings: React.FC = () => {
                     </div>
 
                     <div>
-                        <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="usdtAddressTestnet" className="block text-sm font-medium text-gray-700 mb-2">
                             USDT Token Contract Address (Testnet) *
                         </label>
                         <input
@@ -477,7 +477,7 @@ const PaymentSettings: React.FC = () => {
 
                 <div className="border border-gray-200 rounded-lg p-6">
                     <div>
-                        <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="subscriptionContractAddress" className="block text-sm font-medium text-gray-700 mb-2">
                             Subscription Contract Address *
                         </label>
                         <input
@@ -492,7 +492,7 @@ const PaymentSettings: React.FC = () => {
                         />
                     </div>
                     <div>
-                        <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="subscriptionWalletAddress" className="block text-sm font-medium text-gray-700 mb-2">
                             Subscription Wallet Address *
                         </label>
                         <input
@@ -511,7 +511,7 @@ const PaymentSettings: React.FC = () => {
 
                 <div className="border border-gray-200 rounded-lg p-6">
                     <div>
-                        <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="investmentContractAddress" className="block text-sm font-medium text-gray-700 mb-2">
                             Investment Contract Address *
                         </label>
                         <input
@@ -527,7 +527,7 @@ const PaymentSettings: React.FC = () => {
                     </div>
 
                     <div>
-                        <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="investmentWalletAddress" className="block text-sm font-medium text-gray-700 mb-2">
                             Investment Wallet Address *
                         </label>
                         <input
