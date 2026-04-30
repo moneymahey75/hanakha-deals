@@ -107,7 +107,7 @@ export const MLMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 level: row.level ?? row.node_level ?? 0,
                 position: 'direct',
                 sponsorshipNumber: resolvedSponsorship,
-                isActive: row.is_active ?? row.tu_is_active ?? false,
+                isActive: row.is_active_member ?? row.is_active ?? row.tu_is_active ?? false,
                 userData: {
                   firstName: row.first_name || row.tup_first_name || row.firstName || '',
                   lastName: row.last_name || row.tup_last_name || row.lastName || '',

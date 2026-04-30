@@ -15,6 +15,9 @@ type ReferralRow = {
   parent_account: string | null;
   parent_sponsorship_number: string | null;
   is_active: boolean;
+  is_registration_paid?: boolean;
+  mobile_verified?: boolean;
+  is_active_member?: boolean;
   email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -118,11 +121,21 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
   }, [rows]);
 
 
-  const renderStatus = (isActive: boolean) => (
-    <span className={`px-2 py-1 rounded-full text-xs ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-      {isActive ? 'Active' : 'Inactive'}
-    </span>
-  );
+  const renderStatus = (node: ReferralRow) => {
+    const activeMember =
+      node.is_active_member ??
+      (Boolean(node.is_active) && Boolean(node.is_registration_paid) && Boolean(node.mobile_verified));
+
+    return (
+      <span
+        className={`px-2 py-1 rounded-full text-xs ${
+          activeMember ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'
+        }`}
+      >
+        {activeMember ? 'Active' : 'Pending'}
+      </span>
+    );
+  };
 
   const renderName = (node: ReferralRow) => {
     return `${node.first_name || ''} ${node.last_name || ''}`.trim()
@@ -302,7 +315,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                     <td className="px-4 py-3 text-sm text-gray-700">{renderParent(ref)}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">Level {ref.level}</td>
                     <td className="px-4 py-3 text-sm">
-                      {renderStatus(ref.is_active)}
+                      {renderStatus(ref)}
                     </td>
                   </tr>
                 ))
@@ -343,7 +356,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-xs text-gray-500 font-mono">{node.sponsorship_number}</div>
-                      {renderStatus(node.is_active)}
+                      {renderStatus(node)}
                     </div>
                   </div>
                 ))}
