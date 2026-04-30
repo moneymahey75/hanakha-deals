@@ -329,14 +329,16 @@ const UpcomingPlan: React.FC = () => {
               <div className="rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
                 <div className="font-semibold text-gray-900">Non-working income</div>
                 <div className="mt-1 text-sm text-gray-700">
-                  Runs for <span className="font-semibold">{effectiveAfterLaunch.nonWorkingIncomeDays} days</span> and targets{' '}
-                  <span className="font-semibold text-indigo-700">{effectiveAfterLaunch.nonWorkingIncomeTargetMultiplier}x</span>.
+                  Get daily coupons and Earn {' '}
+                  <span className="font-semibold text-indigo-700">{effectiveAfterLaunch.nonWorkingIncomeTargetMultiplier}x income</span> in 
+                  <span className="font-semibold"> {effectiveAfterLaunch.nonWorkingIncomeDays} days</span>
+                  .
                 </div>
               </div>
               <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 p-5 shadow-sm">
                 <div className="font-semibold text-indigo-900">Working income</div>
                 <div className="mt-1 text-sm text-indigo-900">
-                  Targets <span className="font-semibold">{effectiveAfterLaunch.workingIncomeTargetMultiplier}x</span>. Days do not matter for working income.
+                  Earn <span className="font-semibold">{effectiveAfterLaunch.workingIncomeTargetMultiplier}x income</span>. Days do not matter for working income.
                   Customer will upgrade the account after receiving <span className="font-semibold">{effectiveAfterLaunch.workingIncomeTargetMultiplier}x</span> working income from the system.
                 </div>
               </div>

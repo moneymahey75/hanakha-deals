@@ -20,36 +20,122 @@ import {
   DollarSign
 } from 'lucide-react';
 
+type PromoCompany = {
+  name: string;
+  domain: string;
+};
+
+const buildCompanyLogoUrls = (domain: string) => {
+  const safeDomain = domain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return {
+    primary: (size: number) => `https://logo.clearbit.com/${safeDomain}?size=${size}`,
+    fallback: (size: number) =>
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(safeDomain)}&sz=${size}`,
+  };
+};
+
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((p) => p[0]).join('');
+  return (letters || name.trim().slice(0, 2) || 'CO').toUpperCase();
+};
+
+const PromoCompanyLogo: React.FC<{ company: PromoCompany }> = ({ company }) => {
+  const urls = buildCompanyLogoUrls(company.domain);
+  const [src, setSrc] = useState<string>(urls.primary(256));
+  const [usedFallback, setUsedFallback] = useState(false);
+  const isUsingFallback = usedFallback;
+
+  const handleError = () => {
+    if (!usedFallback) {
+      setUsedFallback(true);
+      setSrc(urls.fallback(256));
+      return;
+    }
+    setSrc('');
+  };
+
+  return (
+    <div className="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+      <div
+        className="flex items-center justify-center"
+        title={company.name}
+        aria-label={company.name}
+      >
+        {src ? (
+          <img
+            src={src}
+            srcSet={
+              isUsingFallback
+                ? `${urls.fallback(64)} 64w, ${urls.fallback(128)} 128w, ${urls.fallback(256)} 256w`
+                : `${urls.primary(128)} 128w, ${urls.primary(256)} 256w, ${urls.primary(512)} 512w`
+            }
+            sizes="72px"
+            alt={company.name}
+            className="h-14 w-14 object-contain"
+            width={56}
+            height={56}
+            loading="lazy"
+            onError={handleError}
+          />
+        ) : (
+          <div className="h-14 w-14 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-600 text-white flex items-center justify-center font-bold">
+            {getInitials(company.name)}
+          </div>
+        )}
+      </div>
+      <div className="mt-3 text-center text-xs font-semibold text-gray-700 line-clamp-1">
+        {company.name}
+      </div>
+    </div>
+  );
+};
+
 const Home: React.FC = () => {
   const { settings } = useAdmin();
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  const exampleCouponCompanies: PromoCompany[] = [
+    { name: 'Shufersal', domain: 'shufersal.co.il' },
+    { name: 'Super-Pharm', domain: 'super-pharm.co.il' },
+    { name: "McDonald's", domain: 'mcdonalds.com' },
+    { name: 'Starbucks', domain: 'starbucks.com' },
+    { name: 'KFC', domain: 'kfc.com' },
+    { name: 'FOX', domain: 'fox.co.il' },
+    { name: 'Castro', domain: 'castro.com' },
+    { name: 'Terminal X', domain: 'terminalx.com' },
+    { name: 'Nike', domain: 'nike.com' },
+    { name: 'Adidas', domain: 'adidas.com' },
+    { name: 'H&M', domain: 'hm.com' },
+    { name: 'Isracard', domain: 'isracard.co.il' },
+  ];
 
   const slides = [
     {
       id: 1,
       image: 'https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop',
-      title: 'Build Your Network Empire',
-      subtitle: 'Join thousands of successful entrepreneurs',
-      description: 'Start your journey with our direct-referral network and build long-term earnings.',
-      cta: 'Start Your Journey',
+      title: 'Promote Coupons. Grow Faster.',
+      subtitle: 'A platform built for brands and communities',
+      description: 'Companies publish promotional coupons to reach new customers. Customers engage with campaigns and earn rewards where eligible.',
+      cta: 'Join as Customer',
       ctaLink: '/customer/register'
     },
     {
       id: 2,
       image: 'https://images.pexels.com/photos/3184465/pexels-photo-3184465.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop',
-      title: 'Smart Blockchain Technology',
-      subtitle: 'Transparent & Secure Transactions',
-      description: 'Experience the power of blockchain-based payments with complete transparency and security.',
-      cta: 'Learn More',
+      title: 'Earn by Engaging with Promotions',
+      subtitle: 'Verified activity, transparent rewards',
+      description: 'Discover offers, scratch/unlock promotional coupons, complete simple engagement steps, and track rewards in your wallet.',
+      cta: 'Get Started',
       ctaLink: '/customer/register'
     },
     {
       id: 3,
       image: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop',
-      title: 'Global Community',
-      subtitle: 'Connect with entrepreneurs worldwide',
-      description: 'Be part of a global network of ambitious individuals building their financial future together.',
-      cta: 'Join Community',
+      title: 'Referral-Powered Growth',
+      subtitle: 'Invite friends and build your network',
+      description: 'Customers can invite others to register. When your referrals participate, you can unlock additional rewards under program rules.',
+      cta: 'Join as Company',
       ctaLink: '/company/register'
     }
   ];
@@ -177,7 +263,7 @@ const Home: React.FC = () => {
             </div>
             <div className="group">
               <div className="text-4xl md:text-5xl font-bold mb-2 group-hover:scale-110 transition-transform">$2M+</div>
-              <div className="text-lg opacity-90">Paid Out</div>
+              <div className="text-lg opacity-90">Rewards Paid</div>
             </div>
             <div className="group">
               <div className="text-4xl md:text-5xl font-bold mb-2 group-hover:scale-110 transition-transform">150+</div>
@@ -186,6 +272,81 @@ const Home: React.FC = () => {
             <div className="group">
               <div className="text-4xl md:text-5xl font-bold mb-2 group-hover:scale-110 transition-transform">99.9%</div>
               <div className="text-lg opacity-90">Uptime</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Business Purpose */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center space-x-2 bg-emerald-100 rounded-full px-6 py-3 mb-6">
+              <Target className="h-5 w-5 text-emerald-700" />
+              <span className="text-sm font-semibold text-emerald-700">Our Business Purpose</span>
+            </div>
+            <h2 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+              Connecting Brands and Customers Through Promotions
+            </h2>
+            <p className="text-xl text-gray-600 max-w-4xl mx-auto">
+              {settings.siteName} is a promotional-coupon platform where companies list verified offers to expand
+              their customer base. Customers discover campaigns, scratch/unlock promotional coupons, complete simple
+              engagement steps, and earn rewards where eligible. Customers can also invite others to register and
+              grow the community under program rules.
+            </p>
+          </div>
+
+          {/* Example Coupon Companies */}
+          <div className="mt-12 rounded-3xl border border-gray-100 bg-gray-50 p-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">Promotional Coupon Companies</h3>
+                <p className="text-gray-600 mt-1">
+                  Brands like these that commonly run promotional offers (Availability varies).
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {exampleCouponCompanies.map((company) => (
+                <PromoCompanyLogo key={company.domain} company={company} />
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-500 mt-4">
+              Logos are displayed for identification purposes only and remain the property of their respective owners.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="rounded-3xl border border-gray-100 bg-gradient-to-b from-emerald-50 to-white p-8 shadow-lg">
+              <div className="flex items-start gap-4">
+                <div className="bg-emerald-100 w-12 h-12 rounded-2xl flex items-center justify-center">
+                  <Globe className="h-6 w-6 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">For Companies</h3>
+                  <p className="text-gray-600 leading-relaxed">
+                    Register your business, publish promotional coupons with clear terms, and reach new audiences
+                    through a referral-powered community.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-gray-100 bg-gradient-to-b from-cyan-50 to-white p-8 shadow-lg">
+              <div className="flex items-start gap-4">
+                <div className="bg-cyan-100 w-12 h-12 rounded-2xl flex items-center justify-center">
+                  <Users className="h-6 w-6 text-cyan-700" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">For Customers</h3>
+                  <p className="text-gray-600 leading-relaxed">
+                    Explore promotions, scratch/unlock coupons, complete eligible activities, and earn rewards in your
+                    wallet. Invite friends to participate and unlock additional benefits where applicable.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -359,15 +520,15 @@ const Home: React.FC = () => {
               },
               {
                 step: '2',
-                title: 'Choose Your Plan',
-                description: 'Select a subscription plan that aligns with your goals and investment capacity.',
+                title: 'Explore Promotions',
+                description: 'Discover verified promotional coupons from multiple companies and participate in eligible activities.',
                 color: 'from-cyan-500 to-blue-600',
                 image: 'https://images.pexels.com/photos/3184317/pexels-photo-3184317.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&fit=crop'
               },
               {
                 step: '3',
-                title: 'Build & Earn',
-                description: 'Start building your network and earning through transparent direct referrals.',
+                title: 'Earn & Invite',
+                description: 'Earn rewards where eligible and invite others to register and participate under the program rules.',
                 color: 'from-violet-500 to-purple-600',
                 image: 'https://images.pexels.com/photos/3184339/pexels-photo-3184339.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&fit=crop'
               }
@@ -410,15 +571,15 @@ const Home: React.FC = () => {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-6 py-3 mb-8 border border-white/20">
             <Sparkles className="h-5 w-5 text-yellow-300" />
-            <span className="text-sm font-medium">Ready to Transform Your Life?</span>
+            <span className="text-sm font-medium">Ready to Get Started?</span>
           </div>
           
           <h2 className="text-4xl md:text-6xl font-bold mb-6">
-            Your Financial Freedom Awaits
+            Promote Smarter. Earn Faster.
           </h2>
           <p className="text-xl mb-12 text-gray-200 max-w-3xl mx-auto">
-            Join thousands of successful entrepreneurs who have chosen our platform to build their financial future. 
-            Start your journey today and unlock unlimited earning potential.
+            Join {settings.siteName} as a customer to explore promotional coupons and earn eligible rewards,
+            or register your company to publish offers and grow your customer base.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-6 justify-center mb-12">
@@ -428,16 +589,16 @@ const Home: React.FC = () => {
              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             >
               <DollarSign className="h-6 w-6" />
-              <span>Start Earning Today</span>
+              <span>Join as Customer</span>
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              to="/customer/register"
+              to="/company/register"
               className="group border-2 border-white/30 text-white px-8 py-4 rounded-2xl font-semibold hover:bg-white hover:text-emerald-900 transition-all duration-300 flex items-center justify-center space-x-3 backdrop-blur-sm"
              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             >
-              <CheckCircle className="h-5 w-5" />
-              <span>Register Now</span>
+              <Rocket className="h-5 w-5" />
+              <span>Join as Company</span>
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>
