@@ -164,13 +164,13 @@ Deno.serve(async (req: Request) => {
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
-          .select('tu_is_active, tu_registration_paid')
+          .select('tu_is_active, tu_registration_paid, tu_mobile_verified')
           .eq('tu_id', sponsorUserId)
           .maybeSingle();
 
-        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid) {
+        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid || !sponsorUser?.tu_mobile_verified) {
           return new Response(
-            JSON.stringify({ success: false, error: 'Parent A/C is not active or registration-paid' }),
+            JSON.stringify({ success: false, error: 'Parent A/C is not active/verified or registration-paid' }),
             {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },

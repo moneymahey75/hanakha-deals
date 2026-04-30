@@ -22,6 +22,7 @@ interface Customer {
     tu_is_verified: boolean;
     tu_email_verified: boolean;
     tu_mobile_verified: boolean;
+    tu_registration_paid?: boolean;
     tu_is_active: boolean;
     tu_is_dummy?: boolean;
     tu_created_at: string;
@@ -246,6 +247,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                     tu_is_verified: row.tu_is_verified,
                     tu_email_verified: row.tu_email_verified,
                     tu_mobile_verified: row.tu_mobile_verified,
+                    tu_registration_paid: row.tu_registration_paid ?? false,
                     tu_is_active: row.tu_is_active,
                     tu_is_dummy: row.tu_is_dummy ?? false,
                     tu_created_at: row.tu_created_at,
@@ -514,9 +516,10 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                             onChange={(e) => setStatusFilter(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
-                            <option value="all">All Status</option>
+                            <option value="all">All Member Status</option>
                             <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
+                            <option value="pending">Pending</option>
+                            <option value="disabled">Disabled</option>
                         </select>
                     </div>
                     <div>
@@ -638,13 +641,32 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${customer.tu_is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                            {customer.tu_is_active ? (
-                                                <><UserCheck className="h-3 w-3 mr-1" />Active</>
-                                            ) : (
-                                                <><UserX className="h-3 w-3 mr-1" />Inactive</>
-                                            )}
-                                        </span>
+                                        {(() => {
+                                          const isEnabled = customer.tu_is_active === true;
+                                          const isMemberActive = isEnabled && customer.tu_registration_paid === true && customer.tu_mobile_verified === true;
+                                          if (!isEnabled) {
+                                            return (
+                                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                <UserX className="h-3 w-3 mr-1" />
+                                                Disabled
+                                              </span>
+                                            );
+                                          }
+                                          if (isMemberActive) {
+                                            return (
+                                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                <UserCheck className="h-3 w-3 mr-1" />
+                                                Active
+                                              </span>
+                                            );
+                                          }
+                                          return (
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                              <Activity className="h-3 w-3 mr-1" />
+                                              Pending
+                                            </span>
+                                          );
+                                        })()}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     <div className="flex items-center">

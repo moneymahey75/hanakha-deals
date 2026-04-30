@@ -128,8 +128,8 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const searchTerm = normalizeString(body.searchTerm) || null;
-    const statusFilter = normalizeString(body.statusFilter) || 'all';
-    const verificationFilter = normalizeString(body.verificationFilter) || 'all';
+    const statusFilter = (normalizeString(body.statusFilter) || 'all').toLowerCase();
+    const verificationFilter = (normalizeString(body.verificationFilter) || 'all').toLowerCase();
     const dummyFilterRaw = normalizeString(body.dummyFilter || body.accountScope) || 'all';
     const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw.toLowerCase())
       ? dummyFilterRaw.toLowerCase()
@@ -254,12 +254,10 @@ Deno.serve(async (req: Request) => {
       for (const ids of chunk(downlineIds, 500)) {
         let usersQuery = supabase
           .from('tbl_users')
-          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_is_active, tu_is_dummy, tu_created_at, tu_updated_at')
+          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_registration_paid, tu_is_active, tu_is_dummy, tu_created_at, tu_updated_at')
           .in('tu_id', ids)
           .eq('tu_user_type', 'customer');
 
-        if (statusFilter === 'active') usersQuery = usersQuery.eq('tu_is_active', true);
-        if (statusFilter === 'inactive') usersQuery = usersQuery.eq('tu_is_active', false);
         if (verificationFilter === 'verified') usersQuery = usersQuery.eq('tu_is_verified', true);
         if (verificationFilter === 'unverified') usersQuery = usersQuery.eq('tu_is_verified', false);
         if (dummyFilter === 'real') usersQuery = usersQuery.eq('tu_is_dummy', false);
@@ -327,6 +325,15 @@ Deno.serve(async (req: Request) => {
 
           if (!applySearchTerm(searchBlob, searchTerm)) return null;
 
+          const isEnabled = u.tu_is_active === true;
+          const isMemberActive = isEnabled && (u.tu_registration_paid === true) && (u.tu_mobile_verified === true);
+          const isPending = isEnabled && !isMemberActive;
+          const isDisabled = !isEnabled;
+
+          if (statusFilter === 'active' && !isMemberActive) return null;
+          if (statusFilter === 'pending' && !isPending) return null;
+          if ((statusFilter === 'disabled' || statusFilter === 'inactive') && !isDisabled) return null;
+
           return {
             tu_id: u.tu_id,
             tu_email: u.tu_email,
@@ -334,6 +341,7 @@ Deno.serve(async (req: Request) => {
             tu_is_verified: u.tu_is_verified,
             tu_email_verified: u.tu_email_verified,
             tu_mobile_verified: u.tu_mobile_verified,
+            tu_registration_paid: u.tu_registration_paid ?? false,
             tu_is_active: u.tu_is_active,
             tu_is_dummy: !!u.tu_is_dummy,
             tu_created_at: u.tu_created_at,
@@ -390,6 +398,42 @@ Deno.serve(async (req: Request) => {
 
     if (error) {
       throw error;
+    }
+
+    // Ensure `tu_registration_paid` is present for status computations in the admin UI.
+    const rows = Array.isArray(data) ? data : [];
+    const missingRegFlag = rows.length > 0 && rows.some((row: any) => row?.tu_registration_paid === undefined);
+    if (missingRegFlag) {
+      const ids = Array.from(
+        new Set(
+          rows
+            .map((r: any) => String(r?.tu_id || '').trim())
+            .filter(Boolean)
+        )
+      );
+      const regMap = new Map<string, boolean>();
+      for (const idChunk of chunk(ids, 500)) {
+        const { data: batch, error: regError } = await supabase
+          .from('tbl_users')
+          .select('tu_id, tu_registration_paid')
+          .in('tu_id', idChunk);
+        if (regError) throw regError;
+        for (const u of batch || []) {
+          const uid = String((u as any).tu_id || '').trim();
+          if (!uid) continue;
+          regMap.set(uid, (u as any).tu_registration_paid === true);
+        }
+      }
+
+      const merged = rows.map((row: any) => ({
+        ...row,
+        tu_registration_paid: row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false),
+      }));
+
+      return new Response(JSON.stringify({ success: true, data: merged }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({ success: true, data }), {
