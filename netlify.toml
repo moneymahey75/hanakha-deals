@@ -4,8 +4,8 @@ command = "npx vite build"
 
 [build.environment]
 NODE_VERSION = "18"
-VITE_SUPABASE_URL = "https://ytsvyxytwrphdwhweumi.supabase.co"
-VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0c3Z5eHl0d3JwaGR3aHdldW1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MDIzMTksImV4cCI6MjA2Nzk3ODMxOX0.80HGyhasBcSKHLu1juN4UdT6Km8aDmqrhBVduYDQjZo"
+VITE_SUPABASE_URL = "https://cfvcjqenejonajbulrrs.supabase.co"
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmdmNqcWVuZWpvbmFqYnVscnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDQwNDYsImV4cCI6MjA5MjcyMDA0Nn0.-HEKWeeap3cNVoWKxMgWpi8gF0tdiNND6gC1FAn0cZE"
 
 [[redirects]]
 from = "/*"
