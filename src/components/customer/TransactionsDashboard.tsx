@@ -368,43 +368,41 @@ const TransactionsDashboard: React.FC = () => {
                                     {dateTransactions.map((transaction) => {
                                         const Icon = getTransactionIcon(transaction.twt_transaction_type, transaction.twt_reference_type);
                                         return (
-                                            <div key={transaction.twt_id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-4">
-                                                        <div className={`p-3 rounded-full ${
+                                            <div key={transaction.twt_id} className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow overflow-hidden">
+                                                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 sm:gap-4 items-start">
+                                                    <div className={`p-3 rounded-full shrink-0 ${
                                                             transaction.twt_transaction_type === 'credit' ? 'bg-green-100' : 'bg-red-100'
                                                         }`}>
-                                                            <Icon className={`h-5 w-5 ${
-                                                                transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
-                                                            }`} />
-                                                        </div>
-                                                        <div>
-                                                            <h5 className="font-medium text-gray-900">{transaction.twt_description}</h5>
-                                                            <div className="flex items-center space-x-4 mt-1">
-                                                                <span className="text-sm text-gray-500">
-                                  {new Date(transaction.twt_created_at).toLocaleString()}
-                                </span>
-                                                                {transaction.twt_reference_type && (
-                                                                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                                    {transaction.twt_reference_type.replace('_', ' ')}
-                                  </span>
-                                                                )}
-                                                            </div>
+                                                        <Icon className={`h-5 w-5 ${
+                                                            transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
+                                                        }`} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h5 className="font-medium text-gray-900 break-words leading-snug">{transaction.twt_description}</h5>
+                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1 min-w-0">
+                                                            <span className="text-sm text-gray-500">
+                                                                {new Date(transaction.twt_created_at).toLocaleString()}
+                                                            </span>
+                                                            {transaction.twt_reference_type && (
+                                                                <span className="w-fit max-w-full text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full break-words leading-tight">
+                                                                    {transaction.twt_reference_type.replace(/_/g, ' ')}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <div className={`text-lg font-bold ${
+                                                    <div className="w-[74px] sm:w-24 text-right shrink-0">
+                                                        <div className={`text-base sm:text-lg font-bold leading-tight break-words ${
                                                             transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
                                                         }`}>
                                                             {transaction.twt_transaction_type === 'credit' ? '+' : '-'}{transaction.twt_amount} USDT
                                                         </div>
-                                                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                                        <span className={`inline-flex mt-2 text-xs px-2 py-1 rounded-full font-medium ${
                                                             transaction.twt_status === 'completed' ? 'bg-green-100 text-green-800' :
                                                                 transaction.twt_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                                     'bg-red-100 text-red-800'
                                                         }`}>
-                              {transaction.twt_status}
-                            </span>
+                                                            {transaction.twt_status}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 {transaction.twt_blockchain_hash && (
