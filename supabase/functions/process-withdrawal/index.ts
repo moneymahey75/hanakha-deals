@@ -143,29 +143,40 @@ const processTransfer = async (params: {
     throw new Error('Failed to record withdrawal transaction');
   }
 
-  const privateKey = Deno.env.get('ADMIN_WALLET_PRIVATE_KEY');
-  if (!privateKey) {
-    throw new Error('Admin wallet private key is not configured');
-  }
+  let submittedTxHash: string | null = null;
+  try {
+    const privateKey = Deno.env.get('ADMIN_WALLET_PRIVATE_KEY');
+    if (!privateKey) {
+      throw new Error('Admin wallet private key is not configured');
+    }
 
+    const isMainnet = paymentMode === true || paymentMode === '1' || paymentMode === 1 || paymentMode === 'true';
     const rpcUrl = isMainnet
       ? (Deno.env.get('BSC_MAINNET_RPC_URL') || DEFAULT_MAINNET_RPC)
       : (Deno.env.get('BSC_TESTNET_RPC_URL') || DEFAULT_TESTNET_RPC);
 
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const signer = new ethers.Wallet(privateKey, provider);
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const signer = new ethers.Wallet(privateKey, provider);
 
-  const signerAddress = normalizeAddress(signer.address);
-  const configuredAdmin = normalizeAddress(adminPaymentWallet);
-  if (configuredAdmin && signerAddress !== configuredAdmin) {
-    throw new Error('Admin private key does not match configured payment wallet');
-  }
+    const signerAddress = normalizeAddress(signer.address);
+    const configuredAdmin = normalizeAddress(adminPaymentWallet);
+    if (configuredAdmin && signerAddress !== configuredAdmin) {
+      throw new Error('Admin private key does not match configured payment wallet');
+    }
 
-  try {
     const token = new ethers.Contract(usdtAddress, USDT_ABI, signer);
     const decimals = await token.decimals();
     const amountUnits = ethers.parseUnits(netAmount.toFixed(6), decimals);
     const tx = await token.transfer(destinationAddress, amountUnits);
+    submittedTxHash = tx.hash;
+
+    await supabase
+      .from('tbl_wallet_transactions')
+      .update({
+        twt_blockchain_hash: tx.hash
+      })
+      .eq('twt_id', walletTx.twt_id);
+
     await tx.wait(MIN_CONFIRMATIONS_DEFAULT);
 
     const { error: txUpdateError } = await supabase
@@ -183,6 +194,36 @@ const processTransfer = async (params: {
     return tx.hash as string;
   } catch (error: any) {
     const failureReason = formatWithdrawalFailureReason(error);
+
+    if (submittedTxHash) {
+      await supabase
+        .from('tbl_wallet_transactions')
+        .update({
+          twt_status: 'pending',
+          twt_blockchain_hash: submittedTxHash
+        })
+        .eq('twt_id', walletTx.twt_id);
+
+      await supabase
+        .from('tbl_withdrawal_requests')
+        .update({
+          twr_status: 'processing',
+          twr_failure_reason: 'Transfer submitted on-chain but confirmation is pending. Verify the transaction before retrying or failing.',
+          twr_admin_debug: `${formatWithdrawalAdminDebug(error)} | submitted_tx=${submittedTxHash}`,
+          twr_blockchain_tx: submittedTxHash,
+          twr_processed_at: new Date().toISOString(),
+          twr_processed_by_admin_id: adminInfo.id,
+          twr_processed_by_admin_email: adminInfo.email,
+          twr_processed_by_admin_name: adminInfo.name
+        })
+        .eq('twr_id', requestId);
+
+      const pendingError = new Error(`Withdrawal transfer submitted but confirmation is pending: ${submittedTxHash}`);
+      (pendingError as any).status = 'submitted_pending_confirmation';
+      (pendingError as any).txHash = submittedTxHash;
+      throw pendingError;
+    }
+
     await supabase
       .from('tbl_wallet_transactions')
       .update({ twt_status: 'failed' })
@@ -295,7 +336,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!['pending', 'failed'].includes(withdrawal.twr_status)) {
+    const existingBlockchainTx = String(withdrawal.twr_blockchain_tx || '').trim();
+    const isProcessingWithTx = withdrawal.twr_status === 'processing' && /^0x[a-fA-F0-9]{64}$/.test(existingBlockchainTx);
+
+    if (!['pending', 'failed'].includes(withdrawal.twr_status) && !isProcessingWithTx) {
       return new Response(
         JSON.stringify({ success: false, error: 'Withdrawal already processed' }),
         {
@@ -348,6 +392,95 @@ Deno.serve(async (req: Request) => {
 
     if (!ethers.isAddress(usdtAddress)) {
       throw new Error('USDT contract address not configured');
+    }
+
+    if (isProcessingWithTx) {
+      const rpcUrl = isMainnet
+        ? (Deno.env.get('BSC_MAINNET_RPC_URL') || DEFAULT_MAINNET_RPC)
+        : (Deno.env.get('BSC_TESTNET_RPC_URL') || DEFAULT_TESTNET_RPC);
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const receipt = await provider.getTransactionReceipt(existingBlockchainTx);
+
+      if (!receipt) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            status: 'processing',
+            txHash: existingBlockchainTx,
+            error: 'Blockchain transaction is still pending confirmation',
+          }),
+          {
+            status: 202,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
+      if (receipt.status !== 1) {
+        throw new Error('Submitted blockchain transaction failed on-chain');
+      }
+
+      const latestBlock = await provider.getBlockNumber();
+      const confirmations = Math.max(0, latestBlock - receipt.blockNumber + 1);
+      if (confirmations < MIN_CONFIRMATIONS_DEFAULT) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            status: 'processing',
+            txHash: existingBlockchainTx,
+            error: `Waiting for confirmations (${confirmations}/${MIN_CONFIRMATIONS_DEFAULT})`,
+          }),
+          {
+            status: 202,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
+      await supabase
+        .from('tbl_wallet_transactions')
+        .update({
+          twt_status: 'completed',
+          twt_blockchain_hash: existingBlockchainTx
+        })
+        .eq('twt_reference_type', 'withdrawal')
+        .eq('twt_reference_id', withdrawalId)
+        .eq('twt_transaction_type', 'debit');
+
+      await supabase
+        .from('tbl_withdrawal_requests')
+        .update({
+          twr_status: 'completed',
+          twr_processed_at: new Date().toISOString(),
+          twr_processed_by_admin_id: adminUser.tau_id,
+          twr_processed_by_admin_email: adminUser.tau_email,
+          twr_processed_by_admin_name: adminUser.tau_full_name || null,
+          twr_failure_reason: null,
+          twr_admin_debug: `Transfer verified after pending confirmation. tx=${existingBlockchainTx}`,
+          twr_blockchain_tx: existingBlockchainTx
+        })
+        .eq('twr_id', withdrawalId);
+
+      await logAdminAction(supabase, adminUser.tau_id, 'verify_withdrawal_transfer', 'withdrawals', {
+        withdrawal_id: withdrawalId,
+        tx_hash: existingBlockchainTx,
+        block_number: receipt.blockNumber,
+        confirmations
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          txHash: existingBlockchainTx,
+          verified: true
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
     const updateResult = await supabase
@@ -470,6 +603,24 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error: any) {
     console.error('Error processing withdrawal:', error);
+
+    if (error?.status === 'submitted_pending_confirmation' && error?.txHash) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          status: 'processing',
+          txHash: error.txHash,
+          error: error.message || 'Withdrawal transfer submitted but confirmation is pending',
+        }),
+        {
+          status: 202,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
 
     // If we flipped the request into "processing" but failed before the transfer-handler
     // updated it, persist a technical admin debug message and a customer-friendly reason.

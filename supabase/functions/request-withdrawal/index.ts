@@ -179,6 +179,7 @@ const processTransfer = async (params: {
     throw new Error('Admin private key does not match configured payment wallet');
   }
 
+  let submittedTxHash: string | null = null;
   try {
     const token = new ethers.Contract(usdtAddress, USDT_ABI, signer);
     const decimals = await token.decimals();
@@ -202,6 +203,15 @@ const processTransfer = async (params: {
     }
 
     const tx = await token.transfer(destinationAddress, amountUnits);
+    submittedTxHash = tx.hash;
+
+    await supabase
+      .from('tbl_wallet_transactions')
+      .update({
+        twt_blockchain_hash: tx.hash
+      })
+      .eq('twt_id', walletTx.twt_id);
+
     await tx.wait(MIN_CONFIRMATIONS_DEFAULT);
 
     const { error: txUpdateError } = await supabase
@@ -219,6 +229,33 @@ const processTransfer = async (params: {
     return tx.hash as string;
   } catch (error: any) {
     const failureReason = formatWithdrawalFailureReason(error);
+
+    if (submittedTxHash) {
+      await supabase
+        .from('tbl_wallet_transactions')
+        .update({
+          twt_status: 'pending',
+          twt_blockchain_hash: submittedTxHash
+        })
+        .eq('twt_id', walletTx.twt_id);
+
+      await supabase
+        .from('tbl_withdrawal_requests')
+        .update({
+          twr_status: 'processing',
+          twr_failure_reason: 'Transfer submitted on-chain but confirmation is pending. Admin must verify the transaction before retrying or failing.',
+          twr_admin_debug: `${formatWithdrawalAdminDebug(error)} | submitted_tx=${submittedTxHash}`,
+          twr_blockchain_tx: submittedTxHash,
+          twr_processed_at: new Date().toISOString()
+        })
+        .eq('twr_id', requestId);
+
+      const pendingError = new Error(`Withdrawal transfer submitted but confirmation is pending: ${submittedTxHash}`);
+      (pendingError as any).status = 'submitted_pending_confirmation';
+      (pendingError as any).txHash = submittedTxHash;
+      throw pendingError;
+    }
+
     await supabase
       .from('tbl_wallet_transactions')
       .update({ twt_status: 'failed' })
@@ -539,6 +576,19 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } catch (error: any) {
+      if (error?.status === 'submitted_pending_confirmation' && error?.txHash) {
+        return new Response(JSON.stringify({
+          success: false,
+          request_id: requestRow.twr_id,
+          status: 'processing',
+          txHash: error.txHash,
+          error: error.message || 'Withdrawal transfer submitted but confirmation is pending',
+        }), {
+          status: 202,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       const failureReason = formatWithdrawalFailureReason(error);
       const adminDebug = formatWithdrawalAdminDebug(error);
 

@@ -178,6 +178,15 @@ const WithdrawalRequests: React.FC = () => {
 
       const result = await response.json();
 
+      if (result.status === 'processing' && result.txHash) {
+        notification.showError(
+          'Confirmation Pending',
+          `Transfer was submitted but not confirmed yet. Verify tx before retry/fail: ${result.txHash}`
+        );
+        loadWithdrawals();
+        return;
+      }
+
       if (!result.success) {
         throw new Error(result.error || 'Withdrawal processing failed');
       }
@@ -466,11 +475,19 @@ const WithdrawalRequests: React.FC = () => {
                       </button>
                       <button
                         onClick={() => handleApproveWithdrawal(withdrawal.twr_id)}
-                        disabled={withdrawalProcessing === withdrawal.twr_id || !['pending', 'failed'].includes(withdrawal.twr_status)}
+                        disabled={
+                          withdrawalProcessing === withdrawal.twr_id ||
+                          !(
+                            ['pending', 'failed'].includes(withdrawal.twr_status) ||
+                            (withdrawal.twr_status === 'processing' && Boolean(withdrawal.twr_blockchain_tx))
+                          )
+                        }
                         className="px-3 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50"
                       >
                         {withdrawalProcessing === withdrawal.twr_id
                           ? 'Processing...'
+                          : withdrawal.twr_status === 'processing' && withdrawal.twr_blockchain_tx
+                            ? 'Verify'
                           : withdrawal.twr_status === 'failed'
                             ? 'Retry'
                             : 'Approve'}
@@ -480,7 +497,7 @@ const WithdrawalRequests: React.FC = () => {
                           setRejectingWithdrawal(withdrawal);
                           setRejectionNote('');
                         }}
-                        disabled={withdrawalProcessing === withdrawal.twr_id || !['pending', 'failed', 'processing'].includes(withdrawal.twr_status)}
+                        disabled={withdrawalProcessing === withdrawal.twr_id || Boolean(withdrawal.twr_blockchain_tx) || !['pending', 'failed', 'processing'].includes(withdrawal.twr_status)}
                         className="px-3 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 disabled:opacity-50"
                       >
                         Reject
@@ -490,9 +507,9 @@ const WithdrawalRequests: React.FC = () => {
                           setFailingWithdrawal(withdrawal);
                           setRejectionNote('');
                         }}
-                        disabled={withdrawalProcessing === withdrawal.twr_id || withdrawal.twr_status !== 'processing'}
+                        disabled={withdrawalProcessing === withdrawal.twr_id || Boolean(withdrawal.twr_blockchain_tx) || withdrawal.twr_status !== 'processing'}
                         className="px-3 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50"
-                        title="If a withdrawal is stuck in processing, mark it failed to allow Retry."
+                        title={withdrawal.twr_blockchain_tx ? 'A blockchain tx exists. Verify it before retrying or failing.' : 'If a withdrawal is stuck in processing, mark it failed to allow Retry.'}
                       >
                         Mark Failed
                       </button>
