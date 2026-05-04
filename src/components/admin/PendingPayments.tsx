@@ -27,6 +27,8 @@ interface Payment {
   tp_payment_method: string;
   tp_payment_status: string;
   tp_transaction_id: string | null;
+  tp_error_message?: string | null;
+  tp_gateway_response?: any;
   tp_created_at?: string;
   tp_verified_at?: string;
   user?: {
@@ -171,6 +173,21 @@ const PendingPayments: React.FC = () => {
     return {};
   };
 
+  const getGatewayIssue = (payment: Payment) => {
+    const gateway = parseGatewayResponse(payment.tp_gateway_response);
+    return (
+      payment.tp_error_message ||
+      gateway.error ||
+      gateway.reason ||
+      gateway.shortMessage ||
+      gateway.gateway_response?.error ||
+      gateway.gateway_response?.message ||
+      gateway.raw_error?.reason ||
+      gateway.raw_error?.message ||
+      ''
+    );
+  };
+
   const loadAdmins = async () => {
     try {
       const requestPromise = inFlightAdminUsersRequest ?? adminApi.post<AdminUser[]>('admin-get-admin-users');
@@ -226,9 +243,22 @@ const PendingPayments: React.FC = () => {
   };
 
   const handleApprovePayment = async (paymentId: string) => {
+    const payment = payments.find((item) => item.tp_id === paymentId);
+    const hasTxHash = Boolean(payment?.tp_transaction_id);
+    const manualVerified = hasTxHash
+      ? confirm(
+        `Only approve this payment if you have manually verified this exact transaction in the admin wallet:\n\n${payment?.tp_transaction_id}`
+      )
+      : true;
+
+    if (!manualVerified) return;
+
     setProcessing(paymentId);
     try {
-      const result = await adminApi.post<any>('process-registration-payment', { paymentId });
+      const result = await adminApi.post<any>('process-registration-payment', {
+        paymentId,
+        manualVerified: hasTxHash
+      });
       const commissionPaid = typeof result?.commission_paid === 'number' ? result.commission_paid : 0;
       notification.showSuccess(
         'Payment Approved',
@@ -575,13 +605,21 @@ const PendingPayments: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {payment.tp_transaction_id ? (
-                        <div className="text-sm text-gray-900 font-mono truncate max-w-xs">
-                          {payment.tp_transaction_id}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">Not provided</span>
-                      )}
+                      <div className="space-y-2">
+                        {payment.tp_transaction_id ? (
+                          <div className="text-sm text-gray-900 font-mono truncate max-w-xs">
+                            {payment.tp_transaction_id}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Not provided</span>
+                        )}
+                        {getGatewayIssue(payment) ? (
+                          <div className="max-w-xs rounded border border-amber-200 bg-amber-50 px-2 py-1">
+                            <p className="text-[11px] font-medium text-amber-800">Gateway response</p>
+                            <p className="text-xs text-amber-700 break-words">{getGatewayIssue(payment)}</p>
+                          </div>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">

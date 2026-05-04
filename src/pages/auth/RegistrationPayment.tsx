@@ -432,7 +432,18 @@ const RegistrationPayment: React.FC = () => {
       body: JSON.stringify({ txHash })
     });
 
-    return response.json();
+    const result = await response.json();
+
+    if (!response.ok && !result?.error) {
+      return {
+        success: false,
+        status: 'failed',
+        error: `Payment gateway returned HTTP ${response.status}`,
+        gateway_response: result
+      };
+    }
+
+    return result;
   };
 
   const pollVerification = async (txHash: string) => {
@@ -443,15 +454,147 @@ const RegistrationPayment: React.FC = () => {
         return result;
       }
 
-      if (result.status === 'failed') {
-        throw new Error(result.error || 'Payment failed');
+      if (result.status === 'failed' || result.success === false) {
+        const error = new Error(result.error || 'Payment failed');
+        (error as any).gatewayResponse = result;
+        throw error;
       }
 
       setStatusMessage(result.message || 'Waiting for confirmations...');
       await new Promise(resolve => setTimeout(resolve, PAYMENT_POLL_INTERVAL));
     }
 
-    throw new Error('Payment confirmation timed out. Please check again later.');
+    const error = new Error('Payment confirmation timed out. Please check again later.');
+    (error as any).gatewayResponse = {
+      status: 'timeout',
+      message: 'Payment confirmation timed out',
+      attempts: PAYMENT_POLL_ATTEMPTS,
+      interval_ms: PAYMENT_POLL_INTERVAL
+    };
+    throw error;
+  };
+
+  const safeSerializeGatewayResponse = (error: any, txHash: string | null, steps: string[]) => {
+    const isLivePaymentMode =
+      settings?.paymentMode === true ||
+      settings?.paymentMode === 1 ||
+      settings?.paymentMode === '1' ||
+      settings?.paymentMode === 'true';
+    const gatewayResponse = error?.gatewayResponse || error?.response?.data || error?.data || error?.info || null;
+    const rawError: Record<string, any> = {};
+
+    if (error && typeof error === 'object') {
+      [
+        'name',
+        'message',
+        'code',
+        'reason',
+        'action',
+        'shortMessage',
+        'details',
+        'method',
+        'transaction',
+        'receipt',
+        'error'
+      ].forEach((key) => {
+        if (error[key] !== undefined) rawError[key] = error[key];
+      });
+    }
+
+    const payload = {
+      blockchain: isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet',
+      usdt_contract: settings?.usdtAddress || null,
+      admin_wallet: adminReceivingWallet || null,
+      transaction_hash: txHash,
+      wallet_address: walletState.address,
+      wallet_name: walletState.walletName,
+      chain_id: walletState.chainId,
+      processed_at: new Date().toISOString(),
+      status: txHash ? 'stuck' : 'failed',
+      error: error?.message || 'Payment failed',
+      gateway_response: gatewayResponse,
+      raw_error: rawError,
+      steps
+    };
+
+    return JSON.parse(JSON.stringify(payload, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    ));
+  };
+
+  const saveRegistrationPaymentIssue = async (
+    txHash: string | null,
+    error: any,
+    steps: string[] = []
+  ) => {
+    if (!user?.id || !plan) return null;
+
+    const errorMessage = error?.message || 'Payment failed';
+    const paymentStatus = txHash ? 'pending' : 'failed';
+    const gatewayResponse = safeSerializeGatewayResponse(error, txHash, steps);
+    const isLivePaymentMode =
+      settings?.paymentMode === true ||
+      settings?.paymentMode === 1 ||
+      settings?.paymentMode === '1' ||
+      settings?.paymentMode === 'true';
+    const baseRecord = {
+      tp_user_id: user.id,
+      tp_subscription_id: null,
+      tp_amount: plan.tsp_price,
+      tp_currency: 'USDT',
+      tp_payment_method: 'blockchain',
+      tp_payment_status: paymentStatus,
+      tp_transaction_id: txHash,
+      tp_wallet_address: walletState.address ? walletState.address.toLowerCase() : null,
+      tp_to_address: adminReceivingWallet ? adminReceivingWallet.toLowerCase() : null,
+      tp_expected_amount: plan.tsp_price,
+      tp_network: isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet',
+      tp_chain_id: isLivePaymentMode ? 56 : 97,
+      tp_error_message: errorMessage,
+      tp_gateway_response: gatewayResponse
+    };
+
+    try {
+      if (txHash) {
+        const { data: existingPayment } = await supabase
+          .from('tbl_payments')
+          .select('tp_id, tp_user_id, tp_payment_status')
+          .eq('tp_transaction_id', txHash)
+          .maybeSingle();
+
+        if (existingPayment?.tp_id && existingPayment.tp_user_id === user.id) {
+          const { error: updateError } = await supabase
+            .from('tbl_payments')
+            .update({
+              tp_payment_status: existingPayment.tp_payment_status === 'completed' ? 'completed' : 'pending',
+              tp_error_message: errorMessage,
+              tp_gateway_response: gatewayResponse
+            })
+            .eq('tp_id', existingPayment.tp_id);
+
+          if (updateError) throw updateError;
+          return existingPayment.tp_id;
+        }
+      }
+
+      const { data: insertedPayment, error: insertError } = await supabase
+        .from('tbl_payments')
+        .insert(baseRecord)
+        .select('tp_id')
+        .single();
+
+      if (insertError) throw insertError;
+      return insertedPayment?.tp_id || null;
+    } catch (dbError) {
+      console.error('Failed to save registration payment issue:', dbError);
+      return null;
+    }
+  };
+
+  const getStuckPaymentMessage = (error: any, txHash: string | null) => {
+    const reason = error?.message || 'the payment gateway did not confirm the payment';
+    if (!txHash) return reason;
+    return `Your payment is stuck because ${reason}. If USDT has already been deducted, share this transaction ID with admin for manual verification: ${txHash}`;
   };
 
   const handleReverify = async (hashOverride?: string) => {
@@ -504,15 +647,17 @@ const RegistrationPayment: React.FC = () => {
         }
       });
     } catch (error: any) {
+      await saveRegistrationPaymentIssue(targetHash, error, transaction.distributionSteps || []);
+      const userMessage = getStuckPaymentMessage(error, targetHash);
       setTransaction({
         isProcessing: false,
         hash: targetHash,
         status: 'error',
-        error: error.message || 'Verification failed',
+        error: userMessage,
         distributionSteps: transaction.distributionSteps || []
       });
       setStatusMessage(null);
-      notification.showError('Verification Failed', error.message || 'Verification failed');
+      notification.showError('Verification Stuck', userMessage);
     } finally {
       setReverifyProcessing(false);
     }
@@ -554,8 +699,13 @@ const RegistrationPayment: React.FC = () => {
     });
     setStatusMessage('Awaiting wallet confirmation...');
 
+    let submittedHash: string | null = null;
+    let submittedSteps: string[] = [];
+
     try {
       const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, plan.tsp_price);
+      submittedHash = hash;
+      submittedSteps = steps;
 
       setTransaction({
         isProcessing: true,
@@ -588,15 +738,20 @@ const RegistrationPayment: React.FC = () => {
         }
       });
     } catch (error: any) {
+      const txHash = submittedHash || transaction.hash || null;
+      const steps = submittedSteps.length > 0 ? submittedSteps : transaction.distributionSteps;
+      await saveRegistrationPaymentIssue(txHash, error, steps || []);
+      const userMessage = getStuckPaymentMessage(error, txHash);
+
       setTransaction({
         isProcessing: false,
-        hash: transaction.hash,
+        hash: txHash,
         status: 'error',
-        error: error.message || 'Payment failed',
-        distributionSteps: transaction.distributionSteps
+        error: userMessage,
+        distributionSteps: steps || []
       });
       setStatusMessage(null);
-      notification.showError('Payment Failed', error.message || 'Payment failed');
+      notification.showError(txHash ? 'Payment Stuck' : 'Payment Failed', userMessage);
     }
   };
 
