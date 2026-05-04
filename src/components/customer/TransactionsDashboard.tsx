@@ -210,7 +210,8 @@ const TransactionsDashboard: React.FC = () => {
             referenceType === 'task_reward' ||
             referenceType === 'coupon_share' ||
             referenceType === 'registration_parent_income' ||
-            referenceType === 'mlm_level_reward'
+            referenceType === 'mlm_level_reward' ||
+            referenceType === 'mlm_level_reward_reserved'
         ) return Gift;
         if (referenceType === 'social_share') return Share2;
         return type === 'credit' ? ArrowUpRight : ArrowDownLeft;

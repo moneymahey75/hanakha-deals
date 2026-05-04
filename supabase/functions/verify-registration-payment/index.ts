@@ -648,7 +648,8 @@ Deno.serve(async (req: Request) => {
           referenceType:
             | 'registration_parent_income'
             | 'registration_parent_income_reserved'
-            | 'mlm_level_reward',
+            | 'mlm_level_reward'
+            | 'mlm_level_reward_reserved',
           amount: number,
           description: string,
           referenceId: string,
@@ -797,13 +798,31 @@ Deno.serve(async (req: Request) => {
                   level2Count >= milestone.level2 &&
                   level3Count >= milestone.level3
                 ) {
+                  const uplineUpgraded = await hasActiveUpgrade(uplineUserId);
+                  const availableReward = uplineUpgraded
+                    ? milestone.amount
+                    : Number((milestone.amount * 0.5).toFixed(6));
+                  const reservedReward = Number((milestone.amount - availableReward).toFixed(6));
+
                   await insertWalletTxIfMissing(
                     uplineUserId,
                     'mlm_level_reward',
-                    milestone.amount,
+                    availableReward,
                     milestone.title,
-                    milestone.id
+                    milestone.id,
+                    'available'
                   );
+
+                  if (reservedReward > 0) {
+                    await insertWalletTxIfMissing(
+                      uplineUserId,
+                      'mlm_level_reward_reserved',
+                      reservedReward,
+                      `Reserved from ${milestone.title} (for future upgrade)`,
+                      milestone.id,
+                      'reserved'
+                    );
+                  }
                 }
               }
             }

@@ -708,17 +708,32 @@ export class WalletService {
       // ignore (fallback to USDT)
     }
 
-    const result = await this.externalProvider.request({
-      method: 'wallet_watchAsset',
-      params: {
-        type: 'ERC20',
-        options: {
-          address: tokenAddress,
-          symbol,
-          decimals
-        }
+    const watchAssetParams = {
+      type: 'ERC20',
+      options: {
+        address: tokenAddress,
+        symbol,
+        decimals
       }
-    });
+    };
+
+    let result;
+    try {
+      result = await this.externalProvider.request({
+        method: 'wallet_watchAsset',
+        params: watchAssetParams
+      });
+    } catch (error: any) {
+      const message = String(error?.message || error || '').toLowerCase();
+      if (!message.includes('json') && !message.includes('object')) {
+        throw error;
+      }
+
+      result = await this.externalProvider.request({
+        method: 'wallet_watchAsset',
+        params: JSON.stringify(watchAssetParams)
+      });
+    }
 
     return Boolean(result);
   }

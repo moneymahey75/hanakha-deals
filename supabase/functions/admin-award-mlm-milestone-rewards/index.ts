@@ -19,10 +19,10 @@ type MilestoneRow = {
 const ensureWalletForUser = async (
   supabase: ReturnType<typeof createClient>,
   userId: string
-): Promise<{ walletId: string; baseBalance: number } | null> => {
+): Promise<{ walletId: string; baseBalance: number; baseReservedBalance: number } | null> => {
   const { data: existingWallet, error: walletError } = await supabase
     .from('tbl_wallets')
-    .select('tw_id, tw_balance')
+    .select('tw_id, tw_balance, tw_reserved_balance')
     .eq('tw_user_id', userId)
     .eq('tw_currency', 'USDT')
     .eq('tw_wallet_type', 'working')
@@ -34,7 +34,11 @@ const ensureWalletForUser = async (
   }
 
   if (existingWallet?.tw_id) {
-    return { walletId: String(existingWallet.tw_id), baseBalance: Number(existingWallet.tw_balance || 0) };
+    return {
+      walletId: String(existingWallet.tw_id),
+      baseBalance: Number(existingWallet.tw_balance || 0),
+      baseReservedBalance: Number(existingWallet.tw_reserved_balance || 0)
+    };
   }
 
   const newWalletId = crypto.randomUUID();
@@ -55,7 +59,33 @@ const ensureWalletForUser = async (
     return null;
   }
 
-  return { walletId: newWalletId, baseBalance: 0 };
+  return { walletId: newWalletId, baseBalance: 0, baseReservedBalance: 0 };
+};
+
+const hasActiveUpgrade = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+) => {
+  const now = new Date();
+  const { data: subs, error } = await supabase
+    .from('tbl_user_subscriptions')
+    .select('tus_end_date, tus_status, plan:tus_plan_id(tsp_type)')
+    .eq('tus_user_id', userId)
+    .eq('tus_status', 'active')
+    .limit(50);
+
+  if (error) {
+    console.error('Failed to load user subscriptions:', error);
+    return false;
+  }
+
+  return (subs || []).some((row: any) => {
+    const planType = String(row?.plan?.tsp_type || '').toLowerCase();
+    if (planType !== 'upgrade') return false;
+    const endDate = row?.tus_end_date ? new Date(String(row.tus_end_date)) : null;
+    if (!endDate) return true;
+    return endDate.getTime() > now.getTime();
+  });
 };
 
 Deno.serve(async (req: Request) => {
@@ -141,6 +171,8 @@ Deno.serve(async (req: Request) => {
     const inserted: Array<{ milestoneId: string; title: string; amount: number }> = [];
     const skipped: Array<{ milestoneId: string; title: string; reason: string }> = [];
     let totalInserted = 0;
+    let totalReservedInserted = 0;
+    const upgraded = await hasActiveUpgrade(supabase, userId);
 
     for (const milestone of eligibleMilestones) {
       const referenceId = milestone.tmm_id;
@@ -165,14 +197,22 @@ Deno.serve(async (req: Request) => {
       if (dryRun) {
         inserted.push({ milestoneId: referenceId, title: milestone.tmm_title, amount: milestone.tmm_reward_amount });
         totalInserted += milestone.tmm_reward_amount;
+        if (!upgraded) {
+          totalReservedInserted += Number((milestone.tmm_reward_amount * 0.5).toFixed(6));
+        }
         continue;
       }
+
+      const availableReward = upgraded
+        ? milestone.tmm_reward_amount
+        : Number((milestone.tmm_reward_amount * 0.5).toFixed(6));
+      const reservedReward = Number((milestone.tmm_reward_amount - availableReward).toFixed(6));
 
       const { error: insertError } = await supabase.from('tbl_wallet_transactions').insert({
         twt_wallet_id: walletInfo.walletId,
         twt_user_id: userId,
         twt_transaction_type: 'credit',
-        twt_amount: milestone.tmm_reward_amount,
+        twt_amount: availableReward,
         twt_description: milestone.tmm_title,
         twt_status: 'completed',
         twt_reference_type: 'mlm_level_reward',
@@ -185,15 +225,40 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      if (reservedReward > 0) {
+        const { error: reservedInsertError } = await supabase.from('tbl_wallet_transactions').insert({
+          twt_wallet_id: walletInfo.walletId,
+          twt_user_id: userId,
+          twt_transaction_type: 'credit',
+          twt_amount: reservedReward,
+          twt_description: `Reserved from ${milestone.tmm_title} (for future upgrade)`,
+          twt_status: 'completed',
+          twt_reference_type: 'mlm_level_reward_reserved',
+          twt_reference_id: referenceId,
+        });
+
+        if (reservedInsertError) {
+          console.error('Failed to insert reserved wallet transaction:', reservedInsertError);
+          skipped.push({ milestoneId: referenceId, title: milestone.tmm_title, reason: 'reserved_insert_failed' });
+          continue;
+        }
+      }
+
       inserted.push({ milestoneId: referenceId, title: milestone.tmm_title, amount: milestone.tmm_reward_amount });
       totalInserted += milestone.tmm_reward_amount;
+      totalReservedInserted += reservedReward;
     }
 
     if (!dryRun && totalInserted > 0) {
       const newBalance = walletInfo.baseBalance + totalInserted;
+      const newReservedBalance = walletInfo.baseReservedBalance + totalReservedInserted;
       const { error: updateError } = await supabase
         .from('tbl_wallets')
-        .update({ tw_balance: newBalance, tw_updated_at: new Date().toISOString() })
+        .update({
+          tw_balance: newBalance,
+          tw_reserved_balance: newReservedBalance,
+          tw_updated_at: new Date().toISOString()
+        })
         .eq('tw_id', walletInfo.walletId);
 
       if (updateError) {

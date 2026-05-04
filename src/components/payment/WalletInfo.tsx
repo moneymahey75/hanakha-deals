@@ -66,12 +66,12 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
   return (
       <div className="space-y-6">
         <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-green-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center min-w-0">
               <Coins className="w-5 h-5 mr-2 text-green-600" />
               Wallet Connected
             </h3>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <div className="flex items-center px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
                 <Shield className="w-3 h-3 mr-1" />
                 {getNetworkName()}
@@ -80,7 +80,7 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
                 <button
                   onClick={onRefresh}
                   disabled={!!refreshing}
-                  className="flex items-center space-x-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-800 rounded-lg font-medium transition-all duration-200"
+                  className="flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-800 rounded-lg font-medium transition-all duration-200"
                   title="Refresh balances"
                 >
                   <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
@@ -88,7 +88,7 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
               )}
               <button
                   onClick={onDisconnect}
-                  className="flex items-center space-x-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105"
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 sm:hover:scale-105"
               >
                 <LogOut className="w-4 h-4" />
                 <span>Disconnect</span>
