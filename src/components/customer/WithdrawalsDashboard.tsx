@@ -119,6 +119,8 @@ const WithdrawalsDashboard: React.FC = () => {
   };
 
   const parsedWithdrawalAmount = parseWithdrawalInput(withdrawalInput);
+  const estimatedCommission = parsedWithdrawalAmount * (withdrawalSettings.commissionPercent / 100);
+  const estimatedNet = Math.max(0, parsedWithdrawalAmount - estimatedCommission);
   const isWithdrawalAmountValid =
     parsedWithdrawalAmount >= withdrawalSettings.minAmount &&
     isStepValid(parsedWithdrawalAmount, withdrawalSettings.stepAmount);
@@ -364,6 +366,23 @@ const WithdrawalsDashboard: React.FC = () => {
   };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const quickAmounts = useMemo(() => {
+    const base = withdrawalSettings.stepAmount > 0 ? withdrawalSettings.stepAmount : withdrawalSettings.minAmount;
+    const values = [
+      withdrawalSettings.minAmount,
+      withdrawalSettings.minAmount + base,
+      withdrawableBalance
+    ]
+      .map((value) => normalizeWithdrawalAmount(value))
+      .filter((value) => value > 0 && value <= withdrawableBalance);
+    return Array.from(new Set(values)).slice(0, 3);
+  }, [withdrawalSettings.minAmount, withdrawalSettings.stepAmount, withdrawableBalance]);
+
+  const formatAddress = (address?: string | null) => {
+    if (!address) return 'No default wallet selected';
+    return address.length > 18 ? `${address.slice(0, 8)}...${address.slice(-6)}` : address;
+  };
+
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
@@ -386,15 +405,56 @@ const WithdrawalsDashboard: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
-        <div>
-          <h4 className="text-lg font-semibold text-gray-900">Withdraw Earnings</h4>
-          <p className="text-sm text-gray-600 mt-1">Submit a withdrawal request using your default wallet.</p>
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h4 className="text-lg font-semibold text-gray-900">Withdraw Earnings</h4>
+            <p className="text-sm text-gray-600 mt-1">Send available earnings to your default wallet.</p>
+          </div>
+          {/* <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+            withdrawalSettings.autoTransfer ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            {withdrawalSettings.autoTransfer ? 'Auto transfer' : 'Admin approval'}
+          </span> */}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Amount (USDT)</label>
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs font-medium text-indigo-700">Withdrawable</p>
+              <p className="mt-1 text-2xl font-bold text-indigo-950">{withdrawableBalance.toFixed(2)}</p>
+              <p className="text-xs text-indigo-700">USDT available</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-600">Total Balance</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">{walletBalance.toFixed(2)} USDT</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-600">Reserved</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">
+                {(walletReservedBalance + reservedBalance).toFixed(2)} USDT
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase text-gray-500">Default Wallet</p>
+              <p className="mt-1 font-mono text-sm font-semibold text-gray-900 break-all" title={defaultWallet?.tuwc_wallet_address || ''}>
+                {formatAddress(defaultWallet?.tuwc_wallet_address)}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-600">
+              BEP-20
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Amount (USDT)</label>
+          <div className="relative">
             <input
               type="number"
               min={withdrawalSettings.minAmount}
@@ -413,44 +473,65 @@ const WithdrawalsDashboard: React.FC = () => {
                   setWithdrawalInput(String(normalized));
                 }
               }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-16 text-lg font-semibold text-gray-900 placeholder:text-sm placeholder:font-normal focus:border-transparent focus:ring-2 focus:ring-indigo-500"
               placeholder={`Minimum ${withdrawalSettings.minAmount} USDT`}
             />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400">USDT</span>
           </div>
-
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600">Default Wallet</p>
-            <p className="text-sm font-medium text-gray-900 mt-1 font-mono break-all">
-              {defaultWallet?.tuwc_wallet_address || 'No default wallet selected'}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                Withdrawable: {withdrawableBalance.toFixed(2)} USDT
-              </span>
-              <span className="text-xs text-gray-500">Total: {walletBalance.toFixed(2)} USDT</span>
-              {reservedBalance > 0 && (
-                <span className="text-xs text-gray-500">Reserved: {reservedBalance.toFixed(2)} USDT</span>
-              )}
+          {quickAmounts.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {quickAmounts.map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => setWithdrawalInput(String(amount))}
+                  className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                >
+                  {amount.toFixed(0)} USDT
+                </button>
+              ))}
             </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Minimum</p>
+            <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.minAmount} USDT</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Step</p>
+            <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.stepAmount} USDT</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Commission</p>
+            <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.commissionPercent}%</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Processing</p>
+            <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.processingDays} day(s)</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-gray-600">
-          <div>
-            Minimum: <span className="font-medium text-gray-900">{withdrawalSettings.minAmount} USDT</span>
-          </div>
-          <div>
-            Step: <span className="font-medium text-gray-900">{withdrawalSettings.stepAmount} USDT</span>
-          </div>
-          <div>
-            Commission: <span className="font-medium text-gray-900">{withdrawalSettings.commissionPercent}%</span>
-          </div>
-          <div>
-            Processing: <span className="font-medium text-gray-900">{withdrawalSettings.processingDays} working day(s)</span>
+        <div className="rounded-xl border border-gray-100 p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-center">
+            <div>
+              <p className="text-xs text-gray-500">Estimated commission</p>
+              <p className="mt-1 font-semibold text-gray-900">{estimatedCommission.toFixed(2)} USDT</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Estimated net</p>
+              <p className="mt-1 text-lg font-bold text-green-700">{estimatedNet.toFixed(2)} USDT</p>
+            </div>
+            <p className="text-xs text-gray-500 sm:text-right">
+              {withdrawalSettings.autoTransfer
+                ? 'Auto-transfer is enabled.'
+                : `Approval required. Expect ${withdrawalSettings.processingDays} working day(s).`}
+            </p>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm">
+        {/* <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm">
           <div>
             Estimated commission:{' '}
             <span className="font-medium text-gray-900">
@@ -468,13 +549,13 @@ const WithdrawalsDashboard: React.FC = () => {
               ? 'Auto-transfer is enabled.'
               : `Approval required. Expect ${withdrawalSettings.processingDays} working day(s).`}
           </div>
-        </div>
+        </div> */}
 
-        <div className="flex justify-end">
+        <div className="flex justify-stretch sm:justify-end">
           <button
             onClick={handleWithdrawalSubmit}
             disabled={withdrawalSubmitting || !isWithdrawalAmountValid}
-            className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="w-full sm:w-auto bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
           >
             <ArrowUpRight className="h-4 w-4" />
             {withdrawalSubmitting ? 'Submitting...' : 'Submit Withdrawal'}

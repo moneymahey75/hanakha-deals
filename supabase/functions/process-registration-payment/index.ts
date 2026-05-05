@@ -210,6 +210,9 @@ Deno.serve(async (req: Request) => {
       childSponsorshipNumber ||
       'unknown account'
     );
+    const childCommissionLabel = childSponsorshipNumber
+      ? `Sponsorship ${childSponsorshipNumber}`
+      : childDisplayName;
 
     if (parentAccount) {
       const { data: sponsorProfile } = await supabase
@@ -502,7 +505,7 @@ Deno.serve(async (req: Request) => {
               sponsorUserId,
               'registration_parent_income',
               parentIncomeApplied,
-              `Registration commission from ${childDisplayName}`,
+              `Registration commission from ${childCommissionLabel}`,
               paymentId,
               'available'
             );
@@ -514,7 +517,7 @@ Deno.serve(async (req: Request) => {
               sponsorUserId,
               'registration_parent_income',
               availablePortion,
-              `Registration commission from ${childDisplayName}`,
+              `Registration commission from ${childCommissionLabel}`,
               paymentId,
               'available'
             );
@@ -523,7 +526,7 @@ Deno.serve(async (req: Request) => {
               sponsorUserId,
               'registration_parent_income_reserved',
               reservedPortion,
-              `Reserved from registration commission (for future upgrade) from ${childDisplayName}`,
+              `Reserved from registration commission (for future upgrade) from ${childCommissionLabel}`,
               paymentId,
               'reserved'
             );

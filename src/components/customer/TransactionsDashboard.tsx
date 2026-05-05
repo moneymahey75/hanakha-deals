@@ -231,6 +231,48 @@ const TransactionsDashboard: React.FC = () => {
         return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(pendingWithdrawalTotal || 0));
     }, [walletBalance, walletReservedBalance, pendingWithdrawalTotal]);
 
+    const getDisplayDescription = (transaction: Transaction) => {
+        const referenceType = transaction.twt_reference_type || '';
+        if (referenceType === 'registration_parent_income') {
+            const sponsor = transaction.twt_description.match(/Sponsorship\s+([A-Za-z0-9-]+)/i)?.[1];
+            return sponsor ? `Direct income #${sponsor}` : 'Direct income';
+        }
+        if (referenceType === 'registration_parent_income_reserved') {
+            const sponsor = transaction.twt_description.match(/Sponsorship\s+([A-Za-z0-9-]+)/i)?.[1];
+            return sponsor ? `Reserved direct income #${sponsor}` : 'Reserved direct income';
+        }
+        if (referenceType === 'mlm_level_reward') {
+            return 'Level reward';
+        }
+        if (referenceType === 'mlm_level_reward_reserved') {
+            return 'Reserved level reward';
+        }
+        return transaction.twt_description;
+    };
+
+    const getReferenceLabel = (referenceType?: string) => {
+        switch (referenceType) {
+            case 'registration_parent_income':
+                return 'Direct';
+            case 'registration_parent_income_reserved':
+                return 'Reserved';
+            case 'mlm_level_reward':
+                return 'Reward';
+            case 'mlm_level_reward_reserved':
+                return 'Reserved reward';
+            case 'task_reward':
+                return 'Task';
+            case 'coupon_share':
+                return 'Coupon';
+            case 'social_share':
+                return 'Social';
+            case 'withdrawal':
+                return 'Withdrawal';
+            default:
+                return referenceType ? referenceType.replace(/_/g, ' ') : '';
+        }
+    };
+
     if (loading) {
         return (
             <div className="space-y-6">
@@ -367,36 +409,37 @@ const TransactionsDashboard: React.FC = () => {
                                 <div className="space-y-3">
                                     {dateTransactions.map((transaction) => {
                                         const Icon = getTransactionIcon(transaction.twt_transaction_type, transaction.twt_reference_type);
+                                        const displayDescription = getDisplayDescription(transaction);
                                         return (
                                             <div key={transaction.twt_id} className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow overflow-hidden">
-                                                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 sm:gap-4 items-start">
-                                                    <div className={`p-3 rounded-full shrink-0 ${
+                                                <div className="grid grid-cols-[auto_minmax(0,1fr)] sm:grid-cols-[auto_minmax(0,1fr)_auto] gap-2.5 sm:gap-4 items-start">
+                                                    <div className={`p-2.5 sm:p-3 rounded-full shrink-0 ${
                                                             transaction.twt_transaction_type === 'credit' ? 'bg-green-100' : 'bg-red-100'
                                                         }`}>
-                                                        <Icon className={`h-5 w-5 ${
+                                                        <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${
                                                             transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
                                                         }`} />
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <h5 className="font-medium text-gray-900 break-words leading-snug">{transaction.twt_description}</h5>
+                                                        <h5 className="font-medium text-sm sm:text-base text-gray-900 break-words leading-snug">{displayDescription}</h5>
                                                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1 min-w-0">
-                                                            <span className="text-sm text-gray-500">
+                                                            <span className="text-xs sm:text-sm text-gray-500">
                                                                 {new Date(transaction.twt_created_at).toLocaleString()}
                                                             </span>
                                                             {transaction.twt_reference_type && (
-                                                                <span className="w-fit max-w-full text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full break-words leading-tight">
-                                                                    {transaction.twt_reference_type.replace(/_/g, ' ')}
+                                                                <span className="w-fit max-w-full text-[11px] sm:text-xs bg-gray-100 text-gray-600 px-2 py-0.5 sm:py-1 rounded-full break-words leading-tight">
+                                                                    {getReferenceLabel(transaction.twt_reference_type)}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <div className="w-[74px] sm:w-24 text-right shrink-0">
-                                                        <div className={`text-base sm:text-lg font-bold leading-tight break-words ${
+                                                    <div className="col-span-2 sm:col-span-1 sm:w-24 flex items-center justify-between gap-3 border-t border-gray-100 pt-2.5 sm:block sm:border-t-0 sm:pt-0 sm:text-right shrink-0">
+                                                        <div className={`text-sm sm:text-lg font-bold leading-tight break-words ${
                                                             transaction.twt_transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
                                                         }`}>
                                                             {transaction.twt_transaction_type === 'credit' ? '+' : '-'}{transaction.twt_amount} USDT
                                                         </div>
-                                                        <span className={`inline-flex mt-2 text-xs px-2 py-1 rounded-full font-medium ${
+                                                        <span className={`inline-flex sm:mt-2 text-[11px] sm:text-xs px-2 py-0.5 sm:py-1 rounded-full font-medium ${
                                                             transaction.twt_status === 'completed' ? 'bg-green-100 text-green-800' :
                                                                 transaction.twt_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                                     'bg-red-100 text-red-800'

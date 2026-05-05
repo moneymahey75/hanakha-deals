@@ -360,6 +360,9 @@ Deno.serve(async (req: Request) => {
       childSponsorshipNumber ||
       'unknown account'
     );
+    const childCommissionLabel = childSponsorshipNumber
+      ? `Sponsorship ${childSponsorshipNumber}`
+      : childDisplayName;
     let sponsorUserId: string | null = null;
     let sponsorSponsorshipNumber: string | null = null;
     let isDefaultParent = false;
@@ -711,7 +714,7 @@ Deno.serve(async (req: Request) => {
               sponsorUserId,
               'registration_parent_income',
               parentIncomeApplied,
-              `Registration commission from ${childDisplayName}`,
+              `Registration commission from ${childCommissionLabel}`,
               refId,
               'available'
             );
@@ -723,7 +726,7 @@ Deno.serve(async (req: Request) => {
               sponsorUserId,
               'registration_parent_income',
               availablePortion,
-              `Registration commission from ${childDisplayName}`,
+              `Registration commission from ${childCommissionLabel}`,
               refId,
               'available'
             );
@@ -732,7 +735,7 @@ Deno.serve(async (req: Request) => {
               sponsorUserId,
               'registration_parent_income_reserved',
               reservedPortion,
-              `Reserved from registration commission (for future upgrade) from ${childDisplayName}`,
+              `Reserved from registration commission (for future upgrade) from ${childCommissionLabel}`,
               refId,
               'reserved'
             );

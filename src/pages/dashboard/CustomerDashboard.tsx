@@ -500,34 +500,6 @@ const CustomerDashboard: React.FC = () => {
               <div className="p-6">
                 {activeTab === 'overview' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {/* Recent Activities */}
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activities</h3>
-                        <div className="space-y-4">
-                          {recentActivities.length > 0 ? (
-                              recentActivities.map((activity) => {
-                                const ActivityIcon = getActivityIcon(activity.type);
-                                return (
-                                    <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                                      <div className="bg-indigo-100 p-2 rounded-full">
-                                        <ActivityIcon className="h-4 w-4 text-indigo-600" />
-                                      </div>
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-gray-900">
-                                          {activity.message}
-                                          {activity.amount && `: $${activity.amount}`}
-                                        </p>
-                                        <p className="text-xs text-gray-500">{formatTimeAgo(activity.timestamp)}</p>
-                                      </div>
-                                    </div>
-                                );
-                              })
-                          ) : (
-                              <p className="text-gray-500 text-center py-4">No recent activities</p>
-                          )}
-                        </div>
-                      </div>
-
                       {/* Quick Actions */}
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
@@ -555,6 +527,34 @@ const CustomerDashboard: React.FC = () => {
 	                              <span>Upgrade Plan</span>
 	                            </button>
 	                          )}
+                        </div>
+                      </div>
+
+                      {/* Recent Activities */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activities</h3>
+                        <div className="space-y-4">
+                          {recentActivities.length > 0 ? (
+                              recentActivities.map((activity) => {
+                                const ActivityIcon = getActivityIcon(activity.type);
+                                return (
+                                    <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                                      <div className="bg-indigo-100 p-2 rounded-full">
+                                        <ActivityIcon className="h-4 w-4 text-indigo-600" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-sm font-medium text-gray-900">
+                                          {activity.message}
+                                          {activity.amount && `: $${activity.amount}`}
+                                        </p>
+                                        <p className="text-xs text-gray-500">{formatTimeAgo(activity.timestamp)}</p>
+                                      </div>
+                                    </div>
+                                );
+                              })
+                          ) : (
+                              <p className="text-gray-500 text-center py-4">No recent activities</p>
+                          )}
                         </div>
                       </div>
                     </div>
