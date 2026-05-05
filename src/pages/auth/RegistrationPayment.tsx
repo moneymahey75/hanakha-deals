@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -23,6 +23,19 @@ interface RegistrationPlan {
 
 const PAYMENT_POLL_INTERVAL = 5000;
 const PAYMENT_POLL_ATTEMPTS = 12;
+const PAYMENT_REQUEST_TIMEOUT_MS = 45000;
+const PAYMENT_RECOVERY_STORAGE_KEY = 'registration_payment_recovery_attempt';
+
+interface PaymentRecoveryAttempt {
+  userId: string;
+  walletAddress: string;
+  toAddress: string;
+  amount: number;
+  chainId: number | null;
+  usdtAddress: string | null;
+  startedAt: string;
+  startBlock: number | null;
+}
 
 let cachedRegistrationPlan: RegistrationPlan | null = null;
 let inFlightRegistrationPlanRequest: Promise<RegistrationPlan | null> | null = null;
@@ -56,6 +69,7 @@ const RegistrationPayment: React.FC = () => {
   const [parentAccountError, setParentAccountError] = useState<string | null>(null);
   const [reverifyHash, setReverifyHash] = useState('');
   const [reverifyProcessing, setReverifyProcessing] = useState(false);
+  const recoveryCheckInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!user) {
@@ -597,6 +611,195 @@ const RegistrationPayment: React.FC = () => {
     return `Your payment is stuck because ${reason}. If USDT has already been deducted, share this transaction ID with admin for manual verification: ${txHash}`;
   };
 
+  const extractTransactionHash = (value: any): string | null => {
+    const candidates = [
+      value?.hash,
+      value?.transactionHash,
+      value?.txHash,
+      value?.transaction?.hash,
+      value?.receipt?.hash,
+      value?.receipt?.transactionHash,
+      value?.gatewayResponse?.txHash,
+      value?.gatewayResponse?.transaction_hash,
+      value?.gatewayResponse?.transactionHash
+    ];
+
+    return candidates.find((candidate) =>
+      typeof candidate === 'string' && /^0x[a-fA-F0-9]{64}$/.test(candidate)
+    ) || null;
+  };
+
+  const loadRecoveryAttempt = useCallback((): PaymentRecoveryAttempt | null => {
+    if (typeof window === 'undefined') return null;
+
+    try {
+      const raw = sessionStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as PaymentRecoveryAttempt;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const saveRecoveryAttempt = useCallback((attempt: PaymentRecoveryAttempt) => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify(attempt));
+  }, []);
+
+  const clearRecoveryAttempt = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
+  }, []);
+
+  const buildRecoveryAttempt = useCallback(async (): Promise<PaymentRecoveryAttempt | null> => {
+    if (!user?.id || !walletState.address || !plan || !adminReceivingWallet) return null;
+
+    let startBlock: number | null = null;
+    try {
+      startBlock = await walletService.getCurrentBlockNumber();
+    } catch (error) {
+      console.warn('Unable to capture payment start block:', error);
+    }
+
+    return {
+      userId: user.id,
+      walletAddress: walletState.address,
+      toAddress: adminReceivingWallet,
+      amount: plan.tsp_price,
+      chainId: walletState.chainId,
+      usdtAddress: settings?.usdtAddress || null,
+      startedAt: new Date().toISOString(),
+      startBlock
+    };
+  }, [adminReceivingWallet, plan, settings?.usdtAddress, user?.id, walletService, walletState.address, walletState.chainId]);
+
+  const findRecoverablePaymentHash = useCallback(async (attempt: PaymentRecoveryAttempt) => {
+    if (!user?.id || attempt.userId !== user.id) return null;
+    if (!walletState.address || attempt.walletAddress.toLowerCase() !== walletState.address.toLowerCase()) return null;
+    if (!adminReceivingWallet || attempt.toAddress.toLowerCase() !== adminReceivingWallet.toLowerCase()) return null;
+    if (!plan || Number(attempt.amount) !== Number(plan.tsp_price)) return null;
+
+    setStatusMessage('Checking blockchain for the submitted payment...');
+    return walletService.findRecentUSDTTransfer(
+      attempt.walletAddress,
+      attempt.toAddress,
+      attempt.amount,
+      attempt.startBlock
+    );
+  }, [adminReceivingWallet, plan, user?.id, walletService, walletState.address]);
+
+  const recoverAndVerifyPayment = useCallback(async (attempt: PaymentRecoveryAttempt, reason: string) => {
+    const recoveredHash = await findRecoverablePaymentHash(attempt);
+    if (!recoveredHash) return false;
+
+    setReverifyHash(recoveredHash);
+    setTransaction({
+      isProcessing: true,
+      hash: recoveredHash,
+      status: 'pending',
+      error: null,
+      distributionSteps: [`Recovered after ${reason}`, `Transaction found on-chain: ${recoveredHash}`]
+    });
+    setStatusMessage('Payment found on-chain. Verifying now...');
+
+    try {
+      const result = await pollVerification(recoveredHash);
+      clearRecoveryAttempt();
+      setTransaction({
+        isProcessing: false,
+        hash: recoveredHash,
+        status: 'success',
+        error: null,
+        distributionSteps: [`Recovered after ${reason}`, `Transaction found on-chain: ${recoveredHash}`]
+      });
+      setStatusMessage('Payment confirmed!');
+      await fetchUserData(user!.id);
+      notification.showSuccess('Payment Confirmed', 'Your registration payment was recovered and verified.');
+      navigate('/registration-payment-success', {
+        state: {
+          txHash: recoveredHash,
+          amount: result.amount || plan!.tsp_price,
+          network: result.network
+        }
+      });
+      return true;
+    } catch (error: any) {
+      await saveRegistrationPaymentIssue(
+        recoveredHash,
+        error,
+        [`Recovered after ${reason}`, `Transaction found on-chain: ${recoveredHash}`]
+      );
+      const userMessage = getStuckPaymentMessage(error, recoveredHash);
+      setTransaction({
+        isProcessing: false,
+        hash: recoveredHash,
+        status: 'error',
+        error: userMessage,
+        distributionSteps: [`Recovered after ${reason}`, `Transaction found on-chain: ${recoveredHash}`]
+      });
+      setStatusMessage(null);
+      notification.showError('Payment Stuck', userMessage);
+      return true;
+    }
+  }, [
+    clearRecoveryAttempt,
+    fetchUserData,
+    findRecoverablePaymentHash,
+    navigate,
+    notification,
+    plan,
+    pollVerification,
+    saveRegistrationPaymentIssue,
+    user
+  ]);
+
+  useEffect(() => {
+    if (!user?.id || !plan || !walletState.isConnected || !walletState.address || transaction.isProcessing) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const tryRecovery = async (reason: string) => {
+      const attempt = loadRecoveryAttempt();
+      if (!attempt || cancelled || recoveryCheckInFlightRef.current) return;
+
+      recoveryCheckInFlightRef.current = true;
+      try {
+        const recovered = await recoverAndVerifyPayment(attempt, reason);
+        if (!recovered && !cancelled) {
+          setStatusMessage('Previous payment not found yet. If USDT was deducted, wait a minute and tap Re-verify or contact admin with the transaction ID from MetaMask.');
+        }
+      } catch (error) {
+        console.warn('Payment recovery check failed:', error);
+      } finally {
+        recoveryCheckInFlightRef.current = false;
+      }
+    };
+
+    void tryRecovery('page restore');
+
+    const handleFocus = () => {
+      void tryRecovery('wallet return');
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [
+    loadRecoveryAttempt,
+    plan,
+    transaction.isProcessing,
+    user?.id,
+    walletState.address,
+    walletState.isConnected
+  ]);
+
   const handleReverify = async (hashOverride?: string) => {
     if (!plan) {
       notification.showError('Error', 'Payment configuration not loaded');
@@ -635,6 +838,7 @@ const RegistrationPayment: React.FC = () => {
         distributionSteps: transaction.distributionSteps || []
       });
       setStatusMessage('Payment confirmed!');
+      clearRecoveryAttempt();
 
       await fetchUserData(user!.id);
 
@@ -701,9 +905,30 @@ const RegistrationPayment: React.FC = () => {
 
     let submittedHash: string | null = null;
     let submittedSteps: string[] = [];
+    const recoveryAttempt = await buildRecoveryAttempt();
+    if (recoveryAttempt) {
+      saveRecoveryAttempt(recoveryAttempt);
+    }
 
     try {
-      const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, plan.tsp_price);
+      const walletResponseTimeout = new Promise<never>((_resolve, reject) => {
+        window.setTimeout(() => {
+          const error = new Error('MetaMask did not return the transaction response after payment approval. This often happens on Android after returning from the wallet.');
+          (error as any).code = 'WALLET_RESPONSE_TIMEOUT';
+          reject(error);
+        }, PAYMENT_REQUEST_TIMEOUT_MS);
+      });
+
+      const transferPromise = walletService.sendUSDTTransfer(adminReceivingWallet, plan.tsp_price);
+      transferPromise.catch(() => {
+        // The raced promise handles the visible error path. This prevents an unhandled rejection
+        // if the wallet request resolves after the timeout branch has already started recovery.
+      });
+
+      const { hash, steps } = await Promise.race([
+        transferPromise,
+        walletResponseTimeout
+      ]);
       submittedHash = hash;
       submittedSteps = steps;
 
@@ -718,6 +943,7 @@ const RegistrationPayment: React.FC = () => {
 
       const result = await pollVerification(hash);
 
+      clearRecoveryAttempt();
       setTransaction({
         isProcessing: false,
         hash,
@@ -738,8 +964,18 @@ const RegistrationPayment: React.FC = () => {
         }
       });
     } catch (error: any) {
-      const txHash = submittedHash || transaction.hash || null;
+      const txHash = submittedHash || extractTransactionHash(error) || transaction.hash || null;
       const steps = submittedSteps.length > 0 ? submittedSteps : transaction.distributionSteps;
+
+      if (!txHash && error?.code !== 4001 && recoveryAttempt) {
+        const recovered = await recoverAndVerifyPayment(recoveryAttempt, 'wallet response issue');
+        if (recovered) return;
+      }
+
+      if (error?.code === 4001) {
+        clearRecoveryAttempt();
+      }
+
       await saveRegistrationPaymentIssue(txHash, error, steps || []);
       const userMessage = getStuckPaymentMessage(error, txHash);
 

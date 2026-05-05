@@ -47,6 +47,8 @@ const DISTRIBUTION_ABI = [
   'event PaymentDistributed(address indexed sender, uint256 totalAmount, uint256 recipientCount)'
 ];
 
+const ERC20_TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
+
 // Admin Settings Interface
 interface AdminSettings {
   paymentMode: string | number | boolean;
@@ -673,6 +675,75 @@ export class WalletService {
       steps.push(`\n❌ Error: ${error.message}`);
       throw error;
     }
+  }
+
+  async getCurrentBlockNumber(): Promise<number> {
+    if (!this.provider) {
+      throw new Error('Wallet not connected');
+    }
+
+    return this.provider.getBlockNumber();
+  }
+
+  async findRecentUSDTTransfer(
+    fromAddress: string,
+    toAddress: string,
+    amount: number,
+    fromBlock?: number | null
+  ): Promise<string | null> {
+    if (!this.provider) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (!ethers.isAddress(fromAddress) || !ethers.isAddress(toAddress)) {
+      throw new Error('Invalid wallet address');
+    }
+
+    await this.assertCorrectNetwork();
+
+    const usdtContractAddress = this.getUSDTContractAddress();
+    const tokenContract = new ethers.Contract(
+      usdtContractAddress,
+      ['function decimals() view returns (uint8)'],
+      this.provider
+    );
+
+    let decimals = 18;
+    try {
+      decimals = Number(await tokenContract.decimals());
+    } catch {
+      // ignore: most configured USDT contracts in this app use 18 decimals.
+    }
+
+    const currentBlock = await this.provider.getBlockNumber();
+    const startBlock = Math.max(0, Number.isFinite(Number(fromBlock)) ? Number(fromBlock) - 20 : currentBlock - 3000);
+    const expectedAmount = ethers.parseUnits(amount.toString(), decimals);
+
+    const logs = await this.provider.getLogs({
+      address: usdtContractAddress,
+      fromBlock: startBlock,
+      toBlock: currentBlock,
+      topics: [
+        ERC20_TRANSFER_TOPIC,
+        ethers.zeroPadValue(ethers.getAddress(fromAddress), 32),
+        ethers.zeroPadValue(ethers.getAddress(toAddress), 32)
+      ]
+    });
+
+    const matchingLogs = logs
+      .filter((log) => {
+        try {
+          return BigInt(log.data) === expectedAmount;
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => {
+        if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
+        return b.index - a.index;
+      });
+
+    return matchingLogs[0]?.transactionHash || null;
   }
 
   async watchUSDTToken(): Promise<boolean> {
