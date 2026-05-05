@@ -291,6 +291,21 @@ const RegistrationPayment: React.FC = () => {
     }
   }, [walletService, notification]);
 
+  const prepareAndroidMetaMaskToken = useCallback(async () => {
+    if (typeof navigator === 'undefined') return;
+    const isAndroid = /Android/i.test(navigator.userAgent || '');
+    const isMetaMask = String(walletState.walletName || '').toLowerCase().includes('metamask');
+    if (!isAndroid || !isMetaMask) return;
+
+    try {
+      setStatusMessage('Preparing USDT token in MetaMask...');
+      await walletService.watchUSDTToken();
+    } catch (error: any) {
+      // Non-fatal: MetaMask can still send the transfer, but may show the token as Unknown.
+      console.warn('Unable to prepare USDT token metadata before payment:', error);
+    }
+  }, [walletService, walletState.walletName]);
+
   const payNowDisabledReason = useMemo(() => {
     if (settingsLoading) return 'Loading payment settings...';
     if (parentAccountError) return parentAccountError;
@@ -911,6 +926,9 @@ const RegistrationPayment: React.FC = () => {
     }
 
     try {
+      await prepareAndroidMetaMaskToken();
+      setStatusMessage('Awaiting wallet confirmation...');
+
       const walletResponseTimeout = new Promise<never>((_resolve, reject) => {
         window.setTimeout(() => {
           const error = new Error('MetaMask did not return the transaction response after payment approval. This often happens on Android after returning from the wallet.');

@@ -788,25 +788,38 @@ export class WalletService {
       }
     };
 
-    let result;
-    try {
-      result = await this.externalProvider.request({
-        method: 'wallet_watchAsset',
-        params: watchAssetParams
-      });
-    } catch (error: any) {
-      const message = String(error?.message || error || '').toLowerCase();
-      if (!message.includes('json') && !message.includes('object')) {
-        throw error;
-      }
+    const attempts = [
+      watchAssetParams,
+      [watchAssetParams],
+      JSON.stringify(watchAssetParams),
+      JSON.stringify([watchAssetParams])
+    ];
 
-      result = await this.externalProvider.request({
-        method: 'wallet_watchAsset',
-        params: JSON.stringify(watchAssetParams)
-      });
+    let lastError: any = null;
+    for (const params of attempts) {
+      try {
+        const result = await this.externalProvider.request({
+          method: 'wallet_watchAsset',
+          params
+        });
+        return Boolean(result);
+      } catch (error: any) {
+        lastError = error;
+        const message = String(error?.message || error || '').toLowerCase();
+        const isParamShapeError =
+          message.includes('json') ||
+          message.includes('object') ||
+          message.includes('array') ||
+          message.includes('invalid params') ||
+          error?.code === -32602;
+
+        if (!isParamShapeError || error?.code === 4001) {
+          throw error;
+        }
+      }
     }
 
-    return Boolean(result);
+    throw lastError || new Error('Unable to add token');
   }
 
   // Disconnect wallet
