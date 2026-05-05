@@ -489,7 +489,10 @@ const RegistrationPayment: React.FC = () => {
         throw error;
       }
 
-      setStatusMessage(result.message || 'Waiting for confirmations...');
+      setStatusMessage(
+        result.message ||
+        `Payment submitted. Confirming blockchain payment and activating account... (${attempt + 1}/${PAYMENT_POLL_ATTEMPTS})`
+      );
       await new Promise(resolve => setTimeout(resolve, PAYMENT_POLL_INTERVAL));
     }
 
@@ -716,6 +719,7 @@ const RegistrationPayment: React.FC = () => {
       distributionSteps: [`Recovered after ${reason}`, `Transaction found on-chain: ${recoveredHash}`]
     });
     setStatusMessage('Payment found on-chain. Verifying now...');
+    scrollToPaymentStatus();
 
     try {
       const result = await pollVerification(recoveredHash);
@@ -957,7 +961,8 @@ const RegistrationPayment: React.FC = () => {
         error: null,
         distributionSteps: steps
       });
-      setStatusMessage('Transaction submitted. Waiting for confirmations...');
+      setStatusMessage('Payment sent from wallet. Confirming blockchain payment and activating your account...');
+      scrollToPaymentStatus();
 
       const result = await pollVerification(hash);
 
@@ -1022,6 +1027,40 @@ const RegistrationPayment: React.FC = () => {
     window.open(explorerUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const scrollToPaymentStatus = () => {
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
+  };
+
+  const paymentStatusTitle = useMemo(() => {
+    if (transaction.status === 'pending' && transaction.hash) return 'Payment sent. Activating your account...';
+    if (transaction.status === 'pending') return 'Waiting for wallet confirmation...';
+    if (transaction.status === 'success') return 'Payment confirmed';
+    if (transaction.status === 'error') return transaction.hash ? 'Payment needs verification' : 'Payment failed';
+    return null;
+  }, [transaction.hash, transaction.status]);
+
+  const paymentStatusDescription = useMemo(() => {
+    if (transaction.status === 'pending' && transaction.hash) {
+      return 'Your USDT transaction was submitted successfully. Please stay on this page while we confirm it on-chain and activate your account.';
+    }
+    if (transaction.status === 'pending') {
+      return 'Please approve the payment in your wallet. If the wallet already deducted USDT, we will try to recover and verify the transaction automatically.';
+    }
+    if (transaction.status === 'success') {
+      return 'Your registration payment has been confirmed.';
+    }
+    if (transaction.status === 'error' && transaction.hash) {
+      return 'The payment was found but activation could not finish automatically. Share this transaction ID with admin for manual verification.';
+    }
+    if (transaction.status === 'error') {
+      return 'The payment could not be completed. If USDT was deducted, provide the transaction ID from your wallet to admin.';
+    }
+    return null;
+  }, [transaction.hash, transaction.status]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center">
@@ -1050,6 +1089,53 @@ const RegistrationPayment: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Registration Payment</h1>
           <p className="text-gray-600">Connect your wallet and pay the registration fee to activate your account.</p>
         </div>
+
+        {transaction.status !== 'idle' && paymentStatusTitle && (
+          <div className={`rounded-2xl border p-4 sm:p-5 shadow-sm ${
+            transaction.status === 'success'
+              ? 'bg-green-50 border-green-200'
+              : transaction.status === 'error'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-blue-50 border-blue-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                transaction.status === 'success'
+                  ? 'bg-green-100 text-green-700'
+                  : transaction.status === 'error'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-blue-100 text-blue-700'
+              }`}>
+                {transaction.status === 'pending' && <Loader className="h-5 w-5 animate-spin" />}
+                {transaction.status === 'success' && <CheckCircle className="h-5 w-5" />}
+                {transaction.status === 'error' && <XCircle className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900">{paymentStatusTitle}</h2>
+                {paymentStatusDescription && (
+                  <p className="mt-1 text-sm text-gray-700">{paymentStatusDescription}</p>
+                )}
+                {statusMessage && (
+                  <p className="mt-2 text-sm font-medium text-gray-900">{statusMessage}</p>
+                )}
+                {transaction.hash && (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <code className="min-w-0 flex-1 break-all rounded-lg border border-gray-200 bg-white/80 px-3 py-2 font-mono text-xs text-gray-900">
+                      {transaction.hash}
+                    </code>
+                    <button
+                      onClick={openTransaction}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      <span>View Tx</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
