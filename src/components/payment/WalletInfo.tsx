@@ -65,33 +65,35 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
 
   return (
       <div className="space-y-6">
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-green-200 shadow-sm">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center min-w-0">
-              <Coins className="w-5 h-5 mr-2 text-green-600" />
-              Wallet Connected
-            </h3>
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <div className="flex items-center px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
-                <Shield className="w-3 h-3 mr-1" />
-                {getNetworkName()}
+        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-4 sm:p-6 border border-green-200 shadow-sm overflow-hidden">
+          <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center min-w-0 leading-tight">
+                <Coins className="w-5 h-5 mr-2 text-green-600 flex-shrink-0" />
+                <span>Wallet Connected</span>
+              </h3>
+              <div className="mt-2 inline-flex max-w-full items-center px-2.5 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                <Shield className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">{getNetworkName()}</span>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:max-w-xs">
               {onRefresh && (
                 <button
                   onClick={onRefresh}
                   disabled={!!refreshing}
-                  className="flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-800 rounded-lg font-medium transition-all duration-200"
+                  className="min-w-0 flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-800 rounded-lg text-sm font-medium transition-all duration-200"
                   title="Refresh balances"
                 >
-                  <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+                  <span className="truncate">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
               )}
               <button
                   onClick={onDisconnect}
-                  className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 sm:hover:scale-105"
+                  className={`${onRefresh ? '' : 'col-span-2'} min-w-0 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-all duration-200 sm:hover:scale-105`}
               >
-                <LogOut className="w-4 h-4" />
-                <span>Disconnect</span>
+                <LogOut className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Disconnect</span>
               </button>
             </div>
           </div>
