@@ -27,6 +27,31 @@ const PAYMENT_POLL_ATTEMPTS = 12;
 const PAYMENT_REQUEST_TIMEOUT_MS = 90000;
 const PAYMENT_RECOVERY_STORAGE_KEY = 'registration_payment_recovery_attempt';
 const LAST_CUSTOMER_ROUTE_STORAGE_KEY = 'last_customer_route';
+// Persists the tx hash the instant the wallet confirms it, so we can resume verification
+// if Android MetaMask causes a page reload before verification completes.
+const PENDING_TX_HASH_KEY = 'registration_payment_pending_tx';
+
+const savePendingTxHash = (txHash: string) => {
+  try {
+    sessionStorage.setItem(PENDING_TX_HASH_KEY, txHash);
+    localStorage.setItem(PENDING_TX_HASH_KEY, txHash);
+  } catch { /* storage may be unavailable */ }
+};
+
+const loadPendingTxHash = (): string | null => {
+  try {
+    return sessionStorage.getItem(PENDING_TX_HASH_KEY) || localStorage.getItem(PENDING_TX_HASH_KEY) || null;
+  } catch {
+    return null;
+  }
+};
+
+const clearPendingTxHash = () => {
+  try {
+    sessionStorage.removeItem(PENDING_TX_HASH_KEY);
+    localStorage.removeItem(PENDING_TX_HASH_KEY);
+  } catch { /* ignore */ }
+};
 
 interface PaymentRecoveryAttempt {
   userId: string;
@@ -74,6 +99,8 @@ const RegistrationPayment: React.FC = () => {
   const recoveryCheckInFlightRef = useRef(false);
   // Captures the tx hash from transferPromise even if it resolves after the timeout race
   const lateHashRef = useRef<string | null>(null);
+  // Prevents the page-reload auto-resume from firing more than once per mount
+  const autoResumeAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -186,6 +213,71 @@ const RegistrationPayment: React.FC = () => {
 
     validateParentAccount();
   }, [user?.id]);
+
+  // On Android MetaMask the DApp browser may fully reload the page when switching back from
+  // the wallet app. If that happens, the tx hash that sendUSDTTransfer returned is gone from
+  // memory. We persist it to sessionStorage/localStorage the instant we receive it, and here
+  // we pick it back up and resume verification automatically so the payment completes.
+  useEffect(() => {
+    if (!user || !plan || loading || settingsLoading) return;
+    if (user.hasActiveSubscription || user.registrationPaid) return;
+    if (autoResumeAttemptedRef.current) return;
+    autoResumeAttemptedRef.current = true;
+
+    const pendingHash = loadPendingTxHash();
+    if (!pendingHash || !/^0x[a-fA-F0-9]{64}$/.test(pendingHash)) return;
+
+    const resume = async () => {
+      setTransaction({
+        isProcessing: true,
+        hash: pendingHash,
+        status: 'pending',
+        error: null,
+        distributionSteps: ['Resumed verification after page reload (Android MetaMask)'],
+      });
+      setStatusMessage('Resuming payment verification...');
+      scrollToPaymentStatus();
+
+      try {
+        const result = await pollVerification(pendingHash);
+        clearPendingTxHash();
+        clearRecoveryAttempt();
+        setTransaction({
+          isProcessing: false,
+          hash: pendingHash,
+          status: 'success',
+          error: null,
+          distributionSteps: ['Payment verified after page reload (Android MetaMask)'],
+        });
+        setStatusMessage('Payment confirmed!');
+        await fetchUserData(user!.id);
+        notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+        navigate('/registration-payment-success', {
+          state: {
+            txHash: pendingHash,
+            amount: result.amount || plan.tsp_price,
+            network: result.network
+          }
+        });
+      } catch (verifyError: any) {
+        clearPendingTxHash();
+        await saveRegistrationPaymentIssue(pendingHash, verifyError, ['Resumed after page reload']);
+        const userMessage = getStuckPaymentMessage(verifyError, pendingHash);
+        setTransaction({
+          isProcessing: false,
+          hash: pendingHash,
+          status: 'error',
+          error: userMessage,
+          distributionSteps: ['Resumed after page reload'],
+        });
+        setStatusMessage(null);
+        notification.showError('Payment Stuck', userMessage);
+      }
+    };
+
+    resume();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, plan, loading, settingsLoading]);
 
   useEffect(() => {
     if (!settings) return;
@@ -1074,9 +1166,13 @@ const RegistrationPayment: React.FC = () => {
 
       const transferPromise = walletService.sendUSDTTransfer(adminReceivingWallet, plan.tsp_price);
 
-      // Capture hash from transferPromise even if it resolves after the timeout race (Android MetaMask)
+      // Capture hash from transferPromise even if it resolves after the timeout race (Android MetaMask).
+      // Also persist it immediately to sessionStorage/localStorage so that a full page reload
+      // (which Android MetaMask sometimes causes when switching back to the DApp browser) does
+      // not lose the hash — the auto-resume effect on mount will pick it up.
       transferPromise.then(({ hash }) => {
         lateHashRef.current = hash;
+        savePendingTxHash(hash);
       }).catch(() => {
         // The raced promise handles the visible error path. This prevents an unhandled rejection
         // if the wallet request resolves after the timeout branch has already started recovery.
@@ -1088,6 +1184,8 @@ const RegistrationPayment: React.FC = () => {
       ]);
       submittedHash = hash;
       submittedSteps = steps;
+      // Persist immediately in the normal (non-timeout) path too
+      savePendingTxHash(hash);
 
       setTransaction({
         isProcessing: true,
@@ -1101,6 +1199,7 @@ const RegistrationPayment: React.FC = () => {
 
       const result = await pollVerification(hash);
 
+      clearPendingTxHash();
       clearRecoveryAttempt();
       setTransaction({
         isProcessing: false,
@@ -1147,6 +1246,7 @@ const RegistrationPayment: React.FC = () => {
         if (lateHashWait) {
           submittedHash = lateHashWait;
           submittedSteps = ['Transaction hash recovered from delayed MetaMask response (Android)'];
+          savePendingTxHash(lateHashWait);
           setTransaction({
             isProcessing: true,
             hash: lateHashWait,
@@ -1159,6 +1259,7 @@ const RegistrationPayment: React.FC = () => {
 
           try {
             const result = await pollVerification(lateHashWait);
+            clearPendingTxHash();
             clearRecoveryAttempt();
             setTransaction({
               isProcessing: false,
@@ -1179,6 +1280,7 @@ const RegistrationPayment: React.FC = () => {
             });
             return;
           } catch (verifyError: any) {
+            clearPendingTxHash();
             await saveRegistrationPaymentIssue(lateHashWait, verifyError, submittedSteps);
             const userMessage = getStuckPaymentMessage(verifyError, lateHashWait);
             setTransaction({
@@ -1205,6 +1307,7 @@ const RegistrationPayment: React.FC = () => {
       }
 
       if (error?.code === 4001) {
+        clearPendingTxHash();
         clearRecoveryAttempt();
       }
 
