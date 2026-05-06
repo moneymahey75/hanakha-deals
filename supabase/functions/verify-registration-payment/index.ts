@@ -123,10 +123,29 @@ Deno.serve(async (req: Request) => {
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-    const tx = await provider.getTransaction(txHash);
+    let tx: Awaited<ReturnType<typeof provider.getTransaction>>;
+    try {
+      tx = await provider.getTransaction(txHash);
+    } catch (rpcError: any) {
+      // Transient RPC failure — tell the client to retry
+      console.warn('RPC getTransaction failed (transient):', rpcError?.message);
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'pending',
+        message: 'RPC node temporarily unavailable, retrying...'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (!tx) {
-      return new Response(JSON.stringify({ success: false, error: 'Transaction not found on network' }), {
-        status: 404,
+      // The transaction may not have propagated to this node yet — return 'pending'
+      // so the client retries rather than treating it as a hard failure.
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'pending',
+        message: 'Transaction not yet visible on network, retrying...'
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

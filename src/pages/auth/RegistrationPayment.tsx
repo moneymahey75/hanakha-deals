@@ -455,6 +455,9 @@ const RegistrationPayment: React.FC = () => {
   };
 
   const verifyPayment = async (txHash: string) => {
+    // Refresh the session token before each call — Android MetaMask flows can take
+    // 2+ minutes (90s timeout + 30s late hash wait), and Supabase tokens expire in 1 hour
+    // but the client may silently have an expired short-lived token.
     const session = await supabase.auth.getSession();
     const token = session.data.session?.access_token;
 
@@ -462,46 +465,98 @@ const RegistrationPayment: React.FC = () => {
       throw new Error('Missing user session');
     }
 
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-registration-payment`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ txHash })
-    });
-
-    const result = await response.json();
-
-    if (!response.ok && !result?.error) {
+    let response: Response;
+    try {
+      response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-registration-payment`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ txHash })
+      });
+    } catch (networkError: any) {
+      // Network-level failure (no connectivity, DNS, etc.) — treat as retriable
       return {
         success: false,
-        status: 'failed',
-        error: `Payment gateway returned HTTP ${response.status}`,
-        gateway_response: result
+        status: 'pending',
+        retriable: true,
+        error: networkError?.message || 'Network error — retrying...'
       };
     }
 
-    return result;
+    let result: any;
+    try {
+      result = await response.json();
+    } catch {
+      // Unparseable response — treat as retriable server error
+      return {
+        success: false,
+        status: 'pending',
+        retriable: true,
+        error: `Server returned HTTP ${response.status} with no JSON body`
+      };
+    }
+
+    // 5xx server errors are transient — retry
+    if (response.status >= 500) {
+      return { ...result, retriable: true, status: result.status || 'pending' };
+    }
+
+    // 404 "Transaction not found on network" is transient — the node may not have
+    // propagated the tx yet (common on Android where the hash arrives quickly but
+    // the BSC node hasn't indexed it). Retry instead of failing.
+    if (response.status === 404) {
+      return { ...result, retriable: true, status: 'pending' };
+    }
+
+    // 401/403 — session problem, non-retriable
+    if (response.status === 401 || response.status === 403) {
+      return { ...result, retriable: false };
+    }
+
+    // All other cases: return the result with the http status so the caller can decide
+    return { ...result, httpStatus: response.status };
   };
 
   const pollVerification = async (txHash: string) => {
     for (let attempt = 0; attempt < PAYMENT_POLL_ATTEMPTS; attempt += 1) {
-      const result = await verifyPayment(txHash);
+      let result: any;
+      try {
+        result = await verifyPayment(txHash);
+      } catch (fetchError: any) {
+        // verifyPayment only throws for session errors — those are non-retriable
+        const error = new Error(fetchError?.message || 'Session error during payment verification');
+        (error as any).gatewayResponse = { status: 'session_error' };
+        throw error;
+      }
 
       if (result.status === 'success') {
         return result;
       }
 
+      // Retriable result — just wait and continue polling
+      if (result.retriable === true || result.status === 'pending') {
+        setStatusMessage(
+          result.message ||
+          `Payment submitted. Confirming blockchain transaction... (${attempt + 1}/${PAYMENT_POLL_ATTEMPTS})`
+        );
+        await new Promise(resolve => setTimeout(resolve, PAYMENT_POLL_INTERVAL));
+        continue;
+      }
+
+      // Definitive failure: the edge function returned a clear error (wrong amount,
+      // wallet mismatch, already completed, on-chain failure, etc.).
+      // Only throw immediately for these — do NOT retry.
       if (result.status === 'failed' || result.success === false) {
         const error = new Error(result.error || 'Payment failed');
         (error as any).gatewayResponse = result;
         throw error;
       }
 
+      // Unknown status — treat as retriable to be safe
       setStatusMessage(
-        result.message ||
-        `Payment submitted. Confirming blockchain payment and activating account... (${attempt + 1}/${PAYMENT_POLL_ATTEMPTS})`
+        `Confirming payment... (${attempt + 1}/${PAYMENT_POLL_ATTEMPTS})`
       );
       await new Promise(resolve => setTimeout(resolve, PAYMENT_POLL_INTERVAL));
     }
