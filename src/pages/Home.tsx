@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   ArrowRight, 
   Users, 
@@ -93,6 +94,8 @@ const PromoCompanyLogo: React.FC<{ company: PromoCompany }> = ({ company }) => {
 
 const Home: React.FC = () => {
   const { settings } = useAdmin();
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const exampleCouponCompanies: PromoCompany[] = [
@@ -146,6 +149,25 @@ const Home: React.FC = () => {
     }, 5000);
     return () => clearInterval(timer);
   }, [slides.length]);
+
+  useEffect(() => {
+    if (loading || !user || user.userType !== 'customer') return;
+
+    try {
+      const rawLastRoute = sessionStorage.getItem('last_customer_route');
+      if (!rawLastRoute) return;
+
+      const lastRoute = JSON.parse(rawLastRoute) as { path?: string; savedAt?: number };
+      const isRecent = Number(lastRoute.savedAt || 0) > Date.now() - 30 * 60 * 1000;
+      if (!isRecent || lastRoute.path !== '/registration-payment') return;
+
+      navigate(user.hasActiveSubscription || user.registrationPaid ? '/customer/dashboard' : '/registration-payment', {
+        replace: true
+      });
+    } catch {
+      // ignore malformed route restore data
+    }
+  }, [loading, navigate, user]);
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % slides.length);

@@ -25,6 +25,7 @@ const PAYMENT_POLL_INTERVAL = 5000;
 const PAYMENT_POLL_ATTEMPTS = 12;
 const PAYMENT_REQUEST_TIMEOUT_MS = 45000;
 const PAYMENT_RECOVERY_STORAGE_KEY = 'registration_payment_recovery_attempt';
+const LAST_CUSTOMER_ROUTE_STORAGE_KEY = 'last_customer_route';
 
 interface PaymentRecoveryAttempt {
   userId: string;
@@ -72,6 +73,13 @@ const RegistrationPayment: React.FC = () => {
   const recoveryCheckInFlightRef = useRef(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(
+        LAST_CUSTOMER_ROUTE_STORAGE_KEY,
+        JSON.stringify({ path: '/registration-payment', savedAt: Date.now() })
+      );
+    }
+
     if (!user) {
       navigate('/customer/login');
       return;
