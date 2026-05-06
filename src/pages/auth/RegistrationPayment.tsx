@@ -22,7 +22,8 @@ interface RegistrationPlan {
 }
 
 const PAYMENT_POLL_INTERVAL = 5000;
-const PAYMENT_POLL_ATTEMPTS = 12;
+// 24 attempts × 5s = 120s total — gives more time on slow Android networks
+const PAYMENT_POLL_ATTEMPTS = 24;
 // Android MetaMask can take much longer to return from the wallet app; use 90s
 const PAYMENT_REQUEST_TIMEOUT_MS = 90000;
 const PAYMENT_RECOVERY_STORAGE_KEY = 'registration_payment_recovery_attempt';
@@ -120,7 +121,11 @@ const RegistrationPayment: React.FC = () => {
     }
 
     if (user.hasActiveSubscription || user.registrationPaid) {
-      navigate('/customer/dashboard', { replace: true });
+      // If there's a pending tx hash in storage, the auto-resume effect will navigate to the
+      // success page — don't override it with the dashboard redirect.
+      if (!loadPendingTxHash()) {
+        navigate('/customer/dashboard', { replace: true });
+      }
       return;
     }
 
@@ -278,6 +283,77 @@ const RegistrationPayment: React.FC = () => {
     resume();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, plan, loading, settingsLoading]);
+
+  // On Android MetaMask, the page may NOT fully reload — it just becomes visible again via
+  // document.visibilitychange when the user switches back from the wallet app. In that case
+  // the lateHashRef approach should still work, but if the timeout has already passed and
+  // we have a pending hash in storage, kick off verification immediately.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+
+      const pendingHash = loadPendingTxHash();
+      if (!pendingHash || !/^0x[a-fA-F0-9]{64}$/.test(pendingHash)) return;
+
+      // Only start if we're not already processing
+      setTransaction(prev => {
+        if (prev.isProcessing) return prev;
+        // Kick off verification for the persisted hash
+        (async () => {
+          setTransaction({
+            isProcessing: true,
+            hash: pendingHash,
+            status: 'pending',
+            error: null,
+            distributionSteps: ['Resuming verification after returning from wallet...'],
+          });
+          setStatusMessage('Checking transaction on blockchain...');
+          try {
+            const result = await pollVerification(pendingHash);
+            clearPendingTxHash();
+            clearRecoveryAttempt();
+            setTransaction({
+              isProcessing: false,
+              hash: pendingHash,
+              status: 'success',
+              error: null,
+              distributionSteps: ['Payment confirmed after returning from wallet'],
+            });
+            setStatusMessage('Payment confirmed!');
+            const currentUser = user;
+            if (currentUser) await fetchUserData(currentUser.id);
+            notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+            const planRef = plan;
+            navigate('/registration-payment-success', {
+              state: {
+                txHash: pendingHash,
+                amount: result.amount || planRef?.tsp_price,
+                network: result.network
+              }
+            });
+          } catch (verifyError: any) {
+            clearPendingTxHash();
+            await saveRegistrationPaymentIssue(pendingHash, verifyError, ['Resumed from visibility change']);
+            const userMessage = getStuckPaymentMessage(verifyError, pendingHash);
+            setTransaction({
+              isProcessing: false,
+              hash: pendingHash,
+              status: 'error',
+              error: userMessage,
+              distributionSteps: ['Resumed from visibility change'],
+            });
+            setStatusMessage(null);
+            notification.showError('Payment Stuck', userMessage);
+          }
+        })();
+        return { ...prev, isProcessing: true };
+      });
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, plan, navigate, notification, fetchUserData]);
 
   useEffect(() => {
     if (!settings) return;
