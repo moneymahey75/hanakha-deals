@@ -10,10 +10,14 @@ import {
   Calendar,
   Eye,
   RefreshCw,
-  Download
+  Download,
+  AlertTriangle,
+  Copy,
+  ExternalLink,
+  Smartphone,
 } from 'lucide-react';
 
-let inFlightPendingPaymentsRequest: { key: string; promise: Promise<Payment[]> } | null = null;
+let inFlightPendingPaymentsRequest: { key: string; promise: Promise<any> } | null = null;
 let inFlightAdminUsersRequest: Promise<AdminUser[]> | null = null;
 let inFlightAdminEarningsRequest: {
   key: string;
@@ -29,6 +33,14 @@ interface Payment {
   tp_transaction_id: string | null;
   tp_error_message?: string | null;
   tp_gateway_response?: any;
+  tp_wallet_error_code?: string | null;
+  tp_wallet_error_raw?: string | null;
+  tp_device_info?: string | null;
+  tp_is_stuck?: boolean;
+  tp_stuck_at?: string | null;
+  tp_wallet_address?: string | null;
+  tp_to_address?: string | null;
+  tp_network?: string | null;
   tp_created_at?: string;
   tp_verified_at?: string;
   user?: {
@@ -89,6 +101,7 @@ type AdminWalletStats = {
 
 const PendingPayments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [stuckPayments, setStuckPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
@@ -128,14 +141,25 @@ const PendingPayments: React.FC = () => {
       const requestPromise =
         inFlightPendingPaymentsRequest?.key === requestKey
           ? inFlightPendingPaymentsRequest.promise
-          : adminApi.post<Payment[]>('admin-get-pending-payments', { accountScope });
+          : adminApi.post<any>('admin-get-pending-payments', { accountScope });
 
       if (inFlightPendingPaymentsRequest?.key !== requestKey) {
         inFlightPendingPaymentsRequest = { key: requestKey, promise: requestPromise };
       }
 
-      const data = await requestPromise;
-      setPayments(data || []);
+      const result = await requestPromise as any;
+      // Edge function returns { all, stuck, pending } — handle both old array shape and new object shape
+      let stuck: Payment[] = [];
+      let pending: Payment[] = [];
+      if (Array.isArray(result)) {
+        stuck = result.filter((p: Payment) => p.tp_is_stuck);
+        pending = result.filter((p: Payment) => !p.tp_is_stuck);
+      } else if (result && typeof result === 'object') {
+        stuck = result.stuck || [];
+        pending = result.pending || [];
+      }
+      setPayments(pending);
+      setStuckPayments(stuck);
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
@@ -675,8 +699,224 @@ const PendingPayments: React.FC = () => {
         </div>
       )}
 
+      {/* ── Stuck Payments Section ── */}
+      <div className="bg-white rounded-lg shadow-md overflow-hidden border-l-4 border-amber-400">
+        <div className="p-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Stuck Payments
+                  {stuckPayments.length > 0 && (
+                    <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                      {stuckPayments.length}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Payments where USDT was deducted from the customer wallet but automatic verification failed.
+                  Verify each transaction manually on BSCScan before approving.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={loadPayments}
+              className="flex items-center space-x-2 px-3 py-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 border border-amber-200"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="py-8 text-center text-sm text-gray-500">Loading stuck payments...</div>
+          ) : stuckPayments.length === 0 ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center">
+              <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+              <p className="text-sm font-medium text-green-800">No stuck payments</p>
+              <p className="text-xs text-green-600 mt-1">All payments are processing normally.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {stuckPayments.map((payment) => {
+                const walletError = payment.tp_wallet_error_raw || getGatewayIssue(payment);
+                const errorCode = payment.tp_wallet_error_code;
+                const isAndroid = /android/i.test(payment.tp_device_info || '');
+                const isMetaMask = /metamask/i.test(payment.tp_device_info || '');
+                const stuckDate = payment.tp_stuck_at || payment.tp_created_at;
+                const isMainnet = payment.tp_network === 'BSC Mainnet';
+                const explorerBase = isMainnet ? 'https://bscscan.com' : 'https://testnet.bscscan.com';
+
+                return (
+                  <div key={payment.tp_id} className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+                    {/* Header row */}
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white border border-amber-200">
+                          <User className="h-5 w-5 text-amber-600" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-gray-900 text-sm">{payment.user?.tu_email || 'Unknown'}</span>
+                            {payment.user?.tu_is_dummy && (
+                              <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700 border border-orange-200">
+                                Dummy
+                              </span>
+                            )}
+                            {isAndroid && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                                <Smartphone className="h-3 w-3" />
+                                Android
+                              </span>
+                            )}
+                            {isMetaMask && (
+                              <span className="inline-flex items-center rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-600 border border-orange-100">
+                                MetaMask
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Stuck: {stuckDate ? new Date(stuckDate).toLocaleString() : 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-lg font-bold text-gray-900">{payment.tp_amount} USDT</div>
+                        <div className="text-xs text-gray-500">{payment.tp_network || 'BSC'}</div>
+                      </div>
+                    </div>
+
+                    {/* Wallet error reason */}
+                    {walletError && (
+                      <div className="mb-3 rounded-lg border border-red-200 bg-white p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-red-700 uppercase tracking-wide">
+                            Wallet Error{errorCode ? ` (${errorCode})` : ''}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-700 leading-relaxed break-words">{walletError}</p>
+                      </div>
+                    )}
+
+                    {/* Transaction ID */}
+                    {payment.tp_transaction_id ? (
+                      <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3">
+                        <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Transaction ID</span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => navigator.clipboard?.writeText(payment.tp_transaction_id!)}
+                              className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100"
+                            >
+                              <Copy className="h-3 w-3" />
+                              Copy
+                            </button>
+                            <a
+                              href={`${explorerBase}/tx/${payment.tp_transaction_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              BSCScan
+                            </a>
+                          </div>
+                        </div>
+                        <code className="block break-all text-[11px] font-mono text-gray-800">{payment.tp_transaction_id}</code>
+                      </div>
+                    ) : (
+                      <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3">
+                        <p className="text-xs text-gray-500">No transaction ID recorded — customer may not have completed the wallet signing step.</p>
+                      </div>
+                    )}
+
+                    {/* From / To wallets */}
+                    {(payment.tp_wallet_address || payment.tp_to_address) && (
+                      <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {payment.tp_wallet_address && (
+                          <div className="rounded border border-gray-200 bg-white px-3 py-2">
+                            <p className="text-[10px] font-semibold text-gray-500 uppercase mb-0.5">From (Customer)</p>
+                            <code className="text-[11px] font-mono text-gray-700 break-all">{payment.tp_wallet_address}</code>
+                          </div>
+                        )}
+                        {payment.tp_to_address && (
+                          <div className="rounded border border-gray-200 bg-white px-3 py-2">
+                            <p className="text-[10px] font-semibold text-gray-500 uppercase mb-0.5">To (Admin Wallet)</p>
+                            <code className="text-[11px] font-mono text-gray-700 break-all">{payment.tp_to_address}</code>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Device info */}
+                    {payment.tp_device_info && (
+                      <details className="mb-3">
+                        <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700">Device / Browser Info</summary>
+                        <p className="mt-1 text-[11px] text-gray-500 break-words leading-relaxed pl-2">{payment.tp_device_info}</p>
+                      </details>
+                    )}
+
+                    {/* Admin instruction */}
+                    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                      <p className="text-xs font-semibold text-blue-800 mb-1">Admin Verification Steps:</p>
+                      <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
+                        <li>Open BSCScan using the link above and confirm the transaction succeeded.</li>
+                        <li>Verify the amount matches <strong>{payment.tp_amount} USDT</strong>.</li>
+                        <li>Confirm the recipient is the admin wallet shown above.</li>
+                        <li>Click <strong>Verify</strong> to auto-process, or <strong>Approve</strong> after manual check.</li>
+                      </ol>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => handleApprovePayment(payment.tp_id)}
+                        disabled={processing === payment.tp_id || verifying === payment.tp_id}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {processing === payment.tp_id ? (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        ) : (
+                          <CheckCircle className="h-4 w-4" />
+                        )}
+                        {processing === payment.tp_id ? 'Processing...' : 'Approve'}
+                      </button>
+                      <button
+                        onClick={() => handleVerifyPayment(payment.tp_id)}
+                        disabled={verifying === payment.tp_id || processing === payment.tp_id || !payment.tp_transaction_id}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {verifying === payment.tp_id ? (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                        {verifying === payment.tp_id ? 'Verifying...' : 'Auto-Verify on Chain'}
+                      </button>
+                      <button
+                        onClick={() => handleRejectPayment(payment.tp_id)}
+                        disabled={processing === payment.tp_id || verifying === payment.tp_id}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
           <div>
             <h3 className="text-xl font-semibold text-gray-900">Admin Earnings</h3>
             <p className="text-sm text-gray-600">Track admin income and commissions paid to sub-admins</p>

@@ -571,7 +571,13 @@ const RegistrationPayment: React.FC = () => {
   ) => {
     if (!user?.id || !plan) return null;
 
-    const errorMessage = error?.message || 'Payment failed';
+    // User-cancelled payments (code 4001) are not stuck — they are intentional rejections
+    const isUserCancelled = error?.code === 4001;
+    const isStuck = txHash !== null && !isUserCancelled;
+
+    const errorMessage = buildUserFacingErrorMessage(error, txHash);
+    const walletErrorCode = String(error?.code ?? error?.error?.code ?? '');
+    const walletErrorRaw = buildRawWalletError(error);
     const paymentStatus = txHash ? 'pending' : 'failed';
     const gatewayResponse = safeSerializeGatewayResponse(error, txHash, steps);
     const isLivePaymentMode =
@@ -579,6 +585,11 @@ const RegistrationPayment: React.FC = () => {
       settings?.paymentMode === 1 ||
       settings?.paymentMode === '1' ||
       settings?.paymentMode === 'true';
+
+    const deviceInfo = typeof navigator !== 'undefined'
+      ? navigator.userAgent.substring(0, 200)
+      : null;
+
     const baseRecord = {
       tp_user_id: user.id,
       tp_subscription_id: null,
@@ -593,7 +604,12 @@ const RegistrationPayment: React.FC = () => {
       tp_network: isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet',
       tp_chain_id: isLivePaymentMode ? 56 : 97,
       tp_error_message: errorMessage,
-      tp_gateway_response: gatewayResponse
+      tp_gateway_response: gatewayResponse,
+      tp_is_stuck: isStuck,
+      tp_stuck_at: isStuck ? new Date().toISOString() : null,
+      tp_wallet_error_code: walletErrorCode || null,
+      tp_wallet_error_raw: walletErrorRaw || null,
+      tp_device_info: deviceInfo,
     };
 
     try {
@@ -605,12 +621,18 @@ const RegistrationPayment: React.FC = () => {
           .maybeSingle();
 
         if (existingPayment?.tp_id && existingPayment.tp_user_id === user.id) {
+          const alreadyCompleted = existingPayment.tp_payment_status === 'completed';
           const { error: updateError } = await supabase
             .from('tbl_payments')
             .update({
-              tp_payment_status: existingPayment.tp_payment_status === 'completed' ? 'completed' : 'pending',
+              tp_payment_status: alreadyCompleted ? 'completed' : 'pending',
               tp_error_message: errorMessage,
-              tp_gateway_response: gatewayResponse
+              tp_gateway_response: gatewayResponse,
+              tp_is_stuck: alreadyCompleted ? false : isStuck,
+              tp_stuck_at: alreadyCompleted ? null : (isStuck ? new Date().toISOString() : null),
+              tp_wallet_error_code: walletErrorCode || null,
+              tp_wallet_error_raw: walletErrorRaw || null,
+              tp_device_info: deviceInfo,
             })
             .eq('tp_id', existingPayment.tp_id);
 
@@ -633,10 +655,30 @@ const RegistrationPayment: React.FC = () => {
     }
   };
 
+  const buildRawWalletError = (error: any): string => {
+    if (!error) return '';
+    const parts: string[] = [];
+    if (error.code !== undefined) parts.push(`Code: ${error.code}`);
+    if (error.message) parts.push(`Message: ${error.message}`);
+    if (error.reason) parts.push(`Reason: ${error.reason}`);
+    if (error.shortMessage && error.shortMessage !== error.message) parts.push(`Short: ${error.shortMessage}`);
+    if (error.data) parts.push(`Data: ${JSON.stringify(error.data)}`);
+    return parts.join(' | ').substring(0, 500);
+  };
+
+  const buildUserFacingErrorMessage = (error: any, txHash: string | null): string => {
+    const code = error?.code;
+    if (code === 4001) return 'Payment cancelled by user.';
+    if (code === -32603) return 'Internal wallet error. Please try again.';
+    if (code === 'WALLET_RESPONSE_TIMEOUT') return 'Wallet did not return a response in time. This is common on Android MetaMask.';
+    const msg = error?.shortMessage || error?.reason || error?.message || 'Payment gateway did not confirm the payment.';
+    return msg.substring(0, 300);
+  };
+
   const getStuckPaymentMessage = (error: any, txHash: string | null) => {
-    const reason = error?.message || 'the payment gateway did not confirm the payment';
+    const reason = buildUserFacingErrorMessage(error, txHash);
     if (!txHash) return reason;
-    return `Your payment is stuck because ${reason}. If USDT has already been deducted, share this transaction ID with admin for manual verification: ${txHash}`;
+    return reason;
   };
 
   const extractTransactionHash = (value: any): string | null => {
@@ -1330,63 +1372,152 @@ const RegistrationPayment: React.FC = () => {
             </div>
 
             {transaction.status !== 'idle' && (
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment Status</h2>
-
-                <div className="flex items-center space-x-3 mb-4">
-                  {transaction.status === 'pending' && <Loader className="h-5 w-5 text-yellow-500 animate-spin" />}
-                  {transaction.status === 'success' && <CheckCircle className="h-5 w-5 text-green-600" />}
-                  {transaction.status === 'error' && <XCircle className="h-5 w-5 text-red-500" />}
-                  <span className="text-sm font-medium text-gray-700">
-                    {transaction.status === 'pending' && 'Payment Pending'}
+              <div className={`rounded-xl shadow-md p-6 border-2 ${
+                transaction.status === 'success'
+                  ? 'bg-green-50 border-green-200'
+                  : transaction.status === 'error'
+                    ? transaction.hash ? 'bg-amber-50 border-amber-300' : 'bg-red-50 border-red-200'
+                    : 'bg-blue-50 border-blue-200'
+              }`}>
+                {/* Status header */}
+                <div className="flex items-center gap-3 mb-4">
+                  {transaction.status === 'pending' && <Loader className="h-6 w-6 text-blue-600 animate-spin flex-shrink-0" />}
+                  {transaction.status === 'success' && <CheckCircle className="h-6 w-6 text-green-600 flex-shrink-0" />}
+                  {transaction.status === 'error' && transaction.hash && <XCircle className="h-6 w-6 text-amber-600 flex-shrink-0" />}
+                  {transaction.status === 'error' && !transaction.hash && <XCircle className="h-6 w-6 text-red-500 flex-shrink-0" />}
+                  <h2 className={`text-lg font-bold ${
+                    transaction.status === 'success' ? 'text-green-800'
+                    : transaction.status === 'error' && transaction.hash ? 'text-amber-800'
+                    : transaction.status === 'error' ? 'text-red-800'
+                    : 'text-blue-800'
+                  }`}>
+                    {transaction.status === 'pending' && 'Processing Payment...'}
                     {transaction.status === 'success' && 'Payment Confirmed'}
-                    {transaction.status === 'error' && 'Payment Failed'}
-                  </span>
+                    {transaction.status === 'error' && transaction.hash && 'Payment Stuck — Action Required'}
+                    {transaction.status === 'error' && !transaction.hash && 'Payment Failed'}
+                  </h2>
                 </div>
 
                 {statusMessage && (
-                  <p className="text-sm text-gray-600 mb-4">{statusMessage}</p>
+                  <p className="text-sm text-gray-700 mb-4 leading-relaxed">{statusMessage}</p>
                 )}
 
-                {transaction.hash && (
-                  <div className="flex items-center space-x-2 text-sm">
-                    <code className="flex-1 px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono">
+                {/* Stuck payment: full information panel */}
+                {transaction.status === 'error' && transaction.hash && (
+                  <div className="space-y-4">
+                    {/* Error reason */}
+                    {transaction.error && (
+                      <div className="rounded-lg border border-amber-200 bg-white p-4">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Wallet Error</p>
+                        <p className="text-sm text-gray-800 leading-relaxed">{transaction.error}</p>
+                      </div>
+                    )}
+
+                    {/* Transaction ID — the most important thing to save */}
+                    <div className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Transaction ID (Save This)</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => void copyToClipboard(transaction.hash!)}
+                            className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                            title="Copy transaction hash"
+                          >
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </button>
+                          <button
+                            onClick={openTransaction}
+                            className="inline-flex items-center gap-1.5 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            View on Chain
+                          </button>
+                        </div>
+                      </div>
+                      <code className="block w-full break-all rounded bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 border border-gray-100">
+                        {transaction.hash}
+                      </code>
+                    </div>
+
+                    {/* What to do next */}
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-semibold text-amber-900 mb-2">What to do:</p>
+                      <ol className="text-sm text-amber-800 space-y-1.5 list-decimal list-inside">
+                        <li>First, try <strong>Re-verify</strong> below — our system will check the blockchain again.</li>
+                        <li>If that fails, <strong>copy the Transaction ID above</strong> and contact admin.</li>
+                        <li>Admin will verify the transaction manually and activate your account.</li>
+                      </ol>
+                    </div>
+
+                    {/* Re-verify controls */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-600">Re-verify this payment on the blockchain:</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={reverifyHash}
+                          onChange={(event) => setReverifyHash(event.target.value)}
+                          placeholder={transaction.hash}
+                          className="flex-1 rounded border border-gray-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        />
+                        <button
+                          onClick={() => handleReverify()}
+                          disabled={reverifyProcessing || transaction.isProcessing || (!reverifyHash && !transaction.hash)}
+                          className="flex-shrink-0 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {reverifyProcessing ? 'Checking...' : 'Re-verify'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Failed payment (no hash) */}
+                {transaction.status === 'error' && !transaction.hash && (
+                  <div className="space-y-3">
+                    {transaction.error && (
+                      <div className="rounded-lg border border-red-200 bg-white p-4">
+                        <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Reason</p>
+                        <p className="text-sm text-gray-800">{transaction.error}</p>
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-600">
+                      If USDT was deducted from your wallet, enter your transaction hash below and click Re-verify, or contact admin.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={reverifyHash}
+                        onChange={(event) => setReverifyHash(event.target.value)}
+                        placeholder="Paste transaction hash: 0x..."
+                        className="flex-1 rounded border border-gray-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      />
+                      <button
+                        onClick={() => handleReverify()}
+                        disabled={reverifyProcessing || transaction.isProcessing || !reverifyHash}
+                        className="flex-shrink-0 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {reverifyProcessing ? 'Checking...' : 'Re-verify'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pending: show hash if available */}
+                {transaction.status === 'pending' && transaction.hash && (
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded border border-blue-200 bg-white px-3 py-2 font-mono text-xs text-gray-900">
                       {transaction.hash}
                     </code>
                     <button
                       onClick={openTransaction}
-                      className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors border border-blue-200"
+                      className="flex-shrink-0 rounded border border-blue-200 bg-white p-2 text-blue-700 hover:bg-blue-50"
                       title="View on explorer"
                     >
-                      <ExternalLink className="w-4 h-4" />
+                      <ExternalLink className="h-4 w-4" />
                     </button>
                   </div>
-                )}
-
-                <div className="mt-4 space-y-2">
-                  <p className="text-xs text-gray-500">
-                    Re-verify using the same wallet that made the payment.
-                  </p>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={reverifyHash}
-                      onChange={(event) => setReverifyHash(event.target.value)}
-                      placeholder={transaction.hash || '0x...'}
-                      className="flex-1 px-3 py-2 text-sm rounded border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    />
-                    <button
-                      onClick={() => handleReverify()}
-                      disabled={reverifyProcessing || transaction.isProcessing || (!reverifyHash && !transaction.hash)}
-                      className="px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {reverifyProcessing ? 'Checking...' : 'Re-verify'}
-                    </button>
-                  </div>
-                </div>
-
-                {transaction.error && (
-                  <p className="text-sm text-red-600 mt-4">{transaction.error}</p>
                 )}
               </div>
             )}
