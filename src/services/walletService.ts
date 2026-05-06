@@ -625,7 +625,7 @@ export class WalletService {
 
   // Direct USDT transfer to admin wallet (registration payments)
   async sendUSDTTransfer(toAddress: string, amount: number): Promise<{ hash: string; steps: string[] }> {
-    if (!this.signer || !this.provider) {
+    if (!this.provider || !this.externalProvider) {
       throw new Error('Wallet not connected');
     }
 
@@ -638,6 +638,16 @@ export class WalletService {
     }
 
     const steps: string[] = [];
+
+    // Refresh signer — on Android MetaMask the signer can become stale after app-switching
+    try {
+      this.provider = new ethers.BrowserProvider(this.externalProvider);
+      this.signer = await this.provider.getSigner();
+    } catch {
+      // If refresh fails, fall back to existing signer
+      if (!this.signer) throw new Error('Wallet not connected');
+    }
+
     const signerAddress = await this.signer.getAddress();
 
     await this.assertCorrectNetwork();

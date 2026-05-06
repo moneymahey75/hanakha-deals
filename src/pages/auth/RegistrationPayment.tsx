@@ -23,7 +23,8 @@ interface RegistrationPlan {
 
 const PAYMENT_POLL_INTERVAL = 5000;
 const PAYMENT_POLL_ATTEMPTS = 12;
-const PAYMENT_REQUEST_TIMEOUT_MS = 45000;
+// Android MetaMask can take much longer to return from the wallet app; use 90s
+const PAYMENT_REQUEST_TIMEOUT_MS = 90000;
 const PAYMENT_RECOVERY_STORAGE_KEY = 'registration_payment_recovery_attempt';
 const LAST_CUSTOMER_ROUTE_STORAGE_KEY = 'last_customer_route';
 
@@ -71,6 +72,8 @@ const RegistrationPayment: React.FC = () => {
   const [reverifyHash, setReverifyHash] = useState('');
   const [reverifyProcessing, setReverifyProcessing] = useState(false);
   const recoveryCheckInFlightRef = useRef(false);
+  // Captures the tx hash from transferPromise even if it resolves after the timeout race
+  const lateHashRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -824,11 +827,12 @@ const RegistrationPayment: React.FC = () => {
 
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
+    // Poll every 5s while waiting for wallet (Android may switch app context)
     const retryIntervalId = waitingForWalletResponse
       ? window.setInterval(() => {
           if (document.visibilityState && document.visibilityState !== 'visible') return;
           void tryRecovery('wallet response retry');
-        }, 8000)
+        }, 5000)
       : null;
 
     return () => {
@@ -961,6 +965,8 @@ const RegistrationPayment: React.FC = () => {
       await prepareAndroidMetaMaskToken();
       setStatusMessage('Awaiting wallet confirmation...');
 
+      lateHashRef.current = null;
+
       const walletResponseTimeout = new Promise<never>((_resolve, reject) => {
         window.setTimeout(() => {
           const error = new Error('MetaMask did not return the transaction response after payment approval. This often happens on Android after returning from the wallet.');
@@ -970,7 +976,11 @@ const RegistrationPayment: React.FC = () => {
       });
 
       const transferPromise = walletService.sendUSDTTransfer(adminReceivingWallet, plan.tsp_price);
-      transferPromise.catch(() => {
+
+      // Capture hash from transferPromise even if it resolves after the timeout race (Android MetaMask)
+      transferPromise.then(({ hash }) => {
+        lateHashRef.current = hash;
+      }).catch(() => {
         // The raced promise handles the visible error path. This prevents an unhandled rejection
         // if the wallet request resolves after the timeout branch has already started recovery.
       });
@@ -1015,10 +1025,84 @@ const RegistrationPayment: React.FC = () => {
         }
       });
     } catch (error: any) {
+      // On Android MetaMask, the transferPromise may resolve with the hash AFTER the
+      // timeout race. Give it up to 30 seconds to arrive before falling back to
+      // blockchain log search.
+      if (error?.code === 'WALLET_RESPONSE_TIMEOUT' && !submittedHash) {
+        setStatusMessage('Wallet response delayed. Waiting for transaction confirmation from MetaMask...');
+
+        const lateHashWait = await new Promise<string | null>((resolve) => {
+          const maxWait = 30000;
+          const checkInterval = 1000;
+          let elapsed = 0;
+          const interval = window.setInterval(() => {
+            elapsed += checkInterval;
+            if (lateHashRef.current) {
+              window.clearInterval(interval);
+              resolve(lateHashRef.current);
+            } else if (elapsed >= maxWait) {
+              window.clearInterval(interval);
+              resolve(null);
+            }
+          }, checkInterval);
+        });
+
+        if (lateHashWait) {
+          submittedHash = lateHashWait;
+          submittedSteps = ['Transaction hash recovered from delayed MetaMask response (Android)'];
+          setTransaction({
+            isProcessing: true,
+            hash: lateHashWait,
+            status: 'pending',
+            error: null,
+            distributionSteps: submittedSteps
+          });
+          setStatusMessage('Payment confirmed by wallet. Verifying on blockchain...');
+          scrollToPaymentStatus();
+
+          try {
+            const result = await pollVerification(lateHashWait);
+            clearRecoveryAttempt();
+            setTransaction({
+              isProcessing: false,
+              hash: lateHashWait,
+              status: 'success',
+              error: null,
+              distributionSteps: submittedSteps
+            });
+            setStatusMessage('Payment confirmed!');
+            await fetchUserData(user!.id);
+            notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+            navigate('/registration-payment-success', {
+              state: {
+                txHash: lateHashWait,
+                amount: result.amount || plan.tsp_price,
+                network: result.network
+              }
+            });
+            return;
+          } catch (verifyError: any) {
+            await saveRegistrationPaymentIssue(lateHashWait, verifyError, submittedSteps);
+            const userMessage = getStuckPaymentMessage(verifyError, lateHashWait);
+            setTransaction({
+              isProcessing: false,
+              hash: lateHashWait,
+              status: 'error',
+              error: userMessage,
+              distributionSteps: submittedSteps
+            });
+            setStatusMessage(null);
+            notification.showError('Payment Stuck', userMessage);
+            return;
+          }
+        }
+      }
+
       const txHash = submittedHash || extractTransactionHash(error) || transaction.hash || null;
       const steps = submittedSteps.length > 0 ? submittedSteps : transaction.distributionSteps;
 
       if (!txHash && error?.code !== 4001 && recoveryAttempt) {
+        setStatusMessage('Checking blockchain for your payment...');
         const recovered = await recoverAndVerifyPayment(recoveryAttempt, 'wallet response issue');
         if (recovered) return;
       }
