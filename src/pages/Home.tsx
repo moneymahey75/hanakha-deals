@@ -151,17 +151,28 @@ const Home: React.FC = () => {
   }, [slides.length]);
 
   useEffect(() => {
-    if (loading || !user || user.userType !== 'customer') return;
-
     try {
-      const rawLastRoute = sessionStorage.getItem('last_customer_route');
+      const rawLastRoute =
+        sessionStorage.getItem('last_customer_route') ||
+        localStorage.getItem('last_customer_route');
       if (!rawLastRoute) return;
 
       const lastRoute = JSON.parse(rawLastRoute) as { path?: string; savedAt?: number };
       const isRecent = Number(lastRoute.savedAt || 0) > Date.now() - 30 * 60 * 1000;
       if (!isRecent || lastRoute.path !== '/registration-payment') return;
 
-      navigate(user.hasActiveSubscription || user.registrationPaid ? '/customer/dashboard' : '/registration-payment', {
+      const hasKnownCustomerSession =
+        user?.userType === 'customer' ||
+        sessionStorage.getItem('session_type') === 'customer' ||
+        Boolean(localStorage.getItem('current-user-id'));
+
+      if (!hasKnownCustomerSession) return;
+
+      const target = user?.userType === 'customer' && (user.hasActiveSubscription || user.registrationPaid)
+        ? '/customer/dashboard'
+        : '/registration-payment';
+
+      navigate(target, {
         replace: true
       });
     } catch {

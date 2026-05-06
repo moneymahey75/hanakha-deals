@@ -74,10 +74,9 @@ const RegistrationPayment: React.FC = () => {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem(
-        LAST_CUSTOMER_ROUTE_STORAGE_KEY,
-        JSON.stringify({ path: '/registration-payment', savedAt: Date.now() })
-      );
+      const routeState = JSON.stringify({ path: '/registration-payment', savedAt: Date.now() });
+      sessionStorage.setItem(LAST_CUSTOMER_ROUTE_STORAGE_KEY, routeState);
+      localStorage.setItem(LAST_CUSTOMER_ROUTE_STORAGE_KEY, routeState);
     }
 
     if (!user) {
