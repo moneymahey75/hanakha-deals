@@ -39,6 +39,22 @@ import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
 import GuestRoute from './components/auth/GuestRoute';
 import { getMaintenanceNoticeState, isMaintenanceActiveNow } from './utils/maintenanceWindow';
 
+// Persists the current route so MetaMask DApp browser can restore it after reload
+const SESSION_ROUTE_KEY = 'app_last_route';
+
+function RouteTracker() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    // Don't persist auth callback or reset-password paths to avoid redirect loops
+    if (pathname !== '/' && !pathname.startsWith('/auth/')) {
+      sessionStorage.setItem(SESSION_ROUTE_KEY, pathname + search);
+    }
+  }, [pathname, search]);
+
+  return null;
+}
+
 // Scroll to top component
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -66,6 +82,7 @@ function App() {
               <Router>
                 <div className="min-h-screen bg-gray-50">
                   <ScrollToTop />
+                  <RouteTracker />
                   <Routes>
                     {/* Backpanel Routes (No Navbar/Footer) */}
                     <Route path="/backpanel/login" element={
