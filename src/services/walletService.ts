@@ -171,6 +171,11 @@ export class WalletService {
     return `${networkConfig.chainName} RPC is not responding in your wallet. Please update the network RPC URL in MetaMask and reconnect.`;
   }
 
+  private getReadonlyProvider(): ethers.JsonRpcProvider {
+    const networkConfig = this.getNetworkConfig();
+    return new ethers.JsonRpcProvider(networkConfig.rpcUrls[0]);
+  }
+
   private isRpcFetchError(error: any): boolean {
     const message = String(error?.message || error?.error?.message || '').toLowerCase();
     const nestedMessage = String(error?.data?.cause?.message || '').toLowerCase();
@@ -678,11 +683,7 @@ export class WalletService {
   }
 
   async getCurrentBlockNumber(): Promise<number> {
-    if (!this.provider) {
-      throw new Error('Wallet not connected');
-    }
-
-    return this.provider.getBlockNumber();
+    return this.getReadonlyProvider().getBlockNumber();
   }
 
   async findRecentUSDTTransfer(
@@ -691,21 +692,16 @@ export class WalletService {
     amount: number,
     fromBlock?: number | null
   ): Promise<string | null> {
-    if (!this.provider) {
-      throw new Error('Wallet not connected');
-    }
-
     if (!ethers.isAddress(fromAddress) || !ethers.isAddress(toAddress)) {
       throw new Error('Invalid wallet address');
     }
 
-    await this.assertCorrectNetwork();
-
     const usdtContractAddress = this.getUSDTContractAddress();
+    const readonlyProvider = this.getReadonlyProvider();
     const tokenContract = new ethers.Contract(
       usdtContractAddress,
       ['function decimals() view returns (uint8)'],
-      this.provider
+      readonlyProvider
     );
 
     let decimals = 18;
@@ -715,11 +711,11 @@ export class WalletService {
       // ignore: most configured USDT contracts in this app use 18 decimals.
     }
 
-    const currentBlock = await this.provider.getBlockNumber();
+    const currentBlock = await readonlyProvider.getBlockNumber();
     const startBlock = Math.max(0, Number.isFinite(Number(fromBlock)) ? Number(fromBlock) - 20 : currentBlock - 3000);
     const expectedAmount = ethers.parseUnits(amount.toString(), decimals);
 
-    const logs = await this.provider.getLogs({
+    const logs = await readonlyProvider.getLogs({
       address: usdtContractAddress,
       fromBlock: startBlock,
       toBlock: currentBlock,

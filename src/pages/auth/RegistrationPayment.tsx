@@ -773,7 +773,13 @@ const RegistrationPayment: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (!user?.id || !plan || !walletState.isConnected || !walletState.address || transaction.isProcessing) {
+    if (!user?.id || !plan || !walletState.isConnected || !walletState.address) {
+      return;
+    }
+
+    const waitingForWalletResponse = transaction.isProcessing && !transaction.hash;
+    const alreadyVerifyingHash = transaction.isProcessing && !!transaction.hash;
+    if (alreadyVerifyingHash) {
       return;
     }
 
@@ -787,7 +793,11 @@ const RegistrationPayment: React.FC = () => {
       try {
         const recovered = await recoverAndVerifyPayment(attempt, reason);
         if (!recovered && !cancelled) {
-          setStatusMessage('Previous payment not found yet. If USDT was deducted, wait a minute and tap Re-verify or contact admin with the transaction ID from MetaMask.');
+          setStatusMessage(
+            waitingForWalletResponse
+              ? 'Returned from wallet, but the transaction response was not received yet. If USDT was deducted, keep this page open while we continue checking the blockchain.'
+              : 'Previous payment not found yet. If USDT was deducted, wait a minute and tap Re-verify or contact admin with the transaction ID from MetaMask.'
+          );
         }
       } catch (error) {
         console.warn('Payment recovery check failed:', error);
@@ -796,23 +806,34 @@ const RegistrationPayment: React.FC = () => {
       }
     };
 
-    void tryRecovery('page restore');
+    if (!waitingForWalletResponse) {
+      void tryRecovery('page restore');
+    }
 
     const handleFocus = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
       void tryRecovery('wallet return');
     };
 
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
+    const retryIntervalId = waitingForWalletResponse
+      ? window.setInterval(() => {
+          if (document.visibilityState && document.visibilityState !== 'visible') return;
+          void tryRecovery('wallet response retry');
+        }, 8000)
+      : null;
 
     return () => {
       cancelled = true;
+      if (retryIntervalId) window.clearInterval(retryIntervalId);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
     };
   }, [
     loadRecoveryAttempt,
     plan,
+    transaction.hash,
     transaction.isProcessing,
     user?.id,
     walletState.address,
