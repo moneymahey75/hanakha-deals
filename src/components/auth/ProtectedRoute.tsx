@@ -190,8 +190,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     }
   }
 
-  // Check if user has active subscription (mandatory for all authenticated pages except specific pages)
-  if (requiresSubscription && user.userType !== 'admin' && !user.hasActiveSubscription) {
+  const hasCustomerAccess = user.hasActiveSubscription || Boolean((user as any).registrationPaid);
+
+  // Check if user has paid access (mandatory for all authenticated pages except specific pages)
+  if (requiresSubscription && user.userType !== 'admin' && !hasCustomerAccess) {
     // Allow access to specific pages without subscription
     const allowedWithoutSubscription = [
       '/payment',

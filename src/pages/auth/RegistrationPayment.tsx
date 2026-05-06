@@ -82,7 +82,7 @@ const RegistrationPayment: React.FC = () => {
       return;
     }
 
-    if (user.hasActiveSubscription) {
+    if (user.hasActiveSubscription || user.registrationPaid) {
       navigate('/customer/dashboard', { replace: true });
       return;
     }

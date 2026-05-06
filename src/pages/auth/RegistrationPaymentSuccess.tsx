@@ -16,9 +16,10 @@ interface PaymentDetails {
 const RegistrationPaymentSuccess: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, fetchUserData } = useAuth();
   const [payment, setPayment] = useState<PaymentDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openingDashboard, setOpeningDashboard] = useState(false);
 
   const state = location.state as { txHash?: string; amount?: number; network?: string } | null;
   const txHash = state?.txHash || new URLSearchParams(location.search).get('tx');
@@ -58,6 +59,18 @@ const RegistrationPaymentSuccess: React.FC = () => {
       ? `https://bscscan.com/tx/${txHash}`
       : `https://testnet.bscscan.com/tx/${txHash}`;
     window.open(explorerUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const goToDashboard = async () => {
+    setOpeningDashboard(true);
+    try {
+      if (user?.id) {
+        await fetchUserData(user.id);
+      }
+    } finally {
+      navigate('/customer/dashboard', { replace: true });
+      setOpeningDashboard(false);
+    }
   };
 
   if (loading) {
@@ -114,11 +127,12 @@ const RegistrationPaymentSuccess: React.FC = () => {
         </div>
 
         <button
-          onClick={() => navigate('/customer/dashboard')}
-          className="mt-8 w-full flex items-center justify-center space-x-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+          onClick={goToDashboard}
+          disabled={openingDashboard}
+          className="mt-8 w-full flex items-center justify-center space-x-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-lg font-medium"
         >
           <Home className="w-5 h-5" />
-          <span>Go to Dashboard</span>
+          <span>{openingDashboard ? 'Opening Dashboard...' : 'Go to Dashboard'}</span>
         </button>
       </div>
     </div>

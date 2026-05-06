@@ -15,6 +15,7 @@ interface User {
   parentId?: string;
   isVerified: boolean;
   hasActiveSubscription: boolean;
+  registrationPaid?: boolean;
   mobileVerified: boolean;
 }
 
@@ -156,6 +157,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('User data not found');
       }
 
+      const registrationPaid = userData?.tu_registration_paid === true;
+
       const user: User = {
         id: userId,
         email: session?.user?.email || userData?.tu_email || 'unknown@example.com',
@@ -166,6 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         parentId: profileData?.tup_parent_account,
         isVerified: userData?.tu_is_verified || false,
         hasActiveSubscription: !!subscriptionData,
+        registrationPaid,
         mobileVerified: userData?.tu_mobile_verified || false
       };
 
@@ -176,7 +180,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastName: user.lastName,
         userType: user.userType,
         hasProfile: !!profileData,
-        hasActiveSubscription: !!subscriptionData
+        hasActiveSubscription: !!subscriptionData,
+        registrationPaid
       });
 
       // Mark session as customer type when user data is loaded
@@ -518,6 +523,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userType: (userType as User['userType']) || 'customer',
         isVerified: false,
         hasActiveSubscription: false,
+        registrationPaid: false,
         mobileVerified: false
       };
       setUser(minimalUser);
