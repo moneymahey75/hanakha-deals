@@ -987,4 +987,23 @@ export class WalletService {
     this.persistCurrentWalletState();
     return newWalletState;
   }
+
+  async refreshInjectedWalletSession(): Promise<WalletState> {
+    if (!this.externalProvider?.request) {
+      throw new Error('Wallet provider not available');
+    }
+
+    const accounts = await this.externalProvider.request({ method: 'eth_accounts' });
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      throw new Error('Wallet is not connected');
+    }
+
+    this.provider = new ethers.BrowserProvider(this.externalProvider);
+    await this.switchToCorrectNetwork(this.externalProvider);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    this.provider = new ethers.BrowserProvider(this.externalProvider);
+    this.signer = await this.provider.getSigner();
+
+    return this.syncCurrentWalletState();
+  }
 }

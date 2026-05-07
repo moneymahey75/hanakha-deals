@@ -104,6 +104,7 @@ const RegistrationPayment: React.FC = () => {
   const autoResumeAttemptedRef = useRef(false);
   // Prevents durable recovery from running repeatedly after Android reloads the component.
   const durableRecoveryAttemptedRef = useRef(false);
+  const softWalletRefreshInFlightRef = useRef(false);
   // Set to true the moment we navigate to the success page so the dashboard-redirect
   // useEffect does not override the navigation while the component is still mounted.
   const navigatingToSuccessRef = useRef(false);
@@ -1095,6 +1096,23 @@ const RegistrationPayment: React.FC = () => {
     user
   ]);
 
+  const refreshWalletAndRecover = useCallback(async (attempt: PaymentRecoveryAttempt, reason: string) => {
+    if (softWalletRefreshInFlightRef.current || navigatingToSuccessRef.current) return false;
+    softWalletRefreshInFlightRef.current = true;
+
+    try {
+      setStatusMessage('Refreshing wallet session and checking payment...');
+      const updatedWallet = await walletService.refreshInjectedWalletSession();
+      setWalletState(updatedWallet);
+      return await recoverAndVerifyPayment(attempt, reason);
+    } catch (error) {
+      console.warn('Automatic wallet session refresh failed:', error);
+      return false;
+    } finally {
+      softWalletRefreshInFlightRef.current = false;
+    }
+  }, [recoverAndVerifyPayment, walletService]);
+
   useEffect(() => {
     if (!user?.id || !plan || loading || settingsLoading) return;
     if (user.hasActiveSubscription || user.registrationPaid) return;
@@ -1122,7 +1140,10 @@ const RegistrationPayment: React.FC = () => {
           error: null
         }));
         setStatusMessage('Checking blockchain for your submitted payment...');
-        const recovered = await recoverAndVerifyPayment(attempt, 'Android page reload');
+        let recovered = await recoverAndVerifyPayment(attempt, 'Android page reload');
+        if (!recovered && attempts >= 2) {
+          recovered = await refreshWalletAndRecover(attempt, 'automatic wallet refresh');
+        }
         if (recovered && intervalId) {
           window.clearInterval(intervalId);
           intervalId = null;
@@ -1159,6 +1180,7 @@ const RegistrationPayment: React.FC = () => {
     loading,
     plan,
     recoverAndVerifyPayment,
+    refreshWalletAndRecover,
     settingsLoading,
     user?.id,
     user?.hasActiveSubscription,
@@ -1184,7 +1206,10 @@ const RegistrationPayment: React.FC = () => {
 
       recoveryCheckInFlightRef.current = true;
       try {
-        const recovered = await recoverAndVerifyPayment(attempt, reason);
+        let recovered = await recoverAndVerifyPayment(attempt, reason);
+        if (!recovered && waitingForWalletResponse) {
+          recovered = await refreshWalletAndRecover(attempt, 'automatic wallet refresh');
+        }
         if (!recovered && !cancelled) {
           setStatusMessage(
             waitingForWalletResponse
@@ -1227,6 +1252,7 @@ const RegistrationPayment: React.FC = () => {
   }, [
     loadRecoveryAttempt,
     plan,
+    refreshWalletAndRecover,
     transaction.hash,
     transaction.isProcessing,
     user?.id,
