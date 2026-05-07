@@ -102,6 +102,8 @@ const RegistrationPayment: React.FC = () => {
   const lateHashRef = useRef<string | null>(null);
   // Prevents the page-reload auto-resume from firing more than once per mount
   const autoResumeAttemptedRef = useRef(false);
+  // Prevents durable recovery from running repeatedly after Android reloads the component.
+  const durableRecoveryAttemptedRef = useRef(false);
   // Set to true the moment we navigate to the success page so the dashboard-redirect
   // useEffect does not override the navigation while the component is still mounted.
   const navigatingToSuccessRef = useRef(false);
@@ -931,9 +933,14 @@ const RegistrationPayment: React.FC = () => {
     if (typeof window === 'undefined') return null;
 
     try {
-      const raw = sessionStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY);
+      const raw =
+        sessionStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY) ||
+        localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY);
       if (!raw) return null;
-      return JSON.parse(raw) as PaymentRecoveryAttempt;
+      const attempt = JSON.parse(raw) as PaymentRecoveryAttempt;
+      const savedAt = new Date(attempt.startedAt || 0).getTime();
+      const isRecent = Number.isFinite(savedAt) && savedAt > Date.now() - 45 * 60 * 1000;
+      return isRecent ? attempt : null;
     } catch {
       return null;
     }
@@ -941,12 +948,15 @@ const RegistrationPayment: React.FC = () => {
 
   const saveRecoveryAttempt = useCallback((attempt: PaymentRecoveryAttempt) => {
     if (typeof window === 'undefined') return;
-    sessionStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify(attempt));
+    const payload = JSON.stringify(attempt);
+    sessionStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, payload);
+    localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, payload);
   }, []);
 
   const clearRecoveryAttempt = useCallback(() => {
     if (typeof window === 'undefined') return;
     sessionStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
+    localStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
   }, []);
 
   const buildRecoveryAttempt = useCallback(async (): Promise<PaymentRecoveryAttempt | null> => {
@@ -973,7 +983,6 @@ const RegistrationPayment: React.FC = () => {
 
   const findRecoverablePaymentHash = useCallback(async (attempt: PaymentRecoveryAttempt) => {
     if (!user?.id || attempt.userId !== user.id) return null;
-    if (!walletState.address || attempt.walletAddress.toLowerCase() !== walletState.address.toLowerCase()) return null;
     if (!adminReceivingWallet || attempt.toAddress.toLowerCase() !== adminReceivingWallet.toLowerCase()) return null;
     if (!plan || Number(attempt.amount) !== Number(plan.tsp_price)) return null;
 
@@ -984,7 +993,7 @@ const RegistrationPayment: React.FC = () => {
       attempt.amount,
       attempt.startBlock
     );
-  }, [adminReceivingWallet, plan, user?.id, walletService, walletState.address]);
+  }, [adminReceivingWallet, plan, user?.id, walletService]);
 
   const recoverAndVerifyPayment = useCallback(async (attempt: PaymentRecoveryAttempt, reason: string) => {
     const recoveredHash = await findRecoverablePaymentHash(attempt);
@@ -1052,6 +1061,76 @@ const RegistrationPayment: React.FC = () => {
     pollVerification,
     saveRegistrationPaymentIssue,
     user
+  ]);
+
+  useEffect(() => {
+    if (!user?.id || !plan || loading || settingsLoading) return;
+    if (user.hasActiveSubscription || user.registrationPaid) return;
+    if (durableRecoveryAttemptedRef.current) return;
+
+    const attempt = loadRecoveryAttempt();
+    if (!attempt || attempt.userId !== user.id) return;
+
+    durableRecoveryAttemptedRef.current = true;
+    let cancelled = false;
+    let intervalId: number | null = null;
+    let attempts = 0;
+    const maxAttempts = 18; // 18 x 5s = 90s after an Android reload/remount
+
+    const tryDurableRecovery = async () => {
+      if (cancelled || recoveryCheckInFlightRef.current || navigatingToSuccessRef.current) return;
+      attempts += 1;
+      recoveryCheckInFlightRef.current = true;
+
+      try {
+        setTransaction(prev => ({
+          ...prev,
+          isProcessing: true,
+          status: 'pending',
+          error: null
+        }));
+        setStatusMessage('Checking blockchain for your submitted payment...');
+        const recovered = await recoverAndVerifyPayment(attempt, 'Android page reload');
+        if (recovered && intervalId) {
+          window.clearInterval(intervalId);
+          intervalId = null;
+          return;
+        }
+      } catch (error) {
+        console.warn('Durable payment recovery failed:', error);
+      } finally {
+        recoveryCheckInFlightRef.current = false;
+      }
+
+      if (attempts >= maxAttempts && intervalId) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+        setTransaction(prev => ({
+          ...prev,
+          isProcessing: false
+        }));
+        setStatusMessage('We could not confirm the payment automatically yet. If USDT was deducted, share the transaction ID from MetaMask with admin for verification.');
+      }
+    };
+
+    void tryDurableRecovery();
+    intervalId = window.setInterval(() => {
+      void tryDurableRecovery();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [
+    loadRecoveryAttempt,
+    loading,
+    plan,
+    recoverAndVerifyPayment,
+    settingsLoading,
+    user?.id,
+    user?.hasActiveSubscription,
+    user?.registrationPaid
   ]);
 
   useEffect(() => {
