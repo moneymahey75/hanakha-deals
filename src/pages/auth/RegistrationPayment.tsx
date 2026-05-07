@@ -987,6 +987,38 @@ const RegistrationPayment: React.FC = () => {
     if (!plan || Number(attempt.amount) !== Number(plan.tsp_price)) return null;
 
     setStatusMessage('Checking blockchain for the submitted payment...');
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (token) {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recover-registration-payment`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            walletAddress: attempt.walletAddress,
+            toAddress: attempt.toAddress,
+            amount: attempt.amount,
+            startBlock: attempt.startBlock
+          })
+        });
+
+        const result = await response.json();
+        if (response.ok && result?.txHash && /^0x[a-fA-F0-9]{64}$/.test(result.txHash)) {
+          return result.txHash as string;
+        }
+
+        if (!response.ok || result?.success === false) {
+          console.warn('Server payment recovery failed:', result?.error || response.status);
+        }
+      }
+    } catch (error) {
+      console.warn('Server payment recovery unavailable, trying browser recovery:', error);
+    }
+
     return walletService.findRecentUSDTTransfer(
       attempt.walletAddress,
       attempt.toAddress,
