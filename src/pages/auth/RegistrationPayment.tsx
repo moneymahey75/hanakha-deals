@@ -255,7 +255,6 @@ const RegistrationPayment: React.FC = () => {
           distributionSteps: ['Payment verified after page reload (Android MetaMask)'],
         });
         setStatusMessage('Payment confirmed!');
-        await fetchUserData(user!.id);
         notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
         navigate('/registration-payment-success', {
           state: {
@@ -264,6 +263,7 @@ const RegistrationPayment: React.FC = () => {
             network: result.network
           }
         });
+        void fetchUserData(user!.id);
       } catch (verifyError: any) {
         clearPendingTxHash();
         await saveRegistrationPaymentIssue(pendingHash, verifyError, ['Resumed after page reload']);
@@ -320,8 +320,6 @@ const RegistrationPayment: React.FC = () => {
               distributionSteps: ['Payment confirmed after returning from wallet'],
             });
             setStatusMessage('Payment confirmed!');
-            const currentUser = user;
-            if (currentUser) await fetchUserData(currentUser.id);
             notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
             const planRef = plan;
             navigate('/registration-payment-success', {
@@ -331,6 +329,8 @@ const RegistrationPayment: React.FC = () => {
                 network: result.network
               }
             });
+            const currentUser = user;
+            if (currentUser) void fetchUserData(currentUser.id);
           } catch (verifyError: any) {
             clearPendingTxHash();
             await saveRegistrationPaymentIssue(pendingHash, verifyError, ['Resumed from visibility change']);
@@ -999,6 +999,7 @@ const RegistrationPayment: React.FC = () => {
     try {
       const result = await pollVerification(recoveredHash);
       clearRecoveryAttempt();
+      clearPendingTxHash();
       setTransaction({
         isProcessing: false,
         hash: recoveredHash,
@@ -1007,7 +1008,6 @@ const RegistrationPayment: React.FC = () => {
         distributionSteps: [`Recovered after ${reason}`, `Transaction found on-chain: ${recoveredHash}`]
       });
       setStatusMessage('Payment confirmed!');
-      await fetchUserData(user!.id);
       notification.showSuccess('Payment Confirmed', 'Your registration payment was recovered and verified.');
       navigate('/registration-payment-success', {
         state: {
@@ -1016,6 +1016,7 @@ const RegistrationPayment: React.FC = () => {
           network: result.network
         }
       });
+      void fetchUserData(user!.id);
       return true;
     } catch (error: any) {
       await saveRegistrationPaymentIssue(
@@ -1155,8 +1156,7 @@ const RegistrationPayment: React.FC = () => {
       });
       setStatusMessage('Payment confirmed!');
       clearRecoveryAttempt();
-
-      await fetchUserData(user!.id);
+      clearPendingTxHash();
 
       notification.showSuccess('Payment Confirmed', 'Your registration payment was verified.');
       navigate('/registration-payment-success', {
@@ -1166,6 +1166,7 @@ const RegistrationPayment: React.FC = () => {
           network: result.network
         }
       });
+      void fetchUserData(user!.id);
     } catch (error: any) {
       await saveRegistrationPaymentIssue(targetHash, error, transaction.distributionSteps || []);
       const userMessage = getStuckPaymentMessage(error, targetHash);
@@ -1286,8 +1287,8 @@ const RegistrationPayment: React.FC = () => {
       });
       setStatusMessage('Payment confirmed!');
 
-      await fetchUserData(user!.id);
-
+      // Navigate BEFORE fetchUserData so the component unmounts before the auth state
+      // update can trigger the dashboard-redirect useEffect.
       notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
       navigate('/registration-payment-success', {
         state: {
@@ -1296,6 +1297,8 @@ const RegistrationPayment: React.FC = () => {
           network: result.network
         }
       });
+      // Fire-and-forget: update auth state in the background after navigation
+      void fetchUserData(user!.id);
     } catch (error: any) {
       // On Android MetaMask, the transferPromise may resolve with the hash AFTER the
       // timeout race. Give it up to 30 seconds to arrive before falling back to
@@ -1345,7 +1348,6 @@ const RegistrationPayment: React.FC = () => {
               distributionSteps: submittedSteps
             });
             setStatusMessage('Payment confirmed!');
-            await fetchUserData(user!.id);
             notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
             navigate('/registration-payment-success', {
               state: {
@@ -1354,6 +1356,7 @@ const RegistrationPayment: React.FC = () => {
                 network: result.network
               }
             });
+            void fetchUserData(user!.id);
             return;
           } catch (verifyError: any) {
             clearPendingTxHash();
