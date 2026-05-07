@@ -164,9 +164,9 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Distribution Process
                                 </label>
-                                <div className="bg-gray-50 rounded border border-gray-200 p-3 max-h-60 overflow-y-auto">
+                                <div className="bg-gray-50 rounded border border-gray-200 p-3 max-h-60 overflow-auto">
                                     {distributionSteps.map((step, index) => (
-                                        <div key={index} className="text-xs text-gray-600 font-mono mb-1">
+                                        <div key={index} className="text-xs text-gray-600 font-mono mb-1 whitespace-nowrap">
                                             {step}
                                         </div>
                                     ))}
@@ -179,13 +179,13 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Transaction Hash
                                 </label>
-                                <div className="flex items-center space-x-2">
-                                    <code className="flex-1 px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 text-sm font-mono overflow-x-auto scrollbar-hide whitespace-nowrap">
+                                <div className="transaction-hash-container flex items-center gap-2">
+                                    <code className="transaction-hash-code min-w-0 flex-1 px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 text-sm font-mono overflow-x-auto scrollbar-hide whitespace-nowrap">
                                         {transaction.hash}
                                     </code>
                                     <button
                                         onClick={openTransaction}
-                                        className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors border border-blue-200 flex-shrink-0"
+                                        className="transaction-hash-button p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors border border-blue-200 flex-shrink-0"
                                         title={`View on ${getNetworkName()} Explorer`}
                                     >
                                         <ExternalLink className="w-4 h-4" />

@@ -1510,13 +1510,13 @@ const RegistrationPayment: React.FC = () => {
                   <p className="mt-2 text-sm font-medium text-gray-900">{statusMessage}</p>
                 )}
                 {transaction.hash && (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <code className="min-w-0 flex-1 break-all rounded-lg border border-gray-200 bg-white/80 px-3 py-2 font-mono text-xs text-gray-900">
+                  <div className="transaction-hash-container mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <code className="transaction-hash-code min-w-0 flex-1 overflow-x-auto scrollbar-hide whitespace-nowrap rounded-lg border border-gray-200 bg-white/80 px-3 py-2 font-mono text-xs text-gray-900">
                       {transaction.hash}
                     </code>
                     <button
                       onClick={openTransaction}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                      className="transaction-hash-button inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
                     >
                       <ExternalLink className="h-4 w-4" />
                       <span>View Tx</span>
@@ -1672,7 +1672,7 @@ const RegistrationPayment: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      <code className="block w-full break-all rounded bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 border border-gray-100">
+                      <code className="transaction-hash-code block w-full overflow-x-auto scrollbar-hide whitespace-nowrap rounded bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 border border-gray-100">
                         {transaction.hash}
                       </code>
                     </div>
@@ -1743,13 +1743,13 @@ const RegistrationPayment: React.FC = () => {
 
                 {/* Pending: show hash if available */}
                 {transaction.status === 'pending' && transaction.hash && (
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 break-all rounded border border-blue-200 bg-white px-3 py-2 font-mono text-xs text-gray-900">
+                  <div className="transaction-hash-container flex items-center gap-2">
+                    <code className="transaction-hash-code min-w-0 flex-1 overflow-x-auto scrollbar-hide whitespace-nowrap rounded border border-blue-200 bg-white px-3 py-2 font-mono text-xs text-gray-900">
                       {transaction.hash}
                     </code>
                     <button
                       onClick={openTransaction}
-                      className="flex-shrink-0 rounded border border-blue-200 bg-white p-2 text-blue-700 hover:bg-blue-50"
+                      className="transaction-hash-button flex-shrink-0 rounded border border-blue-200 bg-white p-2 text-blue-700 hover:bg-blue-50"
                       title="View on explorer"
                     >
                       <ExternalLink className="h-4 w-4" />

@@ -110,13 +110,13 @@ const RegistrationPaymentSuccess: React.FC = () => {
           {txHash && (
             <div>
               <p className="text-sm text-gray-500 mb-2">Transaction Hash</p>
-              <div className="flex items-center space-x-2">
-                <code className="flex-1 px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-sm">
+              <div className="transaction-hash-container flex items-center gap-2">
+                <code className="transaction-hash-code min-w-0 flex-1 overflow-x-auto scrollbar-hide whitespace-nowrap px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-sm">
                   {txHash}
                 </code>
                 <button
                   onClick={openExplorer}
-                  className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors border border-blue-200"
+                  className="transaction-hash-button flex-shrink-0 p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors border border-blue-200"
                   title="View on explorer"
                 >
                   <ExternalLink className="w-4 h-4" />

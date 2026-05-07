@@ -631,7 +631,7 @@ const PendingPayments: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="space-y-2">
                         {payment.tp_transaction_id ? (
-                          <div className="text-sm text-gray-900 font-mono truncate max-w-xs">
+                          <div className="transaction-hash-code max-w-xs overflow-x-auto scrollbar-hide whitespace-nowrap text-sm text-gray-900 font-mono">
                             {payment.tp_transaction_id}
                           </div>
                         ) : (
@@ -827,7 +827,7 @@ const PendingPayments: React.FC = () => {
                             </a>
                           </div>
                         </div>
-                        <code className="block break-all text-[11px] font-mono text-gray-800">{payment.tp_transaction_id}</code>
+                        <code className="transaction-hash-code block overflow-x-auto scrollbar-hide whitespace-nowrap text-[11px] font-mono text-gray-800">{payment.tp_transaction_id}</code>
                       </div>
                     ) : (
                       <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3">
