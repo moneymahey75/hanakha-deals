@@ -102,6 +102,9 @@ const RegistrationPayment: React.FC = () => {
   const lateHashRef = useRef<string | null>(null);
   // Prevents the page-reload auto-resume from firing more than once per mount
   const autoResumeAttemptedRef = useRef(false);
+  // Set to true the moment we navigate to the success page so the dashboard-redirect
+  // useEffect does not override the navigation while the component is still mounted.
+  const navigatingToSuccessRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -121,9 +124,9 @@ const RegistrationPayment: React.FC = () => {
     }
 
     if (user.hasActiveSubscription || user.registrationPaid) {
-      // If there's a pending tx hash in storage, the auto-resume effect will navigate to the
-      // success page — don't override it with the dashboard redirect.
-      if (!loadPendingTxHash()) {
+      // If we're already navigating to the success page, or there's a pending tx hash
+      // in storage (auto-resume will handle it), don't redirect to dashboard.
+      if (!navigatingToSuccessRef.current && !loadPendingTxHash()) {
         navigate('/customer/dashboard', { replace: true });
       }
       return;
@@ -256,6 +259,7 @@ const RegistrationPayment: React.FC = () => {
         });
         setStatusMessage('Payment confirmed!');
         notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+        navigatingToSuccessRef.current = true;
         navigate('/registration-payment-success', {
           state: {
             txHash: pendingHash,
@@ -321,6 +325,7 @@ const RegistrationPayment: React.FC = () => {
             });
             setStatusMessage('Payment confirmed!');
             notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+            navigatingToSuccessRef.current = true;
             const planRef = plan;
             navigate('/registration-payment-success', {
               state: {
@@ -1009,6 +1014,7 @@ const RegistrationPayment: React.FC = () => {
       });
       setStatusMessage('Payment confirmed!');
       notification.showSuccess('Payment Confirmed', 'Your registration payment was recovered and verified.');
+      navigatingToSuccessRef.current = true;
       navigate('/registration-payment-success', {
         state: {
           txHash: recoveredHash,
@@ -1159,6 +1165,7 @@ const RegistrationPayment: React.FC = () => {
       clearPendingTxHash();
 
       notification.showSuccess('Payment Confirmed', 'Your registration payment was verified.');
+      navigatingToSuccessRef.current = true;
       navigate('/registration-payment-success', {
         state: {
           txHash: targetHash,
@@ -1287,9 +1294,8 @@ const RegistrationPayment: React.FC = () => {
       });
       setStatusMessage('Payment confirmed!');
 
-      // Navigate BEFORE fetchUserData so the component unmounts before the auth state
-      // update can trigger the dashboard-redirect useEffect.
       notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+      navigatingToSuccessRef.current = true;
       navigate('/registration-payment-success', {
         state: {
           txHash: hash,
@@ -1297,7 +1303,6 @@ const RegistrationPayment: React.FC = () => {
           network: result.network
         }
       });
-      // Fire-and-forget: update auth state in the background after navigation
       void fetchUserData(user!.id);
     } catch (error: any) {
       // On Android MetaMask, the transferPromise may resolve with the hash AFTER the
@@ -1349,6 +1354,7 @@ const RegistrationPayment: React.FC = () => {
             });
             setStatusMessage('Payment confirmed!');
             notification.showSuccess('Payment Successful', 'Your registration payment was confirmed.');
+            navigatingToSuccessRef.current = true;
             navigate('/registration-payment-success', {
               state: {
                 txHash: lateHashWait,
