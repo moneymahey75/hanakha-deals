@@ -176,6 +176,11 @@ export class WalletService {
     return new ethers.JsonRpcProvider(networkConfig.rpcUrls[0]);
   }
 
+  private getReadonlyProviders(): ethers.JsonRpcProvider[] {
+    const networkConfig = this.getNetworkConfig();
+    return networkConfig.rpcUrls.map((rpcUrl) => new ethers.JsonRpcProvider(rpcUrl));
+  }
+
   private isRpcFetchError(error: any): boolean {
     const message = String(error?.message || error?.error?.message || '').toLowerCase();
     const nestedMessage = String(error?.data?.cause?.message || '').toLowerCase();
@@ -693,7 +698,26 @@ export class WalletService {
   }
 
   async getCurrentBlockNumber(): Promise<number> {
-    return this.getReadonlyProvider().getBlockNumber();
+    const providers = this.getReadonlyProviders();
+    let lastError: any = null;
+
+    for (const provider of providers) {
+      try {
+        return await provider.getBlockNumber();
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (this.provider) {
+      try {
+        return await this.provider.getBlockNumber();
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error('Unable to read current block number');
   }
 
   async findRecentUSDTTransfer(
@@ -707,34 +731,84 @@ export class WalletService {
     }
 
     const usdtContractAddress = this.getUSDTContractAddress();
-    const readonlyProvider = this.getReadonlyProvider();
-    const tokenContract = new ethers.Contract(
-      usdtContractAddress,
-      ['function decimals() view returns (uint8)'],
-      readonlyProvider
-    );
+    const providers: Array<ethers.JsonRpcProvider | ethers.BrowserProvider> = [
+      ...this.getReadonlyProviders(),
+      ...(this.provider ? [this.provider] : [])
+    ];
+    let lastError: any = null;
 
-    let decimals = 18;
-    try {
-      decimals = Number(await tokenContract.decimals());
-    } catch {
-      // ignore: most configured USDT contracts in this app use 18 decimals.
+    for (const provider of providers) {
+      try {
+        const tokenContract = new ethers.Contract(
+          usdtContractAddress,
+          ['function decimals() view returns (uint8)'],
+          provider
+        );
+
+        let decimals = 18;
+        try {
+          decimals = Number(await tokenContract.decimals());
+        } catch {
+          // ignore: most configured USDT contracts in this app use 18 decimals.
+        }
+
+        const currentBlock = await provider.getBlockNumber();
+        const startBlock = Math.max(0, Number.isFinite(Number(fromBlock)) ? Number(fromBlock) - 20 : currentBlock - 6000);
+        const recovered = await this.findTransferWithProvider(
+          provider,
+          usdtContractAddress,
+          fromAddress,
+          toAddress,
+          amount,
+          decimals,
+          startBlock,
+          currentBlock
+        );
+
+        if (recovered) return recovered;
+      } catch (error) {
+        lastError = error;
+        console.warn('USDT transfer recovery provider failed:', error);
+      }
     }
 
-    const currentBlock = await readonlyProvider.getBlockNumber();
-    const startBlock = Math.max(0, Number.isFinite(Number(fromBlock)) ? Number(fromBlock) - 20 : currentBlock - 3000);
-    const expectedAmount = ethers.parseUnits(amount.toString(), decimals);
+    if (lastError) {
+      console.warn('USDT transfer recovery could not find a matching tx:', lastError);
+    }
 
-    const logs = await readonlyProvider.getLogs({
-      address: usdtContractAddress,
-      fromBlock: startBlock,
-      toBlock: currentBlock,
-      topics: [
-        ERC20_TRANSFER_TOPIC,
-        ethers.zeroPadValue(ethers.getAddress(fromAddress), 32),
-        ethers.zeroPadValue(ethers.getAddress(toAddress), 32)
-      ]
-    });
+    return null;
+  }
+
+  private async findTransferWithProvider(
+    provider: ethers.JsonRpcProvider | ethers.BrowserProvider,
+    usdtContractAddress: string,
+    fromAddress: string,
+    toAddress: string,
+    amount: number,
+    decimals: number,
+    startBlock: number,
+    currentBlock: number
+  ): Promise<string | null> {
+    const expectedAmount = ethers.parseUnits(amount.toString(), decimals);
+    const topics = [
+      ERC20_TRANSFER_TOPIC,
+      ethers.zeroPadValue(ethers.getAddress(fromAddress), 32),
+      ethers.zeroPadValue(ethers.getAddress(toAddress), 32)
+    ];
+    const chunkSize = 750;
+    const logs: ethers.Log[] = [];
+
+    for (let toBlock = currentBlock; toBlock >= startBlock; toBlock -= chunkSize) {
+      const fromChunk = Math.max(startBlock, toBlock - chunkSize + 1);
+      const chunkLogs = await provider.getLogs({
+        address: usdtContractAddress,
+        fromBlock: fromChunk,
+        toBlock,
+        topics
+      });
+      logs.push(...chunkLogs);
+      if (logs.length > 0) break;
+    }
 
     const matchingLogs = logs
       .filter((log) => {
