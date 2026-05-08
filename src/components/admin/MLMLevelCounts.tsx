@@ -17,6 +17,8 @@ interface LevelCountRow {
   extra_level_count?: number | null;
   meets_any_milestone?: boolean;
   has_any_mlm_reward?: boolean;
+  eligible_milestone_count?: number;
+  unpaid_eligible_milestone_count?: number;
   user_name?: string;
 }
 
@@ -296,12 +298,12 @@ const MLMLevelCounts: React.FC = () => {
                       >
                         View
                       </button>
-                      {row.meets_any_milestone && !row.has_any_mlm_reward ? (
+                      {row.meets_any_milestone && Number(row.unpaid_eligible_milestone_count || 0) > 0 ? (
                         <button
                           onClick={() => awardMilestoneRewards(row.tmlc_sponsorship_number)}
                           className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50"
                           disabled={loading || awardingSponsor === row.tmlc_sponsorship_number}
-                          title="Award missing milestone rewards"
+                          title={`Award ${row.unpaid_eligible_milestone_count} missing milestone reward${row.unpaid_eligible_milestone_count === 1 ? '' : 's'}`}
                         >
                           <Gift className="h-4 w-4" />
                           <span>{awardingSponsor === row.tmlc_sponsorship_number ? 'Checking…' : 'Award'}</span>

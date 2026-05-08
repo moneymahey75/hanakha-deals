@@ -138,7 +138,9 @@ Deno.serve(async (req: Request) => {
       .from('tbl_mlm_reward_milestones')
       .select('tmm_id, tmm_title, tmm_level1_required, tmm_level2_required, tmm_level3_required, tmm_reward_amount, tmm_is_active')
       .eq('tmm_is_active', true)
-      .order('tmm_reward_amount', { ascending: true });
+      .order('tmm_level1_required', { ascending: true })
+      .order('tmm_level2_required', { ascending: true })
+      .order('tmm_level3_required', { ascending: true });
 
     if (milestonesError) {
       throw new Error(milestonesError.message || 'Failed to load MLM reward milestones');
@@ -170,7 +172,8 @@ Deno.serve(async (req: Request) => {
 
     const inserted: Array<{ milestoneId: string; title: string; amount: number }> = [];
     const skipped: Array<{ milestoneId: string; title: string; reason: string }> = [];
-    let totalInserted = 0;
+    let totalRewardAmount = 0;
+    let totalBalanceInserted = 0;
     let totalReservedInserted = 0;
     const upgraded = await hasActiveUpgrade(supabase, userId);
 
@@ -196,7 +199,7 @@ Deno.serve(async (req: Request) => {
 
       if (dryRun) {
         inserted.push({ milestoneId: referenceId, title: milestone.tmm_title, amount: milestone.tmm_reward_amount });
-        totalInserted += milestone.tmm_reward_amount;
+        totalRewardAmount += milestone.tmm_reward_amount;
         if (!upgraded) {
           totalReservedInserted += Number((milestone.tmm_reward_amount * 0.5).toFixed(6));
         }
@@ -225,6 +228,9 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      totalBalanceInserted += availableReward;
+      let creditedRewardAmount = availableReward;
+
       if (reservedReward > 0) {
         const { error: reservedInsertError } = await supabase.from('tbl_wallet_transactions').insert({
           twt_wallet_id: walletInfo.walletId,
@@ -240,17 +246,19 @@ Deno.serve(async (req: Request) => {
         if (reservedInsertError) {
           console.error('Failed to insert reserved wallet transaction:', reservedInsertError);
           skipped.push({ milestoneId: referenceId, title: milestone.tmm_title, reason: 'reserved_insert_failed' });
-          continue;
+        } else {
+          totalBalanceInserted += reservedReward;
+          totalReservedInserted += reservedReward;
+          creditedRewardAmount += reservedReward;
         }
       }
 
-      inserted.push({ milestoneId: referenceId, title: milestone.tmm_title, amount: milestone.tmm_reward_amount });
-      totalInserted += milestone.tmm_reward_amount;
-      totalReservedInserted += reservedReward;
+      inserted.push({ milestoneId: referenceId, title: milestone.tmm_title, amount: creditedRewardAmount });
+      totalRewardAmount += creditedRewardAmount;
     }
 
-    if (!dryRun && totalInserted > 0) {
-      const newBalance = walletInfo.baseBalance + totalInserted;
+    if (!dryRun && totalBalanceInserted > 0) {
+      const newBalance = walletInfo.baseBalance + totalBalanceInserted;
       const newReservedBalance = walletInfo.baseReservedBalance + totalReservedInserted;
       const { error: updateError } = await supabase
         .from('tbl_wallets')
@@ -274,7 +282,7 @@ Deno.serve(async (req: Request) => {
       level2_count: level2Count,
       level3_count: level3Count,
       inserted_count: inserted.length,
-      inserted_amount: totalInserted,
+      inserted_amount: totalRewardAmount,
       skipped_count: skipped.length,
     });
 
@@ -293,7 +301,7 @@ Deno.serve(async (req: Request) => {
           })),
           inserted,
           skipped,
-          insertedAmount: totalInserted,
+          insertedAmount: totalRewardAmount,
         },
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

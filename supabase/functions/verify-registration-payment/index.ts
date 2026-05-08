@@ -766,7 +766,9 @@ Deno.serve(async (req: Request) => {
             .from('tbl_mlm_reward_milestones')
             .select('tmm_id, tmm_title, tmm_level1_required, tmm_level2_required, tmm_level3_required, tmm_reward_amount, tmm_is_active')
             .eq('tmm_is_active', true)
-            .order('tmm_reward_amount', { ascending: true });
+            .order('tmm_level1_required', { ascending: true })
+            .order('tmm_level2_required', { ascending: true })
+            .order('tmm_level3_required', { ascending: true });
 
           if (milestonesError) {
             console.error('Failed to load MLM reward milestones:', milestonesError);
@@ -781,6 +783,7 @@ Deno.serve(async (req: Request) => {
               level3: Number(row.tmm_level3_required || 0),
               amount: Number(row.tmm_reward_amount || 0)
             }))
+              .filter((milestone) => milestone.amount > 0)
             : [];
 
           if (milestones.length === 0) {

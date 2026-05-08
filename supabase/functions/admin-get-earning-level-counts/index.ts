@@ -132,8 +132,9 @@ Deno.serve(async (req: Request) => {
 
     // Eligibility helpers for Award button:
     // - show only when sponsor meets at least one active milestone
-    // - and sponsor has not received ANY mlm_level_reward yet
+    // - and at least one eligible milestone has not been paid to this sponsor yet
     type Milestone = {
+      id: string;
       level1: number;
       level2: number;
       level3: number;
@@ -145,7 +146,7 @@ Deno.serve(async (req: Request) => {
     try {
       const { data: milestonesData, error: milestonesError } = await supabase
         .from('tbl_mlm_reward_milestones')
-        .select('tmm_level1_required, tmm_level2_required, tmm_level3_required, tmm_reward_amount, tmm_is_active')
+        .select('tmm_id, tmm_level1_required, tmm_level2_required, tmm_level3_required, tmm_reward_amount, tmm_is_active')
         .eq('tmm_is_active', true);
 
       if (milestonesError) {
@@ -158,12 +159,13 @@ Deno.serve(async (req: Request) => {
       } else {
         milestones = ((milestonesData || []) as any[])
           .map((row) => ({
+            id: String(row?.tmm_id || '').trim(),
             level1: Number(row?.tmm_level1_required || 0),
             level2: Number(row?.tmm_level2_required || 0),
             level3: Number(row?.tmm_level3_required || 0),
             amount: Number(row?.tmm_reward_amount || 0),
           }))
-          .filter((m) => m.amount > 0);
+          .filter((m) => m.id && m.amount > 0);
       }
     } catch {
       // Be conservative: if we can't read milestones, hide Award button.
@@ -177,11 +179,12 @@ Deno.serve(async (req: Request) => {
 
     let rewardCheckOk = true;
     const rewardedUserIds = new Set<string>();
+    const paidMilestoneIdsByUser = new Map<string, Set<string>>();
     if (userIds.length > 0) {
       try {
         const { data: rewardTx, error: rewardTxError } = await supabase
           .from('tbl_wallet_transactions')
-          .select('twt_user_id')
+          .select('twt_user_id, twt_reference_id')
           .in('twt_user_id', userIds)
           .eq('twt_reference_type', 'mlm_level_reward')
           .limit(10000);
@@ -191,7 +194,13 @@ Deno.serve(async (req: Request) => {
         } else {
           for (const item of rewardTx || []) {
             const id = String((item as any)?.twt_user_id || '').trim();
-            if (id) rewardedUserIds.add(id);
+            const milestoneId = String((item as any)?.twt_reference_id || '').trim();
+            if (!id) continue;
+            rewardedUserIds.add(id);
+            if (!milestoneId) continue;
+            const existing = paidMilestoneIdsByUser.get(id) ?? new Set<string>();
+            existing.add(milestoneId);
+            paidMilestoneIdsByUser.set(id, existing);
           }
         }
       } catch {
@@ -249,9 +258,16 @@ Deno.serve(async (req: Request) => {
       const userId = String(row?.tmlc_user_id || '').trim();
       const userName = userId ? (userNameById.get(userId) ?? '—') : '—';
       const hasAnyMlmReward = rewardCheckOk ? rewardedUserIds.has(userId) : true;
+      const paidMilestoneIds = rewardCheckOk ? (paidMilestoneIdsByUser.get(userId) ?? new Set<string>()) : new Set<string>();
+      const eligibleMilestones = milestonesAvailable
+        ? milestones.filter((m) => level1 >= m.level1 && level2 >= m.level2 && level3 >= m.level3 && m.amount > 0)
+        : [];
       const meetsAnyMilestone = milestonesAvailable
-        ? milestones.some((m) => level1 >= m.level1 && level2 >= m.level2 && level3 >= m.level3 && m.amount > 0)
+        ? eligibleMilestones.length > 0
         : false;
+      const unpaidEligibleMilestoneCount = rewardCheckOk
+        ? eligibleMilestones.filter((m) => !paidMilestoneIds.has(m.id)).length
+        : 0;
 
       return {
         ...restRow,
@@ -261,6 +277,8 @@ Deno.serve(async (req: Request) => {
         user_name: userName,
         meets_any_milestone: meetsAnyMilestone,
         has_any_mlm_reward: hasAnyMlmReward,
+        eligible_milestone_count: eligibleMilestones.length,
+        unpaid_eligible_milestone_count: unpaidEligibleMilestoneCount,
       };
     });
 
