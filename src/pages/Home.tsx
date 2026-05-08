@@ -163,6 +163,18 @@ const Home: React.FC = () => {
       const isRecent = Number(lastRoute.savedAt || 0) > Date.now() - 30 * 60 * 1000;
       if (!isRecent || lastRoute.path !== '/registration-payment') return;
 
+      const hasPendingRegistrationPayment =
+        Boolean(sessionStorage.getItem('registration_payment_pending_tx')) ||
+        Boolean(localStorage.getItem('registration_payment_pending_tx')) ||
+        Boolean(sessionStorage.getItem('registration_payment_recovery_attempt')) ||
+        Boolean(localStorage.getItem('registration_payment_recovery_attempt'));
+
+      if (!hasPendingRegistrationPayment) {
+        sessionStorage.removeItem('last_customer_route');
+        localStorage.removeItem('last_customer_route');
+        return;
+      }
+
       if (!user) {
         sessionStorage.removeItem('last_customer_route');
         localStorage.removeItem('last_customer_route');
