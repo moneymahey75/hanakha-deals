@@ -97,6 +97,7 @@ const RegistrationPayment: React.FC = () => {
   const [parentAccountError, setParentAccountError] = useState<string | null>(null);
   const [reverifyHash, setReverifyHash] = useState('');
   const [reverifyProcessing, setReverifyProcessing] = useState(false);
+  const [manualRecoveryProcessing, setManualRecoveryProcessing] = useState(false);
   const recoveryCheckInFlightRef = useRef(false);
   // Captures the tx hash from transferPromise even if it resolves after the timeout race
   const lateHashRef = useRef<string | null>(null);
@@ -1113,6 +1114,53 @@ const RegistrationPayment: React.FC = () => {
     }
   }, [recoverAndVerifyPayment, walletService]);
 
+  const handleManualPaymentRecovery = useCallback(async () => {
+    const attempt = loadRecoveryAttempt();
+    if (!attempt) {
+      notification.showError('Recovery Not Ready', 'Payment recovery details were not found. Please share your MetaMask transaction ID with admin if USDT was deducted.');
+      return;
+    }
+
+    setManualRecoveryProcessing(true);
+    setStatusMessage('Refreshing wallet connection and checking payment...');
+
+    try {
+      let recovered = await refreshWalletAndRecover(attempt, 'manual wallet refresh');
+
+      if (!recovered) {
+        const preferredWallet = availableWallets.find((wallet) =>
+          wallet.name === walletState.walletName ||
+          wallet.name === 'MetaMask' ||
+          wallet.provider?.isMetaMask
+        );
+
+        if (preferredWallet?.provider) {
+          setStatusMessage('Re-connect to Verify Payment...');
+          const wallet = await walletService.connectWallet(preferredWallet.provider);
+          setWalletState(wallet);
+          recovered = await recoverAndVerifyPayment(attempt, 'manual wallet reconnect');
+        }
+      }
+
+      if (!recovered) {
+        setStatusMessage('Still checking for your payment. If USDT was deducted, wait a few seconds and tap the button again.');
+      }
+    } catch (error: any) {
+      console.warn('Manual payment recovery failed:', error);
+      notification.showError('Recovery Failed', error?.message || 'Unable to refresh wallet and check payment.');
+    } finally {
+      setManualRecoveryProcessing(false);
+    }
+  }, [
+    availableWallets,
+    loadRecoveryAttempt,
+    notification,
+    recoverAndVerifyPayment,
+    refreshWalletAndRecover,
+    walletService,
+    walletState.walletName
+  ]);
+
   useEffect(() => {
     if (!user?.id || !plan || loading || settingsLoading) return;
     if (user.hasActiveSubscription || user.registrationPaid) return;
@@ -1664,6 +1712,21 @@ const RegistrationPayment: React.FC = () => {
                       <ExternalLink className="h-4 w-4" />
                       <span>View Tx</span>
                     </button>
+                  </div>
+                )}
+                {transaction.status === 'pending' && (
+                  <div className="mt-4">
+                    <button
+                      onClick={() => void handleManualPaymentRecovery()}
+                      disabled={manualRecoveryProcessing}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    >
+                      {manualRecoveryProcessing && <Loader className="h-4 w-4 animate-spin" />}
+                      <span>{manualRecoveryProcessing ? 'Checking Payment...' : 'Reconnect Wallet & Check Payment'}</span>
+                    </button>
+                    <p className="mt-2 text-xs text-gray-600">
+                      Use this if MetaMask confirmed the payment but Android is still waiting here.
+                    </p>
                   </div>
                 )}
               </div>
