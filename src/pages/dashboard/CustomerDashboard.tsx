@@ -37,11 +37,12 @@ import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
 
 interface DashboardStats {
-  totalReferrals: number;
+  totalTeam: number;
+  totalDirectReferrals: number;
+  activeDirectReferrals: number;
+  activeTeam: number;
   totalEarnings: number;
   achievementPoints: number;
-  directReferrals: number;
-  activeReferrals: number;
 }
 
 interface RecentActivity {
@@ -76,17 +77,18 @@ type WithdrawalRow = {
 const CustomerDashboard: React.FC = () => {
   const { user } = useAuth();
   const notification = useNotification();
-  const { treeData, getTreeStats, loadTreeData } = useMLM();
+  const { treeData, loadTreeData } = useMLM();
   const { settings } = useAdmin();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
-    totalReferrals: 0,
+    totalTeam: 0,
+    totalDirectReferrals: 0,
+    activeDirectReferrals: 0,
+    activeTeam: 0,
     totalEarnings: 0,
     achievementPoints: 0,
-    directReferrals: 0,
-    activeReferrals: 0
   });
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,19 +170,20 @@ const CustomerDashboard: React.FC = () => {
     try {
       console.log('📊 Loading tree stats...');
 
-      // Load tree data first if not already loaded
-      if (!treeData || treeData.length === 0) {
-        await loadTreeData(user.id);
-      }
+      const nodes = (treeData && treeData.length > 0) ? treeData : await loadTreeData(user.id);
+      console.log('✅ Tree data loaded:', nodes.length, 'nodes');
 
-      const stats = await getTreeStats(user.id);
-      console.log('✅ Tree stats loaded:', stats);
+      const totalTeam = nodes.length;
+      const totalDirectReferrals = nodes.filter(n => n.level === 1).length;
+      const activeDirectReferrals = nodes.filter(n => n.level === 1 && n.isActive).length;
+      const activeTeam = nodes.filter(n => n.isActive).length;
 
       setDashboardStats(prev => ({
         ...prev,
-        totalReferrals: stats.totalDownline || 0,
-        directReferrals: stats.directReferrals || 0,
-        activeReferrals: stats.activeMembers || 0
+        totalTeam,
+        totalDirectReferrals,
+        activeDirectReferrals,
+        activeTeam,
       }));
     } catch (error) {
       console.error('❌ Failed to load tree stats:', error);
@@ -336,33 +339,40 @@ const CustomerDashboard: React.FC = () => {
 
   const stats = [
     {
-      title: 'Total Referrals',
-      value: dashboardStats.totalReferrals,
+      title: 'Total Team',
+      value: dashboardStats.totalTeam,
       icon: Users,
-      color: 'bg-blue-500',
-      change: 'All levels'
+      color: 'bg-blue-600',
+      change: 'All downline levels',
     },
     {
-      title: 'Direct Referrals',
-      value: dashboardStats.directReferrals,
+      title: 'Total Direct Referrals',
+      value: dashboardStats.totalDirectReferrals,
       icon: UserPlus,
-      color: 'bg-indigo-500',
-      change: 'Direct only'
+      color: 'bg-cyan-500',
+      change: 'Directly by you',
     },
     {
-      title: 'Active Referrals',
-      value: dashboardStats.activeReferrals,
+      title: 'Active Direct Referrals',
+      value: dashboardStats.activeDirectReferrals,
       icon: TrendingUp,
       color: 'bg-green-500',
-      change: 'Active users'
+      change: 'Paid & active direct',
+    },
+    {
+      title: 'Active Team',
+      value: dashboardStats.activeTeam,
+      icon: Award,
+      color: 'bg-emerald-600',
+      change: 'Paid & active all levels',
     },
     {
       title: 'Total Earnings',
       value: `${dashboardStats.totalEarnings.toFixed(2)} USDT`,
       icon: DollarSign,
-      color: 'bg-yellow-500',
-      change: 'All time'
-    }
+      color: 'bg-amber-500',
+      change: 'All time',
+    },
   ];
 
   // FIXED: Show loading only on initial load
@@ -477,17 +487,19 @@ const CustomerDashboard: React.FC = () => {
 
             {/* Stats Grid - Only show on overview tab */}
             {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
                   {stats.map((stat, index) => (
-                      <div key={index} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                            <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                            <p className="text-sm text-green-600 mt-1">{stat.change}</p>
+                      <div key={index} className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <div className={`${stat.color} p-2.5 rounded-lg`}>
+                              <stat.icon className="h-5 w-5 text-white" />
+                            </div>
                           </div>
-                          <div className={`${stat.color} p-3 rounded-lg`}>
-                            <stat.icon className="h-6 w-6 text-white" />
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 leading-tight">{stat.title}</p>
+                            <p className="text-2xl font-bold text-gray-900 mt-1 leading-none">{stat.value}</p>
+                            <p className="text-xs text-gray-400 mt-1">{stat.change}</p>
                           </div>
                         </div>
                       </div>
