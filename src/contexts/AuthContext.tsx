@@ -17,6 +17,7 @@ interface User {
   hasActiveSubscription: boolean;
   registrationPaid?: boolean;
   mobileVerified: boolean;
+  profileLoaded?: boolean;
 }
 
 interface AuthContextType {
@@ -31,6 +32,7 @@ interface AuthContextType {
   fetchUserData: (userId: string) => Promise<void>;
   checkVerificationStatus: (userId: string) => Promise<{ needsVerification: boolean; settings: any }>;
   loading: boolean;
+  userDataLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,6 +48,7 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userDataLoading, setUserDataLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [otpService] = useState(() => OTPService.getInstance());
   const notification = useNotification();
@@ -68,6 +71,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('⚠️ No userId provided to fetchUserData');
       return;
     }
+
+    setUserDataLoading(true);
 
     try {
       console.log('🔍 Fetching user data for:', userId);
@@ -170,7 +175,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVerified: userData?.tu_is_verified || false,
         hasActiveSubscription: !!subscriptionData,
         registrationPaid,
-        mobileVerified: userData?.tu_mobile_verified || false
+        mobileVerified: userData?.tu_mobile_verified || false,
+        profileLoaded: true
       };
 
       console.log('✅ User data compiled:', {
@@ -195,6 +201,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (prev.id && prev.id !== userId) return null;
         return prev;
       });
+    } finally {
+      setUserDataLoading(false);
     }
   }, []);
 
@@ -530,7 +538,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVerified: false,
         hasActiveSubscription: false,
         registrationPaid: false,
-        mobileVerified: false
+        mobileVerified: false,
+        profileLoaded: false
       };
       setUser(minimalUser);
 
@@ -890,7 +899,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sendOTPToUser,
     fetchUserData,
     checkVerificationStatus,
-    loading
+    loading,
+    userDataLoading
   };
 
   return (

@@ -18,7 +18,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
                                                          requiresVerification = true,
                                                          requiresSubscription = true
                                                        }) => {
-  const { user, loading, checkVerificationStatus } = useAuth();
+  const { user, loading, userDataLoading, checkVerificationStatus } = useAuth();
   const { settings } = useAdmin();
   const location = useLocation();
   const navigate = useNavigate();
@@ -209,6 +209,23 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   const hasCustomerAccess = user.hasActiveSubscription || Boolean((user as any).registrationPaid);
+
+  if (
+    requiresSubscription &&
+    user.userType === 'customer' &&
+    !hasCustomerAccess &&
+    userDataLoading &&
+    (user as any).profileLoaded === false
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading account...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Check if user has paid access (mandatory for all authenticated pages except specific pages)
   if (requiresSubscription && user.userType !== 'admin' && !hasCustomerAccess) {
