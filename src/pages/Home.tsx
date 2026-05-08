@@ -151,6 +151,8 @@ const Home: React.FC = () => {
   }, [slides.length]);
 
   useEffect(() => {
+    if (loading) return;
+
     try {
       const rawLastRoute =
         sessionStorage.getItem('last_customer_route') ||
@@ -161,16 +163,19 @@ const Home: React.FC = () => {
       const isRecent = Number(lastRoute.savedAt || 0) > Date.now() - 30 * 60 * 1000;
       if (!isRecent || lastRoute.path !== '/registration-payment') return;
 
-      const hasKnownCustomerSession =
-        user?.userType === 'customer' ||
-        sessionStorage.getItem('session_type') === 'customer' ||
-        Boolean(localStorage.getItem('current-user-id'));
+      if (!user) {
+        sessionStorage.removeItem('last_customer_route');
+        localStorage.removeItem('last_customer_route');
+        return;
+      }
 
-      if (!hasKnownCustomerSession) return;
+      if (user.userType !== 'customer') return;
 
-      const target = user?.userType === 'customer' && (user.hasActiveSubscription || user.registrationPaid)
+      const target = user.hasActiveSubscription || user.registrationPaid
         ? '/customer/dashboard'
-        : '/registration-payment';
+        : user.mobileVerified
+          ? '/registration-payment'
+          : '/verify-otp';
 
       navigate(target, {
         replace: true

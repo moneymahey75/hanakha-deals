@@ -50,6 +50,11 @@ const Navbar: React.FC = () => {
     }
   };
 
+  const getLogoLink = () => {
+    if (user?.userType === 'customer' && !user.mobileVerified) return '/verify-otp';
+    return '/';
+  };
+
   const notice = getMaintenanceNoticeState(settings as any);
 
   return (
@@ -81,7 +86,7 @@ const Navbar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <Link to="/" className="flex items-center space-x-3 group">
+            <Link to={getLogoLink()} className="flex items-center space-x-3 group">
               <div className="relative">
                 <img
                   src={settings.logoUrl}

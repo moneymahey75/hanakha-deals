@@ -232,6 +232,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🧹 Clearing all session data during logout...');
       sessionManager.removeSession(currentUserId);
       sessionStorage.removeItem('session_type');
+      sessionStorage.removeItem('last_customer_route');
+      localStorage.removeItem('last_customer_route');
+      sessionStorage.removeItem('registration_payment_recovery_attempt');
+      localStorage.removeItem('registration_payment_recovery_attempt');
+      sessionStorage.removeItem('registration_payment_pending_tx');
+      localStorage.removeItem('registration_payment_pending_tx');
 
       // Sign out from Supabase
       supabase.auth.signOut();
