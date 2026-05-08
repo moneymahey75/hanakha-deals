@@ -45,7 +45,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const newNotification: Notification = {
       ...notification,
       id,
-      duration: notification.duration || 10000
+      duration: notification.duration ?? (notification.type === 'success' ? 3000 : 10000)
     };
 
     setNotifications(prev => [...prev, newNotification]);
