@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { sessionUtils } from '../../utils/sessionUtils';
 import { adminApi } from '../../lib/adminApi';
 import GeneralSettings from '../../components/admin/GeneralSettings';
+import ContactFooterSettings from '../../components/admin/ContactFooterSettings';
 import RegistrationSettings from '../../components/admin/RegistrationSettings';
 import CustomerManagement from '../../components/admin/CustomerManagement';
 import PaymentSettings from '../../components/admin/PaymentSettings';
@@ -40,7 +41,8 @@ import {
   Check,
   X,
   TrendingUp,
-  Rocket
+  Rocket,
+  Contact
 } from 'lucide-react';
 
 interface SubAdmin {
@@ -355,6 +357,7 @@ const AdminDashboard: React.FC = () => {
   const [settingsTab, setSettingsTab] = useState('general');
   const settingsTabs = [
     { id: 'general', label: 'General Settings', icon: Globe, permission: 'settings' },
+    { id: 'contact_footer', label: 'Contact & Footer', icon: Contact, permission: 'settings' },
     { id: 'registration', label: 'Registration Settings', icon: UserCheck, permission: 'settings' },
     { id: 'payment', label: 'Payment Settings', icon: FileText, permission: 'settings' },
     { id: 'after_launch_plan', label: 'After Launch Plan', icon: Rocket, permission: 'settings' },
@@ -636,6 +639,7 @@ const AdminDashboard: React.FC = () => {
                     {/* Settings Content */}
                     <div className="flex-1 p-6">
 	                      {settingsTab === 'general' && hasPermission('settings' as any, 'read') && <GeneralSettings />}
+	                      {settingsTab === 'contact_footer' && hasPermission('settings' as any, 'read') && <ContactFooterSettings />}
 	                      {settingsTab === 'registration' && hasPermission('settings' as any, 'read') && <RegistrationSettings />}
 	                      {settingsTab === 'payment' && hasPermission('settings' as any, 'read') && <PaymentSettings />}
 	                      {settingsTab === 'after_launch_plan' && hasPermission('settings' as any, 'read') && <AfterLaunchPlanSettings />}
