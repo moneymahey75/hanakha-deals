@@ -26,7 +26,7 @@ const UpcomingPlan: React.FC = () => {
         { label: '2nd level', value: '15 persons' },
         { label: '3rd level', value: '30 persons' },
       ],
-      note: 'Reward: 50 USDT cash OR 50 USDT joining at launch time',
+      note: 'Reward: 50 USDT including the reserved amount for the upgradation',
     },
     {
       title: 'Team Reward 2',
@@ -36,7 +36,7 @@ const UpcomingPlan: React.FC = () => {
         { label: '2nd level', value: '45 persons' },
         { label: '3rd level', value: '90 persons' },
       ],
-      note: 'Reward: 100 USDT cash OR 100 USDT joining at launch time',
+      note: 'Reward: 100 USDT including the reserved amount for the upgradation',
     },
   ];
 

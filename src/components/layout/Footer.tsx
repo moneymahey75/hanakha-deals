@@ -1,10 +1,19 @@
 import React from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
 import { Link } from 'react-router-dom';
-import { Mail, Phone, MapPin, Facebook, Twitter, Linkedin, Instagram } from 'lucide-react';
+import { Mail, Phone, MapPin, Facebook, Twitter, Linkedin, Instagram, Youtube, MessageCircle } from 'lucide-react';
 
 const Footer: React.FC = () => {
   const { settings } = useAdmin();
+  const hasFooterContact = Boolean(settings.contactEmail || settings.contactPhone || settings.contactAddress);
+  const socialLinks = [
+    { label: 'Facebook', icon: Facebook, href: settings.socialFacebookUrl, color: 'hover:text-blue-400' },
+    { label: 'X / Twitter', icon: Twitter, href: settings.socialTwitterUrl, color: 'hover:text-sky-400' },
+    { label: 'LinkedIn', icon: Linkedin, href: settings.socialLinkedinUrl, color: 'hover:text-blue-500' },
+    { label: 'Instagram', icon: Instagram, href: settings.socialInstagramUrl, color: 'hover:text-pink-400' },
+    { label: 'YouTube', icon: Youtube, href: settings.socialYoutubeUrl, color: 'hover:text-red-400' },
+    { label: 'WhatsApp', icon: MessageCircle, href: settings.socialWhatsappUrl, color: 'hover:text-green-400' }
+  ].filter((social) => social.href && social.href.trim());
 
   return (
     <footer className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
@@ -31,27 +40,34 @@ const Footer: React.FC = () => {
               Join thousands of successful entrepreneurs building their financial future.
             </p>
             
-            {/* Contact Info */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-3 text-gray-300">
-                <div className="bg-emerald-600 p-2 rounded-lg">
-                  <Mail className="h-4 w-4" />
-                </div>
-                <span>support@mlmplatform.com</span>
+            {hasFooterContact && (
+              <div className="space-y-3">
+                {settings.contactEmail && (
+                  <a href={`mailto:${settings.contactEmail}`} className="flex items-center space-x-3 text-gray-300 hover:text-emerald-400 transition-colors">
+                    <div className="bg-emerald-600 p-2 rounded-lg">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <span className="break-all">{settings.contactEmail}</span>
+                  </a>
+                )}
+                {settings.contactPhone && (
+                  <a href={`tel:${settings.contactPhone.replace(/\s+/g, '')}`} className="flex items-center space-x-3 text-gray-300 hover:text-emerald-400 transition-colors">
+                    <div className="bg-teal-600 p-2 rounded-lg">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <span>{settings.contactPhone}</span>
+                  </a>
+                )}
+                {settings.contactAddress && (
+                  <div className="flex items-center space-x-3 text-gray-300">
+                    <div className="bg-cyan-600 p-2 rounded-lg">
+                      <MapPin className="h-4 w-4" />
+                    </div>
+                    <span className="whitespace-pre-line">{settings.contactAddress}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center space-x-3 text-gray-300">
-                <div className="bg-teal-600 p-2 rounded-lg">
-                  <Phone className="h-4 w-4" />
-                </div>
-                <span>+1 (555) 123-4567</span>
-              </div>
-              <div className="flex items-center space-x-3 text-gray-300">
-                <div className="bg-cyan-600 p-2 rounded-lg">
-                  <MapPin className="h-4 w-4" />
-                </div>
-                <span>123 Business Ave, Tech City, TC 12345</span>
-              </div>
-            </div>
+            )}
           </div>
           
           {/* Quick Links */}
@@ -106,22 +122,23 @@ const Footer: React.FC = () => {
         {/* Social Media & Copyright */}
         <div className="border-t border-gray-700 mt-12 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-            <div className="flex space-x-4">
-              {[
-                { icon: Facebook, href: "#", color: "hover:text-blue-400" },
-                { icon: Twitter, href: "#", color: "hover:text-sky-400" },
-                { icon: Linkedin, href: "#", color: "hover:text-blue-500" },
-                { icon: Instagram, href: "#", color: "hover:text-pink-400" }
-              ].map((social, index) => (
-                <a
-                  key={index}
-                  href={social.href}
-                  className={`bg-gray-800 p-3 rounded-xl text-gray-400 ${social.color} transition-all duration-200 hover:bg-gray-700 transform hover:scale-110`}
-                >
-                  <social.icon className="h-5 w-5" />
-                </a>
-              ))}
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="flex flex-wrap justify-center md:justify-start gap-4">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={social.label}
+                    title={social.label}
+                    className={`bg-gray-800 p-3 rounded-xl text-gray-400 ${social.color} transition-all duration-200 hover:bg-gray-700 transform hover:scale-110`}
+                  >
+                    <social.icon className="h-5 w-5" />
+                  </a>
+                ))}
+              </div>
+            )}
             
             <div className="text-center md:text-right">
               <p className="text-gray-400 text-sm">

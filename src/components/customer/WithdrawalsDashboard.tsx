@@ -504,7 +504,7 @@ const WithdrawalsDashboard: React.FC = () => {
             <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.stepAmount} USDT</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Commission</p>
+            <p className="text-xs text-gray-500">Admin Charges</p>
             <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.commissionPercent}%</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-3">

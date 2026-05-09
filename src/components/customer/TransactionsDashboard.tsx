@@ -304,12 +304,12 @@ const TransactionsDashboard: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button
+                    {/* <button
                         onClick={handleDownloadPdf}
                         className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors"
                     >
                         Download PDF
-                    </button>
+                    </button> */}
                     <button
                         onClick={handleRefresh}
                         disabled={refreshing}

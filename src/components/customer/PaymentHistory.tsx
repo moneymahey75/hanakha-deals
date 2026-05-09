@@ -228,10 +228,10 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         <span>Refresh</span>
                     </button>
-                    <button className="flex items-center space-x-2 px-3 py-2 text-sm bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200">
+                    {/* <button className="flex items-center space-x-2 px-3 py-2 text-sm bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200">
                         <Download className="h-4 w-4" />
                         <span>Export</span>
-                    </button>
+                    </button> */}
                 </div>
             </div>
 

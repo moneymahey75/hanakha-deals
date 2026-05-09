@@ -16,6 +16,19 @@ interface GeneralSettings {
   maintenanceWindowStartAt: string | null;
   maintenanceWindowEndAt: string | null;
   maintenanceAllowedIps: string[];
+  contactEmail: string;
+  contactEmailNote: string;
+  contactPhone: string;
+  contactPhoneNote: string;
+  contactAddress: string;
+  contactBusinessHours: string;
+  contactQuickSupportLinks: string[];
+  socialFacebookUrl: string;
+  socialTwitterUrl: string;
+  socialLinkedinUrl: string;
+  socialInstagramUrl: string;
+  socialYoutubeUrl: string;
+  socialWhatsappUrl: string;
   afterLaunchPlanConfig?: any;
   launchPhase?: 'prelaunch' | 'launched';
   emailVerificationRequired: boolean;
@@ -142,6 +155,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     maintenanceWindowStartAt: null,
     maintenanceWindowEndAt: null,
     maintenanceAllowedIps: [],
+    contactEmail: '',
+    contactEmailNote: '',
+    contactPhone: '',
+    contactPhoneNote: '',
+    contactAddress: '',
+    contactBusinessHours: '',
+    contactQuickSupportLinks: [],
+    socialFacebookUrl: '',
+    socialTwitterUrl: '',
+    socialLinkedinUrl: '',
+    socialInstagramUrl: '',
+    socialYoutubeUrl: '',
+    socialWhatsappUrl: '',
     afterLaunchPlanConfig: null,
     launchPhase: 'prelaunch',
     emailVerificationRequired: true,
@@ -345,6 +371,51 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   .filter(Boolean);
                 break;
               }
+              case 'contact_email':
+                loadedSettings.contactEmail = String(value || '');
+                break;
+              case 'contact_email_note':
+                loadedSettings.contactEmailNote = String(value || '');
+                break;
+              case 'contact_phone':
+                loadedSettings.contactPhone = String(value || '');
+                break;
+              case 'contact_phone_note':
+                loadedSettings.contactPhoneNote = String(value || '');
+                break;
+              case 'contact_address':
+                loadedSettings.contactAddress = String(value || '');
+                break;
+              case 'contact_business_hours':
+                loadedSettings.contactBusinessHours = String(value || '');
+                break;
+              case 'contact_quick_support_links': {
+                const links = Array.isArray(value)
+                  ? value
+                  : (typeof value === 'string' && value.trim().length > 0 ? value.split(/\n+/g) : []);
+                loadedSettings.contactQuickSupportLinks = links
+                  .map((link: unknown) => String(link || '').trim())
+                  .filter(Boolean);
+                break;
+              }
+              case 'social_facebook_url':
+                loadedSettings.socialFacebookUrl = String(value || '');
+                break;
+              case 'social_twitter_url':
+                loadedSettings.socialTwitterUrl = String(value || '');
+                break;
+              case 'social_linkedin_url':
+                loadedSettings.socialLinkedinUrl = String(value || '');
+                break;
+              case 'social_instagram_url':
+                loadedSettings.socialInstagramUrl = String(value || '');
+                break;
+              case 'social_youtube_url':
+                loadedSettings.socialYoutubeUrl = String(value || '');
+                break;
+              case 'social_whatsapp_url':
+                loadedSettings.socialWhatsappUrl = String(value || '');
+                break;
               case 'after_launch_plan_config':
                 loadedSettings.afterLaunchPlanConfig = value;
                 break;

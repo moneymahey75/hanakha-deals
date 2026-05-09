@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, MessageSquare, User, Building } from 'lucide-react';
+import { useAdmin } from '../contexts/AdminContext';
+
+const parseQuickSupportLink = (value: string) => {
+  const [labelPart, ...urlParts] = value.split('|');
+  return {
+    label: String(labelPart || '').trim(),
+    href: urlParts.join('|').trim()
+  };
+};
 
 const ContactUs: React.FC = () => {
+  const { settings } = useAdmin();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -30,6 +40,18 @@ const ContactUs: React.FC = () => {
     }));
   };
 
+  const quickSupportLinks = (settings.contactQuickSupportLinks || [])
+    .map(parseQuickSupportLink)
+    .filter((link) => link.label);
+  const hasContactInfo = Boolean(
+    settings.contactEmail ||
+    settings.contactPhone ||
+    settings.contactAddress ||
+    settings.contactBusinessHours ||
+    quickSupportLinks.length
+  );
+  const quickSupportIcons = [MessageSquare, User, Building];
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
@@ -43,77 +65,104 @@ const ContactUs: React.FC = () => {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+        <div className={`grid grid-cols-1 gap-12 ${hasContactInfo ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
           {/* Contact Information */}
           <div className="lg:col-span-1">
-            <h2 className="text-2xl font-bold text-gray-900 mb-8">Get in Touch</h2>
-            
-            <div className="space-y-6">
-              <div className="flex items-start space-x-4">
-                <div className="bg-indigo-100 p-3 rounded-lg">
-                  <Mail className="h-6 w-6 text-indigo-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">Email Support</h3>
-                  <p className="text-gray-600">support@mlmplatform.com</p>
-                  <p className="text-sm text-gray-500">24/7 Support Available</p>
-                </div>
-              </div>
+            {hasContactInfo && (
+              <>
+                <h2 className="text-2xl font-bold text-gray-900 mb-8">Get in Touch</h2>
 
-              <div className="flex items-start space-x-4">
-                <div className="bg-green-100 p-3 rounded-lg">
-                  <Phone className="h-6 w-6 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">Phone Support</h3>
-                  <p className="text-gray-600">+1 (555) 123-4567</p>
-                  <p className="text-sm text-gray-500">Mon-Fri: 9AM-6PM EST</p>
-                </div>
-              </div>
+                <div className="space-y-6">
+                  {settings.contactEmail && (
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-indigo-100 p-3 rounded-lg">
+                        <Mail className="h-6 w-6 text-indigo-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Email Support</h3>
+                        <a href={`mailto:${settings.contactEmail}`} className="text-gray-600 hover:text-indigo-600 break-all">
+                          {settings.contactEmail}
+                        </a>
+                        {settings.contactEmailNote && (
+                          <p className="text-sm text-gray-500">{settings.contactEmailNote}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-              <div className="flex items-start space-x-4">
-                <div className="bg-purple-100 p-3 rounded-lg">
-                  <MapPin className="h-6 w-6 text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">Office Address</h3>
-                  <p className="text-gray-600">123 Business Avenue<br />Tech City, TC 12345<br />United States</p>
-                </div>
-              </div>
+                  {settings.contactPhone && (
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-green-100 p-3 rounded-lg">
+                        <Phone className="h-6 w-6 text-green-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Phone Support</h3>
+                        <a href={`tel:${settings.contactPhone.replace(/\s+/g, '')}`} className="text-gray-600 hover:text-green-600">
+                          {settings.contactPhone}
+                        </a>
+                        {settings.contactPhoneNote && (
+                          <p className="text-sm text-gray-500">{settings.contactPhoneNote}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-              <div className="flex items-start space-x-4">
-                <div className="bg-yellow-100 p-3 rounded-lg">
-                  <Clock className="h-6 w-6 text-yellow-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">Business Hours</h3>
-                  <p className="text-gray-600">Monday - Friday: 9:00 AM - 6:00 PM<br />Saturday: 10:00 AM - 4:00 PM<br />Sunday: Closed</p>
-                </div>
-              </div>
-            </div>
+                  {settings.contactAddress && (
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-purple-100 p-3 rounded-lg">
+                        <MapPin className="h-6 w-6 text-purple-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Office Address</h3>
+                        <p className="text-gray-600 whitespace-pre-line">{settings.contactAddress}</p>
+                      </div>
+                    </div>
+                  )}
 
-            {/* Quick Links */}
-            <div className="mt-12">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Support</h3>
-              <div className="space-y-3">
-                <a href="#" className="flex items-center space-x-2 text-indigo-600 hover:text-indigo-700">
-                  <MessageSquare className="h-4 w-4" />
-                  <span>Live Chat Support</span>
-                </a>
-                <a href="#" className="flex items-center space-x-2 text-indigo-600 hover:text-indigo-700">
-                  <User className="h-4 w-4" />
-                  <span>Customer Portal</span>
-                </a>
-                <a href="#" className="flex items-center space-x-2 text-indigo-600 hover:text-indigo-700">
-                  <Building className="h-4 w-4" />
-                  <span>Business Support</span>
-                </a>
-              </div>
-            </div>
+                  {settings.contactBusinessHours && (
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-yellow-100 p-3 rounded-lg">
+                        <Clock className="h-6 w-6 text-yellow-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Business Hours</h3>
+                        <p className="text-gray-600 whitespace-pre-line">{settings.contactBusinessHours}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {quickSupportLinks.length > 0 && (
+                  <div className="mt-12">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Support</h3>
+                    <div className="space-y-3">
+                      {quickSupportLinks.map((link, index) => {
+                        const Icon = quickSupportIcons[index % quickSupportIcons.length];
+                        return link.href ? (
+                          <a
+                            key={`${link.label}-${index}`}
+                            href={link.href}
+                            className="flex items-center space-x-2 text-indigo-600 hover:text-indigo-700"
+                          >
+                            <Icon className="h-4 w-4" />
+                            <span>{link.label}</span>
+                          </a>
+                        ) : (
+                          <div key={`${link.label}-${index}`} className="flex items-center space-x-2 text-gray-700">
+                            <Icon className="h-4 w-4" />
+                            <span>{link.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Contact Form */}
-          <div className="lg:col-span-2">
+          <div className={hasContactInfo ? 'lg:col-span-2' : 'max-w-3xl w-full mx-auto'}>
             <div className="bg-white rounded-2xl shadow-lg p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h2>
               
@@ -236,16 +285,18 @@ const ContactUs: React.FC = () => {
             {[
               {
                 question: "How quickly will I receive a response?",
-                answer: "We typically respond to all inquiries within 24 hours during business days. For urgent matters, please call our support line."
+                answer: settings.contactPhone
+                  ? "We typically respond to all inquiries within 24 hours during business days. For urgent matters, please call our support line."
+                  : "We typically respond to all inquiries within 24 hours during business days."
               },
               {
                 question: "What information should I include in my message?",
                 answer: "Please include your account details (if applicable), a clear description of your issue, and any relevant screenshots or error messages."
               },
-              {
+              ...(settings.contactPhone ? [{
                 question: "Do you offer phone support?",
-                answer: "Yes, we offer phone support Monday through Friday from 9 AM to 6 PM EST. You can reach us at +1 (555) 123-4567."
-              },
+                answer: `Yes, you can reach us at ${settings.contactPhone}${settings.contactPhoneNote ? ` (${settings.contactPhoneNote})` : ''}.`
+              }] : []),
               {
                 question: "Can I schedule a consultation?",
                 answer: "Absolutely! We offer free consultations for potential business partners and enterprise clients. Please mention this in your message."
