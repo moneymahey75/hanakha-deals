@@ -12,6 +12,7 @@ import WalletList from '../../components/customer/WalletList';
 import PaymentHistory from '../../components/customer/PaymentHistory';
 import EarningsDashboard from '../../components/customer/EarningsDashboard';
 import WithdrawalsDashboard from '../../components/customer/WithdrawalsDashboard';
+import ProfileUpdateForm from '../../components/customer/ProfileUpdateForm';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
@@ -32,6 +33,7 @@ import {
   Ticket,
   Share2,
   Wallet as WalletIcon,
+  User,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
@@ -73,6 +75,11 @@ type WithdrawalRow = {
   twr_failure_reason?: string | null;
 };
 
+type EarningsRow = {
+  twt_amount: number;
+  twt_transaction_type: 'credit' | 'debit' | 'transfer';
+};
+
 
 const CustomerDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -97,6 +104,7 @@ const CustomerDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'overview', label: 'Dashboard', icon: BarChart3 },
+    { id: 'profile', label: 'Profile', icon: User },
     { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
     { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
     { id: 'network', label: 'My Network', icon: Users },
@@ -144,7 +152,7 @@ const CustomerDashboard: React.FC = () => {
           console.log('✅ Dashboard data loaded successfully');
           setInitialLoadComplete(true);
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error('❌ Failed to load dashboard data:', error);
         if (mounted) {
           notification.showError('Error', 'Failed to load some dashboard data. Please refresh.');
@@ -282,9 +290,9 @@ const CustomerDashboard: React.FC = () => {
 
       if (error) throw error;
 
-      const totalCredits = (data || [])
-        .filter((row: any) => row.twt_transaction_type === 'credit')
-        .reduce((sum: number, row: any) => sum + Number(row.twt_amount || 0), 0);
+      const totalCredits = ((data || []) as EarningsRow[])
+        .filter((row) => row.twt_transaction_type === 'credit')
+        .reduce((sum, row) => sum + Number(row.twt_amount || 0), 0);
 
       setDashboardStats((prev) => ({
         ...prev,
@@ -582,6 +590,12 @@ const CustomerDashboard: React.FC = () => {
                       </div>
                       {/* FIXED: Now uses the new MyNetwork component */}
                       <MyNetwork userId={user?.id || ''} />
+                    </div>
+                )}
+
+                {activeTab === 'profile' && (
+                    <div>
+                      <ProfileUpdateForm />
                     </div>
                 )}
 

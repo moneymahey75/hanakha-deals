@@ -1,13 +1,14 @@
 import React, { useState, useRef } from 'react';
-import { Copy, Share2, QrCode, Link as LinkIcon, Check, Download, X } from 'lucide-react';
+import { Copy, Share2, QrCode, Link as LinkIcon, Check, Download, X, Mail, MessageCircle, Smartphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import QRCode from 'qrcode';
 
 const ReferralLinkGenerator: React.FC = () => {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [linkType, setLinkType] = useState<'customer' | 'company'>('customer');
+  const [linkType] = useState<'customer' | 'company'>('customer');
   const [showQRCode, setShowQRCode] = useState(false);
+  const [showShareOptions, setShowShareOptions] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
   const qrCodeRef = useRef<HTMLDivElement>(null);
@@ -30,20 +31,30 @@ const ReferralLinkGenerator: React.FC = () => {
     }
   };
 
-  const shareLink = async (text: string) => {
-    if (navigator.share) {
+  const getShareMessage = (url: string) => {
+    return `Join my network and start earning!\n${url}`;
+  };
+
+  const shareLink = async (url: string) => {
+    const shareData = {
+      title: 'Join My Referral Network',
+      text: 'Join my network and start earning!',
+      url
+    };
+
+    if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
       try {
-        await navigator.share({
-          title: 'Join My Referral Network',
-          text: 'Join my network and start earning!',
-          url: text
-        });
-      } catch (error) {
+        await navigator.share(shareData);
+        return;
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
         console.error('Failed to share:', error);
       }
-    } else {
-      copyToClipboard(text);
     }
+
+    setShowShareOptions(true);
   };
 
   const generateQRCode = async () => {
@@ -80,6 +91,15 @@ const ReferralLinkGenerator: React.FC = () => {
   const closeQRCodeModal = () => {
     setShowQRCode(false);
   };
+
+  const closeShareOptions = () => {
+    setShowShareOptions(false);
+  };
+
+  const currentReferralLink = referralLinks[linkType];
+  const encodedReferralLink = encodeURIComponent(currentReferralLink);
+  const encodedShareText = encodeURIComponent('Join my network and start earning!');
+  const encodedShareMessage = encodeURIComponent(getShareMessage(currentReferralLink));
 
   return (
       <div className="bg-white rounded-xl shadow-sm p-6">
@@ -141,8 +161,8 @@ const ReferralLinkGenerator: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {linkType === 'customer' ? 'Customer' : 'Company'} Registration Link
             </label>
-            <div className="flex items-center space-x-2">
-              <div className="flex-1 relative">
+            <div className="grid grid-cols-[56px_1fr_1fr] gap-2 sm:flex sm:items-center">
+              <div className="relative col-span-3 sm:flex-1">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <LinkIcon className="h-5 w-5 text-gray-400" />
                 </div>
@@ -150,12 +170,13 @@ const ReferralLinkGenerator: React.FC = () => {
                     type="text"
                     value={referralLinks[linkType]}
                     readOnly
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm truncate"
                 />
               </div>
               <button
                   onClick={() => copyToClipboard(referralLinks[linkType])}
-                  className={`px-4 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                  type="button"
+                  className={`min-h-12 px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2 ${
                       copied
                           ? 'bg-green-600 text-white'
                           : 'bg-indigo-600 text-white hover:bg-indigo-700'
@@ -175,7 +196,8 @@ const ReferralLinkGenerator: React.FC = () => {
               </button>
               <button
                   onClick={() => shareLink(referralLinks[linkType])}
-                  className="px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+                  type="button"
+                  className="min-h-12 px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
               >
                 <Share2 className="h-4 w-4" />
                 <span>Share</span>
@@ -252,6 +274,71 @@ const ReferralLinkGenerator: React.FC = () => {
                     <span>Download QR Code</span>
                   </button>
                 </div>
+              </div>
+            </div>
+        )}
+
+        {showShareOptions && (
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-50 p-4 sm:items-center">
+              <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Share Referral Link</h3>
+                  <button
+                      type="button"
+                      onClick={closeShareOptions}
+                      className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                      aria-label="Close share options"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <a
+                      href={`https://wa.me/?text=${encodedShareMessage}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-h-14 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-medium text-white hover:bg-green-700"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>WhatsApp</span>
+                  </a>
+                  <a
+                      href={`https://t.me/share/url?url=${encodedReferralLink}&text=${encodedShareText}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-h-14 items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-3 font-medium text-white hover:bg-sky-700"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    <span>Telegram</span>
+                  </a>
+                  <a
+                      href={`sms:?body=${encodedShareMessage}`}
+                      className="flex min-h-14 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-3 font-medium text-white hover:bg-gray-800"
+                  >
+                    <Smartphone className="h-4 w-4" />
+                    <span>SMS</span>
+                  </a>
+                  <a
+                      href={`mailto:?subject=${encodeURIComponent('Join My Referral Network')}&body=${encodedShareMessage}`}
+                      className="flex min-h-14 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 font-medium text-white hover:bg-indigo-700"
+                  >
+                    <Mail className="h-4 w-4" />
+                    <span>Email</span>
+                  </a>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => {
+                      copyToClipboard(currentReferralLink);
+                      closeShareOptions();
+                    }}
+                    className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-3 font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Copy className="h-4 w-4" />
+                  <span>Copy Link</span>
+                </button>
               </div>
             </div>
         )}
