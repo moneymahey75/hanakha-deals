@@ -206,31 +206,56 @@ const VerifyOTP: React.FC = () => {
 
   // Handle OTP input changes
   const handleOtpChange = useCallback((index: number, value: string) => {
-    if (value.length <= 1 && /^\d*$/.test(value)) {
-      const newOtp = [...otp];
-      newOtp[index] = value;
-      setOtp(newOtp);
+    const digits = value.replace(/\D/g, '').slice(0, 6);
 
-      if (value && index < 5) {
-        setTimeout(() => {
-          otpRefs.current[index + 1]?.focus();
-        }, 10);
-      }
+    if (!digits) {
+      setOtp((currentOtp) => {
+        const newOtp = [...currentOtp];
+        newOtp[index] = '';
+        return newOtp;
+      });
+      return;
     }
-  }, [otp]);
+
+    setOtp((currentOtp) => {
+      const newOtp = [...currentOtp];
+      digits.split('').forEach((digit, digitIndex) => {
+        const targetIndex = index + digitIndex;
+        if (targetIndex < newOtp.length) {
+          newOtp[targetIndex] = digit;
+        }
+      });
+      return newOtp;
+    });
+
+    const nextIndex = Math.min(index + digits.length, 5);
+    setTimeout(() => {
+      otpRefs.current[nextIndex]?.focus();
+    }, 10);
+  }, []);
+
+  const fillOtpCode = useCallback((code: string) => {
+    const digits = code.replace(/\D/g, '').slice(0, 6);
+    if (digits.length !== 6) return false;
+
+    setOtp(digits.split(''));
+    setTimeout(() => {
+      otpRefs.current[5]?.focus();
+    }, 10);
+    return true;
+  }, []);
+
+  const handleOtpInput = useCallback((index: number, e: React.FormEvent<HTMLInputElement>) => {
+    const digits = e.currentTarget.value.replace(/\D/g, '').slice(0, 6);
+    if (digits.length > 1) {
+      handleOtpChange(index, digits);
+    }
+  }, [handleOtpChange]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text/plain').trim();
-
-    if (/^\d{6}$/.test(pastedData)) {
-      const newOtp = pastedData.split('').slice(0, 6);
-      setOtp(newOtp as any);
-      setTimeout(() => {
-        otpRefs.current[5]?.focus();
-      }, 10);
-    }
-  }, []);
+    fillOtpCode(e.clipboardData.getData('text/plain'));
+  }, [fillOtpCode]);
 
   const handleKeyDown = useCallback((index: number, e: React.KeyboardEvent) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
@@ -275,6 +300,7 @@ const VerifyOTP: React.FC = () => {
 
       setOtpSent(true);
       setResendTimer(30);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
 
       const contactDisplay = otpType === 'mobile'
           ? contactInfo[otpType].replace(/(.{3}).*(.{4})/, '$1***$2')
@@ -721,12 +747,18 @@ const VerifyOTP: React.FC = () => {
                           key={index}
                           ref={(el) => (otpRefs.current[index] = el)}
                           type="text"
+                          inputMode="numeric"
+                          autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                          name={index === 0 ? 'one-time-code' : `otp-${index + 1}`}
+                          aria-label={`OTP digit ${index + 1}`}
                           value={digit}
                           onChange={(e) => handleOtpChange(index, e.target.value)}
-                          onPaste={index === 0 ? handlePaste : undefined}
+                          onInput={(e) => handleOtpInput(index, e)}
+                          onPaste={handlePaste}
                           onKeyDown={(e) => handleKeyDown(index, e)}
                           className="w-12 h-12 text-center text-xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100"
-                          maxLength={1}
+                          maxLength={6}
+                          pattern="[0-9]*"
                           disabled={isSubmitting || !otpSent}
                       />
                   ))}
