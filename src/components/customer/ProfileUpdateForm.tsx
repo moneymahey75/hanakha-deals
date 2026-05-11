@@ -210,7 +210,7 @@ const ProfileUpdateForm: React.FC = () => {
         <div className="rounded-lg border border-gray-200 p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-500">
             <BadgeCheck className="h-4 w-4" />
-            <span>Sponsorship Number</span>
+            <span>User ID</span>
           </div>
           <p className="font-mono text-sm font-semibold text-indigo-700">{profile?.tup_sponsorship_number || user?.sponsorshipNumber || 'N/A'}</p>
         </div>

@@ -231,7 +231,7 @@ const ReferralLinkGenerator: React.FC = () => {
           <div className="text-sm text-blue-800 space-y-2">
             <p>When someone joins using your referral link:</p>
             <ol className="list-decimal list-inside space-y-1 ml-4">
-              <li>Your sponsorship number is saved as their Parent A/C (direct sponsor)</li>
+              <li>Your User ID is saved as their Parent A/C (direct sponsor)</li>
               <li>After they complete registration requirements, the system updates the network automatically</li>
               <li>Placement depends on current network rules/availability (not strictly left-to-right)</li>
               <li>You may earn commissions based on eligible activity and configured earning rules</li>

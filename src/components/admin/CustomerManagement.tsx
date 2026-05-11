@@ -483,7 +483,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                placeholder="Search by name, email, username, or sponsorship number..."
+                                placeholder="Search by name, email, username, or user ID..."
                             />
                         </div>
                     </div>
@@ -493,7 +493,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                             value={parentAccountFilter}
                             onChange={(e) => setParentAccountFilter(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Filter by Parent Account (Sponsor ID)"
+                            placeholder="Filter by Parent Account (User ID)"
                         />
                     </div>
                     <div>
@@ -1126,7 +1126,7 @@ const CustomerDetails: React.FC<{
                                 </h4>
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="text-sm font-medium text-gray-500">Sponsorship Number</label>
+                                        <label className="text-sm font-medium text-gray-500">User ID</label>
                                         <p className="text-gray-900 mt-1 font-mono text-lg">{customer.tbl_user_profiles?.tup_sponsorship_number}</p>
                                     </div>
                                     <div>

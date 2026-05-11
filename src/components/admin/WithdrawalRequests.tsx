@@ -432,7 +432,7 @@ const WithdrawalRequests: React.FC = () => {
                         </span>
                       </div>
                     ) : null}
-                    <div className="text-xs text-gray-500">Sponsor ID: {sponsorId}</div>
+                    <div className="text-xs text-gray-500">User ID: {sponsorId}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     {Number(withdrawal.twr_amount).toFixed(2)} USDT
@@ -585,7 +585,7 @@ const WithdrawalRequests: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-500">Customer</p>
                     <p className="text-sm font-medium text-gray-900">{fullName || 'Unknown Customer'}</p>
-                    <p className="text-xs text-gray-500 mt-1">Sponsor ID: {sponsorId}</p>
+                    <p className="text-xs text-gray-500 mt-1">User ID: {sponsorId}</p>
                     <p className="text-xs text-gray-500 mt-1">Email: {selectedWithdrawal.user?.tu_email || 'N/A'}</p>
                   </div>
                   <div>

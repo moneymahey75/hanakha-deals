@@ -138,7 +138,7 @@ Deno.serve(async (req: Request) => {
     if (!sponsorshipNumber || !/^\+\d{10,15}$/.test(mobile)) {
       return jsonResponse({
         success: false,
-        error: 'Enter a valid Sponsor ID and mobile number with country code.',
+        error: 'Enter a valid User ID and mobile number with country code.',
       });
     }
 
@@ -146,7 +146,7 @@ Deno.serve(async (req: Request) => {
     if (!account) {
       return jsonResponse({
         success: false,
-        error: 'No customer account matched this Sponsor ID and mobile number.',
+        error: 'No customer account matched this User ID and mobile number.',
       });
     }
 

@@ -477,7 +477,7 @@ const CustomerDashboard: React.FC = () => {
                   Welcome back, {user?.firstName || 'User'}!
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Sponsorship Number:{' '}
+                  User ID:{' '}
                   <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
                 </p>
               </div>
@@ -584,7 +584,7 @@ const CustomerDashboard: React.FC = () => {
                     <div>
                       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
                         <p className="text-gray-600">
-                          Parent Account Sponsorship Number:{' '}
+                          Parent Account User ID:{' '}
                           <span className="font-semibold text-indigo-600">{user?.parentId || 'N/A'}</span>
                         </p>
                       </div>

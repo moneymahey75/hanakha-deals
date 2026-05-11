@@ -421,7 +421,7 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
             
             <div class="welcome-box">
               <h3 style="color: #28a745; margin-top: 0;">Your Account Details</h3>
-              <p style="margin: 10px 0;"><strong>Sponsorship Number:</strong></p>
+              <p style="margin: 10px 0;"><strong>User ID:</strong></p>
               <div class="sponsorship-number">${sponsorshipNumber}</div>
               <p style="color: #6c757d; font-size: 14px; margin-top: 15px;">
                 Keep this number safe - you'll need it for referrals!

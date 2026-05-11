@@ -72,7 +72,7 @@ const ForgotPassword: React.FC = () => {
     }
 
     if (!formData.sponsorshipNumber.trim()) {
-      setError('Please enter your Sponsor ID.');
+      setError('Please enter your User ID.');
       return;
     }
 
@@ -173,7 +173,7 @@ const ForgotPassword: React.FC = () => {
             <h2 className="text-3xl font-bold text-gray-900">Forgot Password?</h2>
             <p className="mt-2 text-gray-600">
               {step === 'identify'
-                ? 'Enter your Sponsor ID and registered mobile number to receive an OTP.'
+                ? 'Enter your User ID and registered mobile number to receive an OTP.'
                 : `Enter the OTP sent to ${maskMobile(mobileForApi)} and choose a new password.`}
             </p>
           </div>
@@ -194,7 +194,7 @@ const ForgotPassword: React.FC = () => {
             <form onSubmit={handleRequestOTP} className="space-y-6">
               <div>
                 <label htmlFor="sponsorshipNumber" className="block text-sm font-medium text-gray-700 mb-2">
-                  Sponsor ID
+                  User ID
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -208,7 +208,7 @@ const ForgotPassword: React.FC = () => {
                     value={formData.sponsorshipNumber}
                     onChange={handleChange}
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="Enter your Sponsor ID"
+                    placeholder="Enter your User ID"
                   />
                 </div>
               </div>
@@ -233,7 +233,7 @@ const ForgotPassword: React.FC = () => {
                   />
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Use the mobile number registered with this Sponsor ID.
+                  Use the mobile number registered with this User ID.
                 </p>
               </div>
 
