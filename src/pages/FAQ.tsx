@@ -44,7 +44,7 @@ const FAQ: React.FC = () => {
       },
       {
         question: "What if I forget my password?",
-        answer: "Use the 'Forgot Password' link on the login page. Enter your email address and follow the reset instructions. If you don’t receive the email, check spam/junk and try again."
+        answer: "Use the 'Forgot Password' link on the login page. Enter your User ID and registered mobile number to receive a mobile OTP. Enter the OTP, choose a new password, and submit the reset form. If you don’t receive the OTP, check your mobile network and try resending it."
       },
       {
         question: "How do I update my profile information?",
@@ -63,10 +63,6 @@ const FAQ: React.FC = () => {
       {
         question: "Are there any fees for withdrawals?",
         answer: "Withdrawal fees (if any) depend on blockchain network costs and any platform processing rules shown at the time you request a withdrawal. Withdrawals are typically processed instantly after you submit a request."
-      },
-      {
-        question: "What is your refund policy?",
-        answer: "We offer a 30-day money-back guarantee for new subscribers who have not earned any commissions. Refund requests must be submitted within 30 days of purchase. Refunds are processed within 5–10 business days, and processing/transaction fees may be deducted."
       }
     ],
     security: [

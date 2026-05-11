@@ -8,7 +8,7 @@ const SitePolicies: React.FC = () => {
     { id: 'terms', label: 'Terms of Service', icon: FileText },
     { id: 'privacy', label: 'Privacy Policy', icon: Eye },
     { id: 'security', label: 'Security Policy', icon: Shield },
-    { id: 'refund', label: 'Refund Policy', icon: AlertTriangle },
+    // { id: 'refund', label: 'Refund Policy', icon: AlertTriangle },
     { id: 'compliance', label: 'Compliance', icon: CheckCircle }
   ];
 
@@ -230,7 +230,7 @@ const SitePolicies: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'refund' && (
+            {/* {activeTab === 'refund' && (
               <div className="prose max-w-none">
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Refund Policy</h2>
                 <p className="text-gray-600 mb-6">Understanding our refund terms and conditions.</p>
@@ -294,7 +294,7 @@ const SitePolicies: React.FC = () => {
                   </section>
                 </div>
               </div>
-            )}
+            )} */}
 
             {activeTab === 'compliance' && (
               <div className="prose max-w-none">
