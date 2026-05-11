@@ -32,6 +32,76 @@ const parseSetting = (raw: any) => {
 const isLocalSupabaseUrl = (supabaseUrl: string) =>
   supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1') || supabaseUrl.includes('0.0.0.0');
 
+const ensurePaymentWalletDefault = async (
+  supabase: any,
+  userId: string,
+  walletAddress: string,
+  chainId: number
+) => {
+  const walletAddressLower = normalizeAddress(walletAddress);
+  if (!walletAddressLower) return;
+
+  try {
+    const now = new Date().toISOString();
+
+    await supabase
+      .from('tbl_user_wallet_connections')
+      .update({
+        tuwc_is_active: false,
+        tuwc_is_default: false,
+        tuwc_updated_at: now,
+      })
+      .eq('tuwc_user_id', userId)
+      .or('tuwc_is_active.eq.true,tuwc_is_default.eq.true');
+
+    const { data: existingWallet, error: existingWalletError } = await supabase
+      .from('tbl_user_wallet_connections')
+      .select('tuwc_id')
+      .eq('tuwc_user_id', userId)
+      .ilike('tuwc_wallet_address', walletAddressLower)
+      .maybeSingle();
+
+    if (existingWalletError) throw existingWalletError;
+
+    if (existingWallet?.tuwc_id) {
+      const { error: updateError } = await supabase
+        .from('tbl_user_wallet_connections')
+        .update({
+          tuwc_wallet_address: walletAddressLower,
+          tuwc_wallet_name: 'Payment Wallet',
+          tuwc_wallet_type: 'web3',
+          tuwc_chain_id: chainId,
+          tuwc_is_active: true,
+          tuwc_is_default: true,
+          tuwc_last_connected_at: now,
+          tuwc_updated_at: now,
+        })
+        .eq('tuwc_id', existingWallet.tuwc_id)
+        .eq('tuwc_user_id', userId);
+
+      if (updateError) throw updateError;
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from('tbl_user_wallet_connections')
+      .insert({
+        tuwc_user_id: userId,
+        tuwc_wallet_address: walletAddressLower,
+        tuwc_wallet_name: 'Payment Wallet',
+        tuwc_wallet_type: 'web3',
+        tuwc_chain_id: chainId,
+        tuwc_is_active: true,
+        tuwc_is_default: true,
+        tuwc_last_connected_at: now,
+      });
+
+    if (insertError) throw insertError;
+  } catch (error) {
+    console.error('Failed to set registration payment wallet as default:', error);
+  }
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -869,6 +939,8 @@ Deno.serve(async (req: Request) => {
           }
         }
     }
+
+    await ensurePaymentWalletDefault(supabase, userId, txFrom, isMainnet ? 56 : 97);
 
     return new Response(JSON.stringify({
       success: true,

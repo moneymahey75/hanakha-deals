@@ -108,15 +108,17 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Deactivate any existing active connections for this user.
+    // Deactivate any existing active/default connections for this user. Registration
+    // payment should make the wallet used for payment the default withdrawal wallet.
     await supabase
       .from('tbl_user_wallet_connections')
       .update({
         tuwc_is_active: false,
+        tuwc_is_default: false,
         tuwc_updated_at: new Date().toISOString(),
       })
       .eq('tuwc_user_id', userId)
-      .eq('tuwc_is_active', true);
+      .or('tuwc_is_active.eq.true,tuwc_is_default.eq.true');
 
     // Update existing wallet or create a new one.
     const { data: existingWallet, error: existingWalletError } = await supabase
@@ -140,6 +142,7 @@ Deno.serve(async (req: Request) => {
           tuwc_wallet_type: walletType,
           tuwc_chain_id: Number.isFinite(chainId) ? chainId : null,
           tuwc_last_connected_at: new Date().toISOString(),
+          tuwc_is_default: true,
           tuwc_updated_at: new Date().toISOString(),
         })
         .eq('tuwc_id', existingWallet.tuwc_id)
@@ -154,6 +157,7 @@ Deno.serve(async (req: Request) => {
           tuwc_wallet_type: walletType,
           tuwc_chain_id: Number.isFinite(chainId) ? chainId : null,
           tuwc_is_active: true,
+          tuwc_is_default: true,
           tuwc_last_connected_at: new Date().toISOString(),
         });
     }
