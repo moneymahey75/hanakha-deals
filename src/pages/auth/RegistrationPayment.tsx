@@ -22,6 +22,7 @@ interface RegistrationPlan {
 }
 
 const PAYMENT_POLL_INTERVAL = 5000;
+const MANUAL_RECOVERY_ENABLE_DELAY_MS = 5000;
 // 24 attempts × 5s = 120s total — gives more time on slow Android networks
 const PAYMENT_POLL_ATTEMPTS = 24;
 // Android MetaMask can take much longer to return from the wallet app; use 90s
@@ -98,6 +99,7 @@ const RegistrationPayment: React.FC = () => {
   const [reverifyHash, setReverifyHash] = useState('');
   const [reverifyProcessing, setReverifyProcessing] = useState(false);
   const [manualRecoveryProcessing, setManualRecoveryProcessing] = useState(false);
+  const [manualRecoveryReady, setManualRecoveryReady] = useState(false);
   const recoveryCheckInFlightRef = useRef(false);
   // Captures the tx hash from transferPromise even if it resolves after the timeout race
   const lateHashRef = useRef<string | null>(null);
@@ -1616,6 +1618,20 @@ const RegistrationPayment: React.FC = () => {
     }, 100);
   };
 
+  useEffect(() => {
+    if (transaction.status !== 'pending') {
+      setManualRecoveryReady(false);
+      return;
+    }
+
+    setManualRecoveryReady(false);
+    const timeoutId = window.setTimeout(() => {
+      setManualRecoveryReady(true);
+    }, MANUAL_RECOVERY_ENABLE_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [transaction.hash, transaction.status]);
+
   const paymentStatusTitle = useMemo(() => {
     if (transaction.status === 'pending' && transaction.hash) return 'Payment sent. Activating your account...';
     if (transaction.status === 'pending') return 'Waiting for wallet confirmation...';
@@ -1718,14 +1734,22 @@ const RegistrationPayment: React.FC = () => {
                   <div className="mt-4">
                     <button
                       onClick={() => void handleManualPaymentRecovery()}
-                      disabled={manualRecoveryProcessing}
+                      disabled={manualRecoveryProcessing || !manualRecoveryReady}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                     >
                       {manualRecoveryProcessing && <Loader className="h-4 w-4 animate-spin" />}
-                      <span>{manualRecoveryProcessing ? 'Checking Payment...' : 'Reconnect Wallet & Check Payment'}</span>
+                      <span>
+                        {manualRecoveryProcessing
+                          ? 'Checking Payment...'
+                          : manualRecoveryReady
+                            ? 'Reconnect Wallet & Check Payment'
+                            : 'Checking Automatically...'}
+                      </span>
                     </button>
                     <p className="mt-2 text-xs text-gray-600">
-                      Use this if MetaMask confirmed the payment but Android is still waiting here.
+                      {manualRecoveryReady
+                        ? 'Use this if MetaMask confirmed the payment but Android is still waiting here.'
+                        : 'Please wait while we check the payment automatically.'}
                     </p>
                   </div>
                 )}
