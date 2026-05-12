@@ -12,6 +12,7 @@ const GeneralSettings: React.FC = () => {
         dateFormat: settings.dateFormat,
         timezone: settings.timezone,
         launchPhase: settings.launchPhase || 'prelaunch',
+        siteMode: settings.siteMode || 'live',
         maintenanceMode: settings.maintenanceMode,
         maintenanceMessage: settings.maintenanceMessage,
         maintenanceNoticeEnabled: settings.maintenanceNoticeEnabled,
@@ -31,6 +32,7 @@ const GeneralSettings: React.FC = () => {
             dateFormat: settings.dateFormat,
             timezone: settings.timezone,
             launchPhase: settings.launchPhase || 'prelaunch',
+            siteMode: settings.siteMode || 'live',
             maintenanceMode: settings.maintenanceMode,
             maintenanceMessage: settings.maintenanceMessage,
             maintenanceNoticeEnabled: settings.maintenanceNoticeEnabled,
@@ -55,6 +57,7 @@ const GeneralSettings: React.FC = () => {
                 { key: 'date_format', value: String(formData.dateFormat || '') },
                 { key: 'timezone', value: String(formData.timezone || '') },
                 { key: 'launch_phase', value: String(formData.launchPhase || 'prelaunch') },
+                { key: 'site_mode', value: String(formData.siteMode || 'live') },
                 { key: 'maintenance_mode', value: Boolean(formData.maintenanceMode) },
                 { key: 'maintenance_message', value: String(formData.maintenanceMessage || '') },
                 { key: 'maintenance_notice_enabled', value: Boolean(formData.maintenanceNoticeEnabled) },
@@ -85,6 +88,7 @@ const GeneralSettings: React.FC = () => {
                 dateFormat: formData.dateFormat,
                 timezone: formData.timezone,
                 launchPhase: formData.launchPhase,
+                siteMode: formData.siteMode,
                 maintenanceMode: formData.maintenanceMode,
                 maintenanceMessage: formData.maintenanceMessage,
                 maintenanceNoticeEnabled: formData.maintenanceNoticeEnabled,
@@ -397,21 +401,40 @@ const GeneralSettings: React.FC = () => {
                 </div>
 
                 <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
-                    <div className="flex items-center justify-between gap-4">
-                        <div>
-                            <h4 className="text-sm font-semibold text-gray-900">Launch Phase</h4>
-                            <p className="text-xs text-gray-600 mt-1">Controls when upgrade plans are visible to customers.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-900">Site Mode</h4>
+                                <p className="text-xs text-gray-600 mt-1">Controls development-only admin login behavior.</p>
+                            </div>
+                            <select
+                                id="siteMode"
+                                name="siteMode"
+                                value={formData.siteMode}
+                                onChange={handleChange}
+                                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            >
+                                <option value="live">Live</option>
+                                <option value="development">Development</option>
+                            </select>
                         </div>
-                        <select
-                            id="launchPhase"
-                            name="launchPhase"
-                            value={formData.launchPhase}
-                            onChange={handleChange}
-                            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                        >
-                            <option value="prelaunch">Prelaunch</option>
-                            <option value="launched">Launched</option>
-                        </select>
+
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-900">Launch Phase</h4>
+                                <p className="text-xs text-gray-600 mt-1">Controls when upgrade plans are visible to customers.</p>
+                            </div>
+                            <select
+                                id="launchPhase"
+                                name="launchPhase"
+                                value={formData.launchPhase}
+                                onChange={handleChange}
+                                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            >
+                                <option value="prelaunch">Prelaunch</option>
+                                <option value="launched">Launched</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 

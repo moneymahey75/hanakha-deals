@@ -1,30 +1,56 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
+import { useAdmin } from '../../contexts/AdminContext';
 import { sessionUtils } from '../../utils/sessionUtils';
 import { Eye, EyeOff, Mail, Lock, Shield, AlertTriangle } from 'lucide-react';
+import ReCaptcha from '../../components/ui/ReCaptcha';
+
+const DEVELOPMENT_ADMIN_CREDENTIALS = {
+  email: import.meta.env.DEV ? 's_admin@dealsphere.com' : '',
+  password: import.meta.env.DEV ? 'Admin@123456' : ''
+};
 
 const AdminLogin: React.FC = () => {
   const { login } = useAdminAuth();
+  const { settings } = useAdmin();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    email: 's_admin@dealsphere.com',
-    password: 'Admin@123456'
+    email: '',
+    password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const isDevelopmentMode = (settings.siteMode || 'live') === 'development';
 
   // Check if already logged in
-  React.useEffect(() => {
+  useEffect(() => {
     if (sessionUtils.validateAdminSession()) {
       console.log('🔍 Valid admin session found, redirecting to dashboard');
       navigate('/backpanel/dashboard', { replace: true });
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (isDevelopmentMode) {
+      setFormData(DEVELOPMENT_ADMIN_CREDENTIALS);
+    } else {
+      setFormData({ email: '', password: '' });
+      setRecaptchaToken(null);
+    }
+  }, [isDevelopmentMode]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (isDevelopmentMode && !recaptchaToken) {
+      setError('Please complete captcha verification');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -135,9 +161,13 @@ const AdminLogin: React.FC = () => {
                 </div>
               </div>
 
+              {isDevelopmentMode && (
+                  <ReCaptcha onVerify={setRecaptchaToken} />
+              )}
+
               <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (isDevelopmentMode && !recaptchaToken)}
                   className="w-full bg-gradient-to-r from-red-600 to-orange-600 text-white py-3 px-4 rounded-xl font-semibold hover:from-red-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 {isSubmitting ? (

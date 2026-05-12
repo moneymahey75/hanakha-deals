@@ -31,6 +31,7 @@ interface GeneralSettings {
   socialWhatsappUrl: string;
   afterLaunchPlanConfig?: any;
   launchPhase?: 'prelaunch' | 'launched';
+  siteMode?: 'live' | 'development';
   emailVerificationRequired: boolean;
   mobileVerificationRequired: boolean;
   eitherVerificationRequired: boolean;
@@ -170,6 +171,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     socialWhatsappUrl: '',
     afterLaunchPlanConfig: null,
     launchPhase: 'prelaunch',
+    siteMode: 'live',
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
     eitherVerificationRequired: true,
@@ -422,6 +424,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'launch_phase': {
                 const phase = String(value || '').trim().toLowerCase();
                 loadedSettings.launchPhase = phase === 'launched' ? 'launched' : 'prelaunch';
+                break;
+              }
+              case 'site_mode': {
+                const mode = String(value || '').trim().toLowerCase();
+                loadedSettings.siteMode = mode === 'development' ? 'development' : 'live';
                 break;
               }
               case 'email_verification_required':
