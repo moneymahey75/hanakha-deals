@@ -237,7 +237,7 @@ const FAQ: React.FC = () => {
                   Contact Support
                 </a>
                 <a
-                  href="mailto:support@mlmplatform.com"
+                  href="mailto:support.shopclix@gmail.com"
                   className="border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-indigo-600 transition-colors"
                 >
                   Email Us

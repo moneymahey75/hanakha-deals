@@ -353,8 +353,7 @@ const SitePolicies: React.FC = () => {
                         If you become aware of any potential compliance violations, please report them immediately:
                       </p>
                       <ul className="list-disc list-inside text-red-800 space-y-1">
-                        <li>Email: compliance@mlmplatform.com</li>
-                        <li>Phone: +1 (555) 123-4567</li>
+                        <li>Email: support.shopclix@gmail.com</li>
                         <li>Anonymous reporting portal available</li>
                       </ul>
                     </div>
