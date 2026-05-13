@@ -8,6 +8,23 @@ interface ReCaptchaProps {
 }
 
 let turnstileScriptPromise: Promise<void> | null = null;
+let cachedSiteKey: string | null = null;
+
+const fetchTurnstileSiteKey = async (): Promise<string> => {
+  if (cachedSiteKey !== null) return cachedSiteKey;
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-turnstile-config`, {
+      headers: { Authorization: `Bearer ${anonKey}` },
+    });
+    const json = await res.json();
+    cachedSiteKey = json.siteKey || '';
+  } catch {
+    cachedSiteKey = '';
+  }
+  return cachedSiteKey!;
+};
 
 const loadTurnstileScript = () => {
   if (typeof window === 'undefined') return Promise.resolve();
@@ -43,7 +60,15 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const isDevelopmentMode = (settings.siteMode || 'live') === 'development';
-  const turnstileSiteKey = siteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
+  const [resolvedSiteKey, setResolvedSiteKey] = useState(siteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY || '');
+
+  useEffect(() => {
+    if (isDevelopmentMode) return;
+    if (resolvedSiteKey) return;
+    fetchTurnstileSiteKey().then((key) => {
+      if (key) setResolvedSiteKey(key);
+    });
+  }, [isDevelopmentMode, resolvedSiteKey]);
 
   useEffect(() => {
     if (isDevelopmentMode) return;
@@ -53,7 +78,7 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
     setIsVerified(false);
     setLoadError('');
 
-    if (!turnstileSiteKey) {
+    if (!resolvedSiteKey) {
       setLoadError('Turnstile site key is not configured.');
       return;
     }
@@ -65,7 +90,7 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
         if (!element || widgetIdRef.current) return;
 
         widgetIdRef.current = window.turnstile.render(element, {
-          sitekey: turnstileSiteKey,
+          sitekey: resolvedSiteKey,
           theme: 'light',
           size: 'flexible',
           callback: (token: string) => {
@@ -97,7 +122,7 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
         widgetIdRef.current = null;
       }
     };
-  }, [containerId, isDevelopmentMode, onVerify, turnstileSiteKey]);
+  }, [containerId, isDevelopmentMode, onVerify, resolvedSiteKey]);
 
   const handleMockVerification = async () => {
     setIsLoading(true);
