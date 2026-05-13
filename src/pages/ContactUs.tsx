@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, MessageSquare, User, Building } from 'lucide-react';
 import { useAdmin } from '../contexts/AdminContext';
 import ReCaptcha from '../components/ui/ReCaptcha';
-import { verifyTurnstileToken } from '../lib/turnstile';
+import { supabase } from '../lib/supabase';
 
 const parseQuickSupportLink = (value: string) => {
   const [labelPart, ...urlParts] = value.split('|');
@@ -19,36 +19,46 @@ const ContactUs: React.FC = () => {
     email: '',
     subject: '',
     message: '',
-    type: 'general'
+    type: 'general',
+    companyWebsite: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setIsSubmitting(true);
 
     try {
-      await verifyTurnstileToken({
-        token: turnstileToken,
-        siteMode: settings.siteMode,
-        action: 'contact_form',
+      const { data, error: submitError } = await supabase.functions.invoke('contact-us', {
+        body: {
+          ...formData,
+          turnstileToken,
+        },
       });
+
+      if (submitError) {
+        throw new Error(submitError.message || 'Unable to send your message');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Unable to send your message');
+      }
+
+      setSuccessMessage('Thank you for your message. We will get back to you within 24 hours.');
+      setFormData({ name: '', email: '', subject: '', message: '', type: 'general', companyWebsite: '' });
     } catch (err: any) {
-      setError(err?.message || 'Please complete the security verification');
+      setError(err?.message || 'Unable to send your message. Please try again.');
+    } finally {
+      setTurnstileToken(null);
+      setCaptchaKey((current) => current + 1);
       setIsSubmitting(false);
-      return;
     }
-    
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    alert('Thank you for your message! We will get back to you within 24 hours.');
-    setFormData({ name: '', email: '', subject: '', message: '', type: 'general' });
-    setTurnstileToken(null);
-    setIsSubmitting(false);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -188,6 +198,11 @@ const ContactUs: React.FC = () => {
                   <p className="text-red-600 text-sm">{error}</p>
                 </div>
               )}
+              {successMessage && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-green-700 text-sm">{successMessage}</p>
+                </div>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -243,6 +258,18 @@ const ContactUs: React.FC = () => {
                   </select>
                 </div>
 
+                <input
+                  type="text"
+                  id="companyWebsite"
+                  name="companyWebsite"
+                  value={formData.companyWebsite}
+                  onChange={handleChange}
+                  className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                />
+
                 <div>
                   <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-2">
                     Subject *
@@ -275,7 +302,7 @@ const ContactUs: React.FC = () => {
                   />
                 </div>
 
-                <ReCaptcha onVerify={setTurnstileToken} />
+                <ReCaptcha key={captchaKey} onVerify={setTurnstileToken} />
 
                 <button
                   type="submit"

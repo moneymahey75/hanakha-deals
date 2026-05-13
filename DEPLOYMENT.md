@@ -66,6 +66,8 @@ supabase link --project-ref your-project-ref
 # Deploy edge functions
 supabase functions deploy send-otp
 supabase functions deploy verify-otp
+supabase functions deploy contact-us
+supabase functions deploy verify-turnstile
 ```
 
 ### 5. Third-Party Service Configuration
@@ -75,11 +77,16 @@ supabase functions deploy verify-otp
 2. Generate App Password:
    - Google Account → Security → App Passwords
    - Select "Mail" and generate password
-3. Configure in Admin Panel:
-   - Host: `smtp.gmail.com`
-   - Port: `587`
-   - Username: Your Gmail address
-   - Password: Generated App Password
+3. Configure Supabase Edge Function secrets:
+   ```bash
+   supabase secrets set GMAIL_SMTP_USER=your-gmail-address@gmail.com
+   supabase secrets set GMAIL_SMTP_APP_PASSWORD=your-gmail-app-password
+   supabase secrets set GMAIL_SMTP_FROM_NAME="ShopClix Support"
+   supabase secrets set CONTACT_ADMIN_EMAIL=admin-receiver@example.com
+   ```
+4. The Contact Us function sends:
+   - Admin notification to `CONTACT_ADMIN_EMAIL`, or the Contact Email configured in Admin Panel if no secret is set
+   - Thank-you acknowledgement to the sender
 
 #### Twilio SMS Setup
 1. Create account at [Twilio.com](https://www.twilio.com)
