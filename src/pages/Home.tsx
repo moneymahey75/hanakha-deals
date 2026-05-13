@@ -336,7 +336,7 @@ const Home: React.FC = () => {
               <span className="text-sm font-semibold text-emerald-700">Our Business Purpose</span>
             </div>
             <h2 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-              -> Connecting Brands and Customers Through Promotions
+              - Connecting Brands and Customers Through Promotions
             </h2>
             <p className="text-xl text-gray-600 max-w-4xl mx-auto">
               {settings.siteName} is a promotional-coupon platform where companies list verified offers to expand
