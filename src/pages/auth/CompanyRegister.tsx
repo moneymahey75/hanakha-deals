@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
 import { Eye, EyeOff, Building, Mail, Globe, FileText, Users, Lock, Info, CheckCircle, XCircle } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
+import { verifyTurnstileToken } from '../../lib/turnstile';
 
 interface PasswordValidation {
   isValid: boolean;
@@ -283,8 +284,14 @@ const CompanyRegister: React.FC = () => {
 
     console.log('🚀 Starting company registration process...');
 
-    if (!recaptchaToken) {
-      setError('Please complete the reCAPTCHA verification');
+    try {
+      await verifyTurnstileToken({
+        token: recaptchaToken,
+        siteMode: settings.siteMode,
+        action: 'company_register',
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Please complete the security verification');
       setIsSubmitting(false);
       return;
     }

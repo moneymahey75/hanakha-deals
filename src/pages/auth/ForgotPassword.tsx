@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useAdmin } from '../../contexts/AdminContext';
 import { ArrowLeft, Eye, EyeOff, KeyRound, Lock, Shield, Smartphone, UserRound } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
+import { verifyTurnstileToken } from '../../lib/turnstile';
 
 type ResetStep = 'identify' | 'reset' | 'done';
 
@@ -20,6 +22,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 const ForgotPassword: React.FC = () => {
+  const { settings } = useAdmin();
   const [step, setStep] = useState<ResetStep>('identify');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -66,8 +69,14 @@ const ForgotPassword: React.FC = () => {
     setError('');
     setSuccessMessage('');
 
-    if (!recaptchaToken) {
-      setError('Please complete the reCAPTCHA verification');
+    try {
+      await verifyTurnstileToken({
+        token: recaptchaToken,
+        siteMode: settings.siteMode,
+        action: 'forgot_password',
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Please complete the security verification');
       return;
     }
 

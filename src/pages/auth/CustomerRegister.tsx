@@ -5,6 +5,7 @@ import { useAdmin } from '../../contexts/AdminContext';
 import { checkSponsorshipNumberExists, getSponsorStatusBySponsorshipNumber, supabase } from '../../lib/supabase';
 import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown, CheckCircle, XCircle, Info, Lock } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
+import { verifyTurnstileToken } from '../../lib/turnstile';
 
 const countryCodes = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
@@ -791,7 +792,7 @@ const CustomerRegister: React.FC = () => {
 
   const validateForm = useCallback((): string | null => {
     if (!recaptchaToken) {
-      return 'Please complete the reCAPTCHA verification';
+      return 'Please complete the security verification';
     }
 
     if (settings.customerEmailUnique && formData.email.trim() && isLikelyEmail(formData.email) && emailAvailable === false) {
@@ -939,6 +940,12 @@ const CustomerRegister: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      await verifyTurnstileToken({
+        token: recaptchaToken,
+        siteMode: settings.siteMode,
+        action: 'customer_register',
+      });
+
       const fullMobile = formData.mobileCountryCode + formData.mobile;
 
       // Apply username transformations based on settings
@@ -1023,7 +1030,8 @@ const CustomerRegister: React.FC = () => {
 	      } else {
 	        navigate(nextRouteAfterVerification);
 	      }
-    } catch (err) {
+    } catch (err: any) {
+      setError(err?.message || 'Registration failed. Please try again.');
       // Error handling is done by notification system in AuthContext
     } finally {
       setIsSubmitting(false);

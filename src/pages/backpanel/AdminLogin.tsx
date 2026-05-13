@@ -5,11 +5,7 @@ import { useAdmin } from '../../contexts/AdminContext';
 import { sessionUtils } from '../../utils/sessionUtils';
 import { Eye, EyeOff, Mail, Lock, Shield, AlertTriangle } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
-
-const DEVELOPMENT_ADMIN_CREDENTIALS = {
-  email: import.meta.env.DEV ? 's_admin@dealsphere.com' : '',
-  password: import.meta.env.DEV ? 'Admin@123456' : ''
-};
+import { verifyTurnstileToken } from '../../lib/turnstile';
 
 const AdminLogin: React.FC = () => {
   const { login } = useAdminAuth();
@@ -23,7 +19,6 @@ const AdminLogin: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const isDevelopmentMode = (settings.siteMode || 'live') === 'development';
 
   // Check if already logged in
   useEffect(() => {
@@ -33,21 +28,18 @@ const AdminLogin: React.FC = () => {
     }
   }, [navigate]);
 
-  useEffect(() => {
-    if (isDevelopmentMode) {
-      setFormData(DEVELOPMENT_ADMIN_CREDENTIALS);
-    } else {
-      setFormData({ email: '', password: '' });
-      setRecaptchaToken(null);
-    }
-  }, [isDevelopmentMode]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (isDevelopmentMode && !recaptchaToken) {
-      setError('Please complete captcha verification');
+    try {
+      await verifyTurnstileToken({
+        token: recaptchaToken,
+        siteMode: settings.siteMode,
+        action: 'admin_login',
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Please complete captcha verification');
       return;
     }
 
@@ -161,13 +153,11 @@ const AdminLogin: React.FC = () => {
                 </div>
               </div>
 
-              {isDevelopmentMode && (
-                  <ReCaptcha onVerify={setRecaptchaToken} />
-              )}
+              <ReCaptcha onVerify={setRecaptchaToken} />
 
               <button
                   type="submit"
-                  disabled={isSubmitting || (isDevelopmentMode && !recaptchaToken)}
+                  disabled={isSubmitting || !recaptchaToken}
                   className="w-full bg-gradient-to-r from-red-600 to-orange-600 text-white py-3 px-4 rounded-xl font-semibold hover:from-red-700 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 {isSubmitting ? (

@@ -38,10 +38,9 @@
     - Add policies for admin access only
     - Create secure session management
 
-  3. Default Super Admin
-    - Email: admin@mlmplatform.com
-    - Password: Admin@123456 (should be changed after first login)
-    - Full permissions to all modules
+  3. Super Admin
+    - Create the first super admin through a secure deployment runbook
+    - Do not store default admin credentials in migrations
 */
 
 -- Create admin role enum
@@ -190,28 +189,4 @@ CREATE TRIGGER trigger_admin_users_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_admin_updated_at_column();
 
--- Insert default super admin
--- Password: Admin@123456 (hashed with bcrypt)
-INSERT INTO admin_users (
-  email,
-  password_hash,
-  full_name,
-  role,
-  permissions,
-  is_active
-) VALUES (
-  'admin@mlmplatform.com',
-  '$2b$10$rQZ8kHWKQVz8kHWKQVz8kOQVz8kHWKQVz8kHWKQVz8kHWKQVz8kO',
-  'Super Administrator',
-  'super_admin',
-  '{
-    "users": {"read": true, "write": true, "delete": true},
-    "companies": {"read": true, "write": true, "delete": true},
-    "subscriptions": {"read": true, "write": true, "delete": true},
-    "payments": {"read": true, "write": true, "delete": true},
-    "settings": {"read": true, "write": true, "delete": true},
-    "admins": {"read": true, "write": true, "delete": true},
-    "reports": {"read": true, "write": true, "delete": true}
-  }'::jsonb,
-  true
-) ON CONFLICT (email) DO NOTHING;
+-- Super admin accounts must be created through a secure deployment runbook.

@@ -23,7 +23,7 @@ BEGIN
   INTO v_admin_id, v_admin_email, v_password_hash
   FROM tbl_admin_users
   WHERE tau_role = 'super_admin'
-  AND tau_email = 's_admin@dealsphere.com'
+  AND tau_is_active = true
   LIMIT 1;
 
   IF v_admin_id IS NULL THEN

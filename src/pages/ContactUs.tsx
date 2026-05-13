@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, MessageSquare, User, Building } from 'lucide-react';
 import { useAdmin } from '../contexts/AdminContext';
+import ReCaptcha from '../components/ui/ReCaptcha';
+import { verifyTurnstileToken } from '../lib/turnstile';
 
 const parseQuickSupportLink = (value: string) => {
   const [labelPart, ...urlParts] = value.split('|');
@@ -20,16 +22,32 @@ const ContactUs: React.FC = () => {
     type: 'general'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setIsSubmitting(true);
+
+    try {
+      await verifyTurnstileToken({
+        token: turnstileToken,
+        siteMode: settings.siteMode,
+        action: 'contact_form',
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Please complete the security verification');
+      setIsSubmitting(false);
+      return;
+    }
     
     // Simulate form submission
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     alert('Thank you for your message! We will get back to you within 24 hours.');
     setFormData({ name: '', email: '', subject: '', message: '', type: 'general' });
+    setTurnstileToken(null);
     setIsSubmitting(false);
   };
 
@@ -165,6 +183,11 @@ const ContactUs: React.FC = () => {
           <div className={hasContactInfo ? 'lg:col-span-2' : 'max-w-3xl w-full mx-auto'}>
             <div className="bg-white rounded-2xl shadow-lg p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h2>
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600 text-sm">{error}</p>
+                </div>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -252,9 +275,11 @@ const ContactUs: React.FC = () => {
                   />
                 </div>
 
+                <ReCaptcha onVerify={setTurnstileToken} />
+
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !turnstileToken}
                   className="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
                 >
                   {isSubmitting ? (

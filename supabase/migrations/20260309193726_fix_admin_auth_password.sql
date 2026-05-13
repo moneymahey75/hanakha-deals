@@ -2,8 +2,8 @@
   # Fix Admin Authentication Password
   
   1. Purpose
-    - Updates the admin user's password in auth.users
-    - Ensures password matches "Admin@123456"
+    - Optionally updates the active super admin password in auth.users
+    - Requires app.default_admin_password to be set for the migration session
     
   2. Security
     - Uses SECURITY DEFINER to bypass RLS
@@ -15,11 +15,18 @@
 DO $$
 DECLARE
   v_user_id uuid;
+  v_default_password text := current_setting('app.default_admin_password', true);
 BEGIN
+  IF v_default_password IS NULL OR length(v_default_password) < 12 THEN
+    RAISE NOTICE 'Skipping admin password update; app.default_admin_password is not set.';
+    RETURN;
+  END IF;
+
   -- Get the admin's auth user ID
   SELECT tau_auth_uid INTO v_user_id
   FROM tbl_admin_users
-  WHERE tau_email = 's_admin@dealsphere.com'
+  WHERE tau_role = 'super_admin'
+  AND tau_is_active = true
   LIMIT 1;
 
   IF v_user_id IS NOT NULL THEN
@@ -27,7 +34,7 @@ BEGIN
     -- Note: Direct password update using crypt function
     UPDATE auth.users
     SET
-      encrypted_password = extensions.crypt('Admin@123456', extensions.gen_salt('bf')),
+      encrypted_password = extensions.crypt(v_default_password, extensions.gen_salt('bf')),
       updated_at = now()
     WHERE id = v_user_id;
     

@@ -92,19 +92,16 @@ supabase functions deploy verify-otp
 
 ### 6. Admin Panel Access
 
-Default admin credentials:
 - URL: `your-domain.com/backpanel/login`
-- Email: `admin@mlmplatform.com`
-- Password: `Admin@123456`
 
-**Important**: Change the default password after first login!
+Create the first super-admin directly in the database using a strong one-time password, then rotate it after first login. Do not publish or commit default admin credentials.
 
 ### 7. Production Checklist
 
 - [ ] Environment variables configured
 - [ ] Database migrations applied
 - [ ] Edge functions deployed
-- [ ] Admin password changed
+- [ ] Super-admin account created with a strong password
 - [ ] SSL certificate active (automatic with Netlify)
 - [ ] Custom domain configured (optional)
 

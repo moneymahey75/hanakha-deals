@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAdmin } from '../../contexts/AdminContext';
 import { supabase } from '../../lib/supabase';
 import { Eye, EyeOff, Lock, Shield } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
+import { verifyTurnstileToken } from '../../lib/turnstile';
 
 const ResetPassword: React.FC = () => {
+  const { settings } = useAdmin();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -25,8 +28,14 @@ const ResetPassword: React.FC = () => {
     setError('');
     setIsSubmitting(true);
 
-    if (!recaptchaToken) {
-      setError('Please complete the reCAPTCHA verification');
+    try {
+      await verifyTurnstileToken({
+        token: recaptchaToken,
+        siteMode: settings.siteMode,
+        action: 'reset_password',
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Please complete the security verification');
       setIsSubmitting(false);
       return;
     }
