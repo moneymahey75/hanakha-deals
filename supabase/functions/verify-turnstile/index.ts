@@ -34,6 +34,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const secret = Deno.env.get('TURNSTILE_SECRET_KEY');
+    const expectedSiteKey = Deno.env.get('TURNSTILE_SITE_KEY') || Deno.env.get('VITE_TURNSTILE_SITE_KEY') || '';
     if (!secret) {
       return new Response(JSON.stringify({ success: false, error: 'Turnstile secret is not configured' }), {
         status: 500,
@@ -78,6 +79,22 @@ Deno.serve(async (req: Request) => {
         success: false,
         error: 'Security verification failed. Please try again.',
         errorCodes: result?.['error-codes'] || [],
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (expectedSiteKey && result?.sitekey && result.sitekey !== expectedSiteKey) {
+      console.warn('Turnstile site key mismatch', {
+        action,
+        remoteip,
+        hostname: result?.hostname,
+      });
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Security verification failed. Please try again.',
       }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -152,6 +152,7 @@ const verifyTurnstile = async (token: string, siteMode: string, remoteip: string
   }
 
   const secret = Deno.env.get('TURNSTILE_SECRET_KEY');
+  const expectedSiteKey = Deno.env.get('TURNSTILE_SITE_KEY') || Deno.env.get('VITE_TURNSTILE_SITE_KEY') || '';
   if (!secret) {
     throw new Error('Turnstile secret is not configured');
   }
@@ -172,6 +173,14 @@ const verifyTurnstile = async (token: string, siteMode: string, remoteip: string
     console.warn('Contact form Turnstile verification failed', {
       remoteip,
       errorCodes: result?.['error-codes'] || [],
+    });
+    throw new Error('Security verification failed. Please try again.');
+  }
+
+  if (expectedSiteKey && result?.sitekey && result.sitekey !== expectedSiteKey) {
+    console.warn('Contact form Turnstile site key mismatch', {
+      remoteip,
+      hostname: result?.hostname,
     });
     throw new Error('Security verification failed. Please try again.');
   }

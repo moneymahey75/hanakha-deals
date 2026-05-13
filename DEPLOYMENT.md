@@ -72,6 +72,17 @@ supabase functions deploy verify-turnstile
 
 ### 5. Third-Party Service Configuration
 
+#### Cloudflare Turnstile Setup
+1. Configure the frontend hosting environment variable:
+   ```bash
+   VITE_TURNSTILE_SITE_KEY=your-cloudflare-turnstile-site-key
+   ```
+2. Configure Supabase Edge Function secrets:
+   ```bash
+   supabase secrets set TURNSTILE_SITE_KEY=your-cloudflare-turnstile-site-key
+   supabase secrets set TURNSTILE_SECRET_KEY=your-cloudflare-turnstile-secret-key
+   ```
+
 #### Gmail SMTP Setup
 1. Enable 2-Factor Authentication on Gmail
 2. Generate App Password:
