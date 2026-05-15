@@ -66,8 +66,14 @@ supabase link --project-ref your-project-ref
 # Deploy edge functions
 supabase functions deploy send-otp
 supabase functions deploy verify-otp
+supabase functions deploy send-account-email
 supabase functions deploy contact-us
 supabase functions deploy verify-turnstile
+supabase functions deploy verify-registration-payment
+supabase functions deploy process-registration-payment
+supabase functions deploy request-withdrawal
+supabase functions deploy process-withdrawal
+supabase functions deploy resend
 ```
 
 ### 5. Third-Party Service Configuration
@@ -94,8 +100,11 @@ supabase functions deploy verify-turnstile
    supabase secrets set GMAIL_SMTP_APP_PASSWORD=your-gmail-app-password
    supabase secrets set GMAIL_SMTP_FROM_NAME="ShopClix Support"
    supabase secrets set CONTACT_ADMIN_EMAIL=admin-receiver@example.com
+   supabase secrets set SITE_URL=https://shopclix.live
+   supabase secrets set SITE_LOGO_URL=https://shopclix.live/svgHanakaFullLogoFinal.svg
    ```
-4. The Contact Us function sends:
+4. SMTP is used for OTP, welcome, contact, registration payment, upgrade payment, and withdrawal emails. The old `resend` function now uses SMTP internally for any legacy callers.
+5. The Contact Us function sends:
    - Admin notification to `CONTACT_ADMIN_EMAIL`, or the Contact Email configured in Admin Panel if no secret is set
    - Thank-you acknowledgement to the sender
 

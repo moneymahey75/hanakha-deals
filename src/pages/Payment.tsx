@@ -12,6 +12,7 @@ import { PaymentSection } from '../components/payment/PaymentSection';
 import { TrustIndicators } from '../components/payment/TrustIndicators';
 import { CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
+import { sendAccountEmail } from '../utils/accountEmails';
 
 interface SubscriptionPlan {
   tsp_id: string;
@@ -452,6 +453,12 @@ const Payment: React.FC = () => {
           }));
 
           await Promise.all([fetchUserData(user.id), loadWorkingWalletReservedBalance()]);
+          void sendAccountEmail({
+            type: 'upgrade_payment',
+            planName: selectedPlan.tsp_name,
+            amount: selectedPlan.tsp_price,
+            reservedUsed: reservedUsedRounded,
+          });
           notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance.');
           return;
         } catch (error: any) {
@@ -553,6 +560,14 @@ const Payment: React.FC = () => {
         }));
 
         await Promise.all([fetchUserData(user.id), loadWorkingWalletReservedBalance()]);
+        void sendAccountEmail({
+          type: 'upgrade_payment',
+          planName: selectedPlan.tsp_name,
+          amount: selectedPlan.tsp_price,
+          transactionHash: hash,
+          reservedUsed: reservedUsedRounded,
+          network: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
+        });
         notification.showSuccess('Payment Successful!', 'Upgrade has been activated (reserved + blockchain).');
         return;
       } catch (error: any) {
@@ -687,6 +702,16 @@ const Payment: React.FC = () => {
 
       // Refresh user data (This causes the re-render/re-mount)
       await fetchUserData(user.id);
+
+      if (isUpgradePlan) {
+        void sendAccountEmail({
+          type: 'upgrade_payment',
+          planName: selectedPlan.tsp_name,
+          amount: selectedPlan.tsp_price,
+          transactionHash: hash,
+          network: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
+        });
+      }
 
       notification.showSuccess('Payment Successful!', 'Your subscription has been activated via blockchain.');
 

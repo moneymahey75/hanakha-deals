@@ -242,11 +242,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [emailSMTP, setEmailSMTP] = useState<EmailSMTP>({
-    host: 'Resend.com (via Supabase)',
-    port: 587,
+    host: 'Gmail SMTP (via Supabase)',
+    port: 465,
     username: '',
     password: '',
-    encryption: 'TLS'
+    encryption: 'SSL/TLS'
   });
 
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([

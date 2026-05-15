@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import { OTPService } from '../../services/otpService';
 import { Smartphone, RefreshCw, Mail, CheckCircle2, AlertCircle } from 'lucide-react';
+import { sendAccountEmail } from '../../utils/accountEmails';
 
 interface VerificationSettings {
   emailRequired: boolean;
@@ -382,6 +383,7 @@ const VerifyOTP: React.FC = () => {
         if (user) {
           await fetchUserData(user.id);
         }
+        void sendAccountEmail({ type: 'welcome' });
         notification.showSuccess('Account Verified', 'Your account has been fully verified!');
         const state = location.state as any;
         const returnTo =

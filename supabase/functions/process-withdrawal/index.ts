@@ -2,6 +2,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { logAdminAction } from '../_shared/adminSession.ts';
 import { ethers } from 'npm:ethers@6.10.0';
 import { formatWithdrawalAdminDebug, formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
+import { brandedEmailShell, detailTable, sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,12 +25,14 @@ const isValidMobile = (value?: string | null) => {
   return /^\+\d{10,15}$/.test(value.trim());
 };
 
-const sendEmail = async (baseUrl: string, to: string, subject: string, html: string) => {
+const sendEmail = async (to: string, subject: string, html: string, text: string) => {
   try {
-    await fetch(`${baseUrl}/functions/v1/resend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject, html })
+    await sendSmtpMail({
+      to,
+      subject,
+      html,
+      text,
+      fromName: 'ShopClix Payments',
     });
   } catch (error) {
     console.error('Failed to send email notification:', error);
@@ -520,10 +523,25 @@ Deno.serve(async (req: Request) => {
 
     if (userEmail) {
       await sendEmail(
-        supabaseUrl,
         userEmail,
         withdrawal.twr_status === 'failed' ? 'Withdrawal Retry Started' : 'Withdrawal Approved',
-        `<p>Your withdrawal of ${withdrawal.twr_amount} USDT has been ${withdrawal.twr_status === 'failed' ? 'retried' : 'approved'} and is processing.</p>`
+        brandedEmailShell({
+          eyebrow: 'Withdrawal Update',
+          title: withdrawal.twr_status === 'failed' ? 'Withdrawal retry started' : 'Withdrawal approved',
+          subtitle: 'Your withdrawal is now processing.',
+          children: `
+            <tr>
+              <td style="padding:34px;">
+                <div style="font-size:16px;line-height:1.8;color:#405247;">Your withdrawal request has been ${withdrawal.twr_status === 'failed' ? 'retried' : 'approved'} and is processing.</div>
+                ${detailTable([
+                  { label: 'Amount', value: `${withdrawal.twr_amount} USDT` },
+                  { label: 'Status', value: 'Processing' },
+                ])}
+              </td>
+            </tr>
+          `,
+        }),
+        `Your withdrawal of ${withdrawal.twr_amount} USDT has been ${withdrawal.twr_status === 'failed' ? 'retried' : 'approved'} and is processing.`
       );
     }
 
@@ -567,10 +585,27 @@ Deno.serve(async (req: Request) => {
 
     if (userEmail) {
       await sendEmail(
-        supabaseUrl,
         userEmail,
         'Withdrawal Completed',
-        `<p>Your withdrawal has been completed.</p><p>Amount: ${withdrawal.twr_amount} USDT</p><p>Net sent: ${withdrawal.twr_net_amount} USDT</p><p>Transaction: ${txHash}</p>`
+        brandedEmailShell({
+          eyebrow: 'Withdrawal Confirmation',
+          title: 'Withdrawal completed',
+          subtitle: 'Your withdrawal has been sent successfully.',
+          children: `
+            <tr>
+              <td style="padding:34px;">
+                <div style="font-size:16px;line-height:1.8;color:#405247;">Your withdrawal has been completed and sent to your wallet.</div>
+                ${detailTable([
+                  { label: 'Amount', value: `${withdrawal.twr_amount} USDT` },
+                  { label: 'Net Sent', value: `${withdrawal.twr_net_amount} USDT` },
+                  { label: 'Transaction Hash', value: txHash },
+                  { label: 'Status', value: 'Completed' },
+                ])}
+              </td>
+            </tr>
+          `,
+        }),
+        `Your withdrawal has been completed. Amount: ${withdrawal.twr_amount} USDT. Net sent: ${withdrawal.twr_net_amount} USDT. Transaction: ${txHash}.`
       );
     }
 

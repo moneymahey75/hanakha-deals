@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { ethers } from 'npm:ethers@6.10.0';
+import { paymentEmailTemplate, sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -944,6 +945,31 @@ Deno.serve(async (req: Request) => {
     }
 
     await ensurePaymentWalletDefault(supabase, userId, txFrom, isMainnet ? 56 : 97);
+
+    if (childEmail) {
+      try {
+        await sendSmtpMail({
+          to: childEmail,
+          subject: 'Your ShopClix registration payment is confirmed',
+          html: paymentEmailTemplate({
+            name: childDisplayName,
+            title: 'Registration payment confirmed',
+            subtitle: 'Your registration payment has been confirmed and your account is active.',
+            rows: [
+              { label: 'Amount', value: `${expectedAmount} USDT` },
+              { label: 'Network', value: isMainnet ? 'BSC Mainnet' : 'BSC Testnet' },
+              { label: 'Transaction Hash', value: txHash },
+              { label: 'Confirmations', value: confirmations },
+              { label: 'Status', value: 'Completed' },
+            ],
+          }),
+          text: `Your ShopClix registration payment has been confirmed. Amount: ${expectedAmount} USDT. Transaction: ${txHash}.`,
+          fromName: 'ShopClix Payments',
+        });
+      } catch (emailError) {
+        console.error('Failed to send registration payment confirmation email:', emailError);
+      }
+    }
 
     return new Response(JSON.stringify({
       success: true,

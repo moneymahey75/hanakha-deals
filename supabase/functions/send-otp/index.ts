@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { otpEmailTemplate, sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -101,7 +102,13 @@ Deno.serve(async (req: Request) => {
       sendResult = await sendSMSOTP(contact_info, otp_code, siteName);
     }
 
-    const response: any = {
+    const response: {
+      success: boolean;
+      message: string;
+      expires_at: string;
+      debug_info?: Record<string, unknown>;
+      error_details?: Record<string, unknown>;
+    } = {
       success: sendResult.success,
       message: sendResult.success
         ? `OTP sent to ${contact_info}`
@@ -153,49 +160,22 @@ Deno.serve(async (req: Request) => {
 
 async function sendEmailOTP(email: string, otp: string, siteName: string) {
   try {
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-
-    if (!RESEND_API_KEY) {
-      console.error('RESEND_API_KEY not configured');
-      return {
-        success: false,
-        error: 'Email service not configured. Please add RESEND_API_KEY secret.'
-      };
-    }
-
     const emailSubject = `Your OTP Code - ${siteName}`;
-    const emailBody = createEmailTemplate(otp, siteName);
+    const emailBody = otpEmailTemplate(otp);
 
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from: `${siteName} <noreply@shopclix.live>`,
-        to: [email],
-        subject: emailSubject,
-        html: emailBody
-      })
+    await sendSmtpMail({
+      to: email,
+      subject: emailSubject,
+      html: emailBody,
+      text: `Your ${siteName} verification code is ${otp}. This code expires in 10 minutes. Do not share this code with anyone.`,
+      fromName: `${siteName} Security`,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Resend API error:', errorText);
-      return {
-        success: false,
-        error: `Resend API error: ${response.status} - ${errorText}`
-      };
-    }
-
-    const result = await response.json();
-    console.log('Email sent successfully via Resend:', result.id);
+    console.log('Email OTP sent successfully via SMTP');
 
     return {
       success: true,
-      provider: 'resend',
-      messageId: result.id
+      provider: 'smtp'
     };
 
   } catch (error) {
@@ -269,7 +249,7 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
       try {
         const errorJson = JSON.parse(errorText);
         errorDetails = errorJson.message || errorText;
-      } catch (e) {
+      } catch {
         console.log('Could not parse Twilio error as JSON');
       }
 
@@ -298,103 +278,4 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
       error: error instanceof Error ? error.message : 'SMS send failed'
     };
   }
-}
-
-function createEmailTemplate(otp: string, siteName: string): string {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Email Verification - ${siteName}</title>
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          max-width: 600px;
-          margin: 0 auto;
-          padding: 20px;
-          background-color: #f8f9fa;
-        }
-        .container {
-          background: white;
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 40px 30px;
-          text-align: center;
-        }
-        .header h1 {
-          margin: 0;
-          font-size: 28px;
-          font-weight: 600;
-        }
-        .content {
-          padding: 40px 30px;
-          text-align: center;
-        }
-        .otp-box {
-          background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
-          border: 2px solid #667eea;
-          padding: 30px;
-          margin: 30px 0;
-          border-radius: 12px;
-        }
-        .otp-code {
-          font-size: 36px;
-          font-weight: bold;
-          color: #667eea;
-          letter-spacing: 8px;
-          margin: 15px 0;
-          font-family: monospace;
-        }
-        .footer {
-          text-align: center;
-          margin-top: 30px;
-          color: #6c757d;
-          font-size: 14px;
-        }
-        @media (max-width: 600px) {
-          .content { padding: 20px; }
-          .otp-code { font-size: 28px; letter-spacing: 4px; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Email Verification</h1>
-          <p>Secure your ${siteName} account</p>
-        </div>
-        <div class="content">
-          <p style="font-size: 18px; margin-bottom: 20px;">
-            Use the verification code below to complete your email verification:
-          </p>
-
-          <div class="otp-box">
-            <p style="margin: 0; font-weight: 600;">Your Verification Code:</p>
-            <div class="otp-code">${otp}</div>
-            <p style="margin: 0; color: #6c757d; font-size: 14px;">
-              <strong>Valid for 10 minutes only</strong>
-            </p>
-          </div>
-
-          <p style="color: #6c757d; margin-top: 30px;">
-            If you didn't request this code, please ignore this email.
-          </p>
-        </div>
-        <div class="footer">
-          <p>This is an automated email. Please do not reply.</p>
-          <p>&copy; ${new Date().getFullYear()} ${siteName}. All rights reserved.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
 }

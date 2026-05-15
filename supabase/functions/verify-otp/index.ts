@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { sendSmtpMail, welcomeEmailTemplate } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -304,13 +305,14 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
   try {
     console.log('📧 Preparing welcome email for user:', userId?.substring(0, 8) + '...')
 
-    // Get user data
     const { data: userData } = await supabase
       .from('tbl_users')
       .select(`
         tu_email,
         tbl_user_profiles (
           tup_first_name,
+          tup_last_name,
+          tup_username,
           tup_sponsorship_number
         )
       `)
@@ -322,168 +324,25 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
       return false
     }
 
-    // Get system settings
-    const { data: settings } = await supabase
-      .from('tbl_system_settings')
-      .select('tss_setting_key, tss_setting_value')
-
-    const settingsMap = settings?.reduce((acc: any, setting: any) => {
-      try {
-        acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value)
-      } catch {
-        acc[setting.tss_setting_key] = setting.tss_setting_value
-      }
-      return acc
-    }, {}) || {}
-
-    const siteName = settingsMap.site_name || 'HanakhaDeals'
-    const firstName = userData.tbl_user_profiles?.tup_first_name || 'User'
+    const firstName = userData.tbl_user_profiles?.tup_first_name || ''
+    const lastName = userData.tbl_user_profiles?.tup_last_name || ''
+    const displayName = `${firstName} ${lastName}`.trim() || userData.tbl_user_profiles?.tup_username || userData.tu_email
     const sponsorshipNumber = userData.tbl_user_profiles?.tup_sponsorship_number || 'N/A'
+    const emailSubject = 'Welcome to ShopClix! Your account is ready'
+    await sendSmtpMail({
+      to: userData.tu_email,
+      subject: emailSubject,
+      html: welcomeEmailTemplate(displayName, [
+        { label: 'User ID', value: sponsorshipNumber },
+        { label: 'Email', value: userData.tu_email },
+        { label: 'Status', value: 'Verified' },
+      ]),
+      text: `Welcome to ShopClix, ${displayName}. Your User ID is ${sponsorshipNumber}.`,
+      fromName: 'ShopClix Welcome',
+    })
 
-    // Create welcome email content
-    const emailSubject = `Welcome to ${siteName}! Your Account is Ready`
-    const emailBody = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Welcome to ${siteName}</title>
-        <style>
-          body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            max-width: 600px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            background-color: #f8f9fa;
-          }
-          .container {
-            background: white;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          }
-          .header { 
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
-            color: white; 
-            padding: 40px 30px; 
-            text-align: center; 
-          }
-          .content { 
-            padding: 40px 30px; 
-          }
-          .welcome-box {
-            background: linear-gradient(135deg, #f8fff9 0%, #e8f5e8 100%);
-            border: 2px solid #28a745;
-            padding: 30px;
-            border-radius: 12px;
-            margin: 20px 0;
-            text-align: center;
-          }
-          .sponsorship-number {
-            font-size: 24px;
-            font-weight: bold;
-            color: #28a745;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 2px;
-          }
-          .cta-button {
-            display: inline-block;
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-            padding: 15px 30px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-          }
-          .footer { 
-            text-align: center; 
-            margin-top: 30px; 
-            padding-top: 20px;
-            border-top: 1px solid #e9ecef;
-            color: #6c757d; 
-            font-size: 14px; 
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🎉 Welcome to ${siteName}!</h1>
-            <p>Your MLM journey starts here</p>
-          </div>
-          <div class="content">
-            <h2 style="color: #495057;">Hello ${firstName}!</h2>
-            <p style="color: #6c757d; font-size: 16px; line-height: 1.6;">
-              Congratulations! Your account has been successfully created and verified. 
-              You're now part of our growing community of entrepreneurs.
-            </p>
-            
-            <div class="welcome-box">
-              <h3 style="color: #28a745; margin-top: 0;">Your Account Details</h3>
-              <p style="margin: 10px 0;"><strong>User ID:</strong></p>
-              <div class="sponsorship-number">${sponsorshipNumber}</div>
-              <p style="color: #6c757d; font-size: 14px; margin-top: 15px;">
-                Keep this number safe - you'll need it for referrals!
-              </p>
-            </div>
-            
-            <h3 style="color: #495057;">What's Next?</h3>
-            <ul style="color: #6c757d; line-height: 1.8;">
-              <li>Choose your subscription plan to activate your account</li>
-              <li>Complete your profile information</li>
-              <li>Start building your network</li>
-              <li>Explore our training materials and resources</li>
-            </ul>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${Deno.env.get('SITE_URL') || 'https://mlmplatform.com'}/customer/dashboard" class="cta-button">
-                Access Your Dashboard
-              </a>
-            </div>
-            
-            <p style="color: #495057;">
-              If you have any questions, our support team is here to help. 
-              Welcome aboard and here's to your success!
-            </p>
-          </div>
-          <div class="footer">
-            <p>This email was sent to ${userData.tu_email}</p>
-            <p>&copy; ${new Date().getFullYear()} ${siteName}. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `
-
-    // Send welcome email via Resend
-    try {
-      const resendResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: userData.tu_email,
-          subject: emailSubject,
-          html: emailBody,
-        }),
-      });
-
-      const resendResult = await resendResponse.json();
-
-      if (resendResponse.ok && resendResult.success) {
-        console.log('✅ Welcome email sent successfully')
-        return true
-      } else {
-        console.warn('⚠️ Welcome email failed:', resendResult)
-        return false
-      }
-    } catch (emailError) {
-      console.warn('⚠️ Welcome email service not available:', emailError)
-      return false
-    }
+    console.log('✅ Welcome email sent successfully via SMTP')
+    return true
 
   } catch (error) {
     console.error('❌ Failed to send welcome email:', error)

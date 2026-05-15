@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { paymentEmailTemplate, sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -662,6 +663,29 @@ Deno.serve(async (req: Request) => {
           timestamp: new Date().toISOString(),
         },
       });
+
+    if (childEmail) {
+      try {
+        await sendSmtpMail({
+          to: childEmail,
+          subject: 'Your ShopClix registration payment is confirmed',
+          html: paymentEmailTemplate({
+            name: childDisplayName,
+            title: 'Registration payment confirmed',
+            subtitle: 'Your registration payment has been approved and your account is active.',
+            rows: [
+              { label: 'Amount', value: `${paymentAmount} USDT` },
+              { label: 'Transaction Hash', value: txHash || 'Manual verification' },
+              { label: 'Status', value: 'Completed' },
+            ],
+          }),
+          text: `Your ShopClix registration payment has been confirmed. Amount: ${paymentAmount} USDT. Transaction: ${txHash || 'Manual verification'}.`,
+          fromName: 'ShopClix Payments',
+        });
+      } catch (emailError) {
+        console.error('Failed to send manual registration payment confirmation email:', emailError);
+      }
+    }
 
     return new Response(
       JSON.stringify({

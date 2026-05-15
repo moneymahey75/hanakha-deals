@@ -1,6 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { ethers } from 'npm:ethers@6.10.0';
 import { formatWithdrawalAdminDebug, formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
+import { brandedEmailShell, detailTable, sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,12 +25,14 @@ const isValidMobile = (value?: string | null) => {
   return /^\+\d{10,15}$/.test(value.trim());
 };
 
-const sendEmail = async (baseUrl: string, to: string, subject: string, html: string) => {
+const sendEmail = async (to: string, subject: string, html: string, text: string) => {
   try {
-    await fetch(`${baseUrl}/functions/v1/resend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject, html })
+    await sendSmtpMail({
+      to,
+      subject,
+      html,
+      text,
+      fromName: 'ShopClix Payments',
     });
   } catch (error) {
     console.error('Failed to send email notification:', error);
@@ -552,10 +555,27 @@ Deno.serve(async (req: Request) => {
 
       if (userEmail) {
         await sendEmail(
-          supabaseUrl,
           userEmail,
           'Withdrawal Completed',
-          `<p>Your withdrawal of ${withdrawalAmount} USDT has been completed.</p><p>Net sent: ${netAmount} USDT</p><p>Transaction: ${txHash}</p>`
+          brandedEmailShell({
+            eyebrow: 'Withdrawal Confirmation',
+            title: 'Withdrawal completed',
+            subtitle: 'Your withdrawal has been processed successfully.',
+            children: `
+              <tr>
+                <td style="padding:34px;">
+                  <div style="font-size:16px;line-height:1.8;color:#405247;">Your withdrawal has been completed and sent to your default wallet.</div>
+                  ${detailTable([
+                    { label: 'Requested Amount', value: `${withdrawalAmount} USDT` },
+                    { label: 'Net Sent', value: `${netAmount} USDT` },
+                    { label: 'Transaction Hash', value: txHash },
+                    { label: 'Status', value: 'Completed' },
+                  ])}
+                </td>
+              </tr>
+            `,
+          }),
+          `Your withdrawal of ${withdrawalAmount} USDT has been completed. Net sent: ${netAmount} USDT. Transaction: ${txHash}.`
         );
       }
 

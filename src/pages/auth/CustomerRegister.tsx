@@ -6,6 +6,7 @@ import { checkSponsorshipNumberExists, getSponsorStatusBySponsorshipNumber, supa
 import { Eye, EyeOff, User, Mail, Phone, Users, ChevronDown, CheckCircle, XCircle, Info, Lock } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 import { verifyTurnstileToken } from '../../lib/turnstile';
+import { sendAccountEmail } from '../../utils/accountEmails';
 
 const countryCodes = [
   { code: '+91', country: 'India', flag: '🇮🇳' },
@@ -1028,6 +1029,7 @@ const CustomerRegister: React.FC = () => {
 	          }
 	        });
 	      } else {
+	        void sendAccountEmail({ type: 'welcome' });
 	        navigate(nextRouteAfterVerification);
 	      }
     } catch (err: any) {

@@ -1,10 +1,11 @@
 /// <reference types="deno.ns" />
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
@@ -13,54 +14,40 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, html } = await req.json();
+    const { to, subject, html, text } = await req.json();
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) throw new Error("Missing RESEND_API_KEY");
-
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "MLM Platform <onboarding@resend.dev>",
-        to: to,
-        subject: subject,
-        html: html,
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.error("Resend error:", result);
-      throw new Error(result.message || "Failed to send email");
+    if (!to || !subject || !html) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'to, subject, and html are required',
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      });
     }
+
+    await sendSmtpMail({
+      to: Array.isArray(to) ? to.join(',') : String(to),
+      subject: String(subject),
+      html: String(html),
+      text: String(text || subject),
+    });
 
     return new Response(JSON.stringify({
       success: true,
-      message: "Email sent successfully",
-      result,
+      message: 'Email sent successfully via SMTP',
     }), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
-
-  } catch (error) {
-    console.error("❌ Email send error:", error);
+  } catch (error: unknown) {
+    console.error('Email send error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({
       success: false,
-      error: error?.message || "Unknown error",
+      error: message,
     }), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     });
   }
