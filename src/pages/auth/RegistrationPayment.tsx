@@ -55,6 +55,21 @@ const clearPendingTxHash = () => {
   } catch { /* ignore */ }
 };
 
+const isAlreadyProcessedRegistrationPayment = (value: any) => {
+  const message = String(
+    value?.error ||
+    value?.message ||
+    value?.gatewayResponse?.error ||
+    value?.gatewayResponse?.message ||
+    ''
+  ).toLowerCase();
+
+  return (
+    message.includes('transaction already processed for registration payment') ||
+    message.includes('registration payment already completed')
+  );
+};
+
 interface PaymentRecoveryAttempt {
   userId: string;
   walletAddress: string;
@@ -728,6 +743,27 @@ const RegistrationPayment: React.FC = () => {
       // wallet mismatch, already completed, on-chain failure, etc.).
       // Only throw immediately for these — do NOT retry.
       if (result.status === 'failed' || result.success === false) {
+        if (isAlreadyProcessedRegistrationPayment(result) && user?.id) {
+          const { data: completedPayment } = await supabase
+            .from('tbl_payments')
+            .select('tp_amount, tp_network, tp_payment_status')
+            .eq('tp_transaction_id', txHash)
+            .eq('tp_user_id', user.id)
+            .eq('tp_payment_status', 'completed')
+            .maybeSingle();
+
+          if (completedPayment) {
+            return {
+              success: true,
+              status: 'success',
+              txHash,
+              amount: Number(completedPayment.tp_amount || plan?.tsp_price || 0),
+              network: completedPayment.tp_network || undefined,
+              alreadyProcessed: true
+            };
+          }
+        }
+
         const error = new Error(result.error || 'Payment failed');
         (error as any).gatewayResponse = result;
         throw error;

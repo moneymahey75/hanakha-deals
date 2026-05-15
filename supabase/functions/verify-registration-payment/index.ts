@@ -323,11 +323,14 @@ Deno.serve(async (req: Request) => {
 
     if (existingPayment?.tp_payment_status === 'completed') {
       return new Response(JSON.stringify({
-        success: false,
-        status: 'failed',
-        error: 'Transaction already processed for registration payment'
+        success: true,
+        status: 'success',
+        txHash,
+        amount: Number(existingPayment.tp_amount || expectedAmount),
+        network: existingPayment.tp_network || (isMainnet ? 'BSC Mainnet' : 'BSC Testnet'),
+        message: 'Transaction already processed for registration payment',
+        alreadyProcessed: true
       }), {
-        status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
