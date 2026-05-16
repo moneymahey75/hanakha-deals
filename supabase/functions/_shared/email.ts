@@ -32,9 +32,12 @@ const compactHtml = (html: string) =>
 
 const getBrand = () => {
   const siteUrl = (Deno.env.get('SITE_URL') || Deno.env.get('PUBLIC_SITE_URL') || 'https://shopclix.live').replace(/\/+$/, '');
+  const logoUrl = (Deno.env.get('SITE_LOGO_URL') || '').trim();
+  const fallbackLogoUrl = `${siteUrl}/shopclick_logo.png`;
+
   return {
     siteName: Deno.env.get('SITE_NAME') || 'ShopClix',
-    logoUrl: Deno.env.get('SITE_LOGO_URL') || `${siteUrl}/shopclick_logo.png`,
+    logoUrl: /^https?:\/\//i.test(logoUrl) ? logoUrl : fallbackLogoUrl,
     siteUrl,
   };
 };
@@ -80,9 +83,18 @@ export const brandedEmailShell = ({
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid ${colors.border};box-shadow:0 16px 45px rgba(18,48,38,0.08);">
                 <tr>
                   <td style="padding:22px 34px;background:#ffffff;border-bottom:1px solid ${colors.border};">
-                    <a href="${escapeHtml(brand.siteUrl)}" style="text-decoration:none;display:inline-block;">
-                      <img src="${escapeHtml(brand.logoUrl)}" width="180" alt="${escapeHtml(brand.siteName)}" style="display:block;max-width:180px;height:auto;border:0;" />
-                    </a>
+                    <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td style="vertical-align:middle;">
+                          <a href="${escapeHtml(brand.siteUrl)}" style="text-decoration:none;display:inline-block;">
+                            <img src="${escapeHtml(brand.logoUrl)}" width="180" alt="${escapeHtml(brand.siteName)}" style="display:block;max-width:180px;height:auto;border:0;outline:none;text-decoration:none;" />
+                          </a>
+                        </td>
+                        <td style="vertical-align:middle;padding-left:14px;">
+                          <a href="${escapeHtml(brand.siteUrl)}" style="text-decoration:none;color:#0f5132;font-size:22px;font-weight:800;line-height:1;">${escapeHtml(brand.siteName)}</a>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
                 <tr>
