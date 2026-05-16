@@ -65,6 +65,25 @@ const VerifyOTP: React.FC = () => {
   const componentInitialized = useRef(false);
   const sendingInProgress = useRef(false);
   const mountedRef = useRef(true);
+  const sessionRedirectHandledRef = useRef(false);
+
+  const redirectToLoginForMissingSession = useCallback((message: string) => {
+    if (sessionRedirectHandledRef.current) return;
+    sessionRedirectHandledRef.current = true;
+
+    const isIntentionalLogout =
+      typeof window !== 'undefined' &&
+      sessionStorage.getItem('customer_logout_in_progress') === 'true';
+
+    if (!isIntentionalLogout) {
+      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
+    }
+
+    navigate('/customer/login', {
+      replace: true,
+      state: { returnTo: '/verify-otp', message }
+    });
+  }, [navigate, notification]);
 
   // Initialize refs
   useEffect(() => {
@@ -151,12 +170,9 @@ const VerifyOTP: React.FC = () => {
   useEffect(() => {
     if (componentInitialized.current && currentUserId && !user) {
       console.log('User logged out during verification, redirecting to login');
-      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
-      navigate('/customer/login', {
-        state: { returnTo: '/verify-otp', message: 'Session expired. Please login again.' }
-      });
+      redirectToLoginForMissingSession('Session expired. Please login again.');
     }
-  }, [user, currentUserId, notification, navigate]);
+  }, [user, currentUserId, redirectToLoginForMissingSession]);
 
   // Update verification progress
   const updateVerificationProgress = useCallback((settings: VerificationSettings, completed: CompletedVerifications) => {
@@ -268,10 +284,7 @@ const VerifyOTP: React.FC = () => {
     // Check if user is still logged in
     if (!user) {
       console.log('User logged out, redirecting to login');
-      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
-      navigate('/customer/login', {
-        state: { returnTo: location.pathname, message: 'Please login to continue verification' }
-      });
+      redirectToLoginForMissingSession('Please login to continue verification');
       return;
     }
 
@@ -329,7 +342,7 @@ const VerifyOTP: React.FC = () => {
       }
       sendingInProgress.current = false;
     }
-  }, [currentUserId, contactInfo, otpType, otpService, notification]);
+  }, [currentUserId, contactInfo, otpType, otpService, notification, redirectToLoginForMissingSession]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -337,10 +350,7 @@ const VerifyOTP: React.FC = () => {
     // Check if user is still logged in
     if (!user) {
       console.log('User logged out, redirecting to login');
-      notification.showError('Session Expired', 'Your session has expired. Please login again to verify your account.');
-      navigate('/customer/login', {
-        state: { returnTo: location.pathname, message: 'Please login to continue verification' }
-      });
+      redirectToLoginForMissingSession('Please login to continue verification');
       return;
     }
 
@@ -437,7 +447,7 @@ const VerifyOTP: React.FC = () => {
         setIsSubmitting(false);
       }
     }
-  }, [isSubmitting, otp, currentUserId, otpType, otpService, completedVerifications, user, fetchUserData, notification, navigate, verificationSettings, updateVerificationProgress]);
+  }, [isSubmitting, otp, currentUserId, otpType, otpService, completedVerifications, user, fetchUserData, notification, navigate, verificationSettings, updateVerificationProgress, redirectToLoginForMissingSession]);
 
   const handleResend = useCallback(async () => {
     if (resendTimer > 0 || isResending || sendingInProgress.current) return;

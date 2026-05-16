@@ -238,6 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Clear all session data
       console.log('🧹 Clearing all session data during logout...');
+      sessionStorage.setItem('customer_logout_in_progress', 'true');
       sessionManager.removeSession(currentUserId);
       sessionStorage.removeItem('session_type');
       sessionStorage.removeItem('last_customer_route');
@@ -527,6 +528,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionManager.saveSession(authData.session);
 
       // Mark session type as customer
+      sessionStorage.removeItem('customer_logout_in_progress');
       sessionStorage.setItem('session_type', 'customer');
       console.log('🧾 session_type set to customer');
 
@@ -627,6 +629,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Save session immediately if available
       if (authData.session) {
         console.log('💾 Saving session to sessionStorage');
+        sessionStorage.removeItem('customer_logout_in_progress');
         sessionManager.saveSession(authData.session);
       }
 
