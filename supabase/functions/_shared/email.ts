@@ -34,7 +34,7 @@ const getBrand = () => {
   const siteUrl = (Deno.env.get('SITE_URL') || Deno.env.get('PUBLIC_SITE_URL') || 'https://shopclix.live').replace(/\/+$/, '');
   return {
     siteName: Deno.env.get('SITE_NAME') || 'ShopClix',
-    logoUrl: Deno.env.get('SITE_LOGO_URL') || `${siteUrl}/svgHanakaFullLogoFinal.svg`,
+    logoUrl: Deno.env.get('SITE_LOGO_URL') || `${siteUrl}/shopclick_logo.png`,
     siteUrl,
   };
 };

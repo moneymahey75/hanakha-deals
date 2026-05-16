@@ -101,7 +101,7 @@ supabase functions deploy resend
    supabase secrets set GMAIL_SMTP_FROM_NAME="ShopClix Support"
    supabase secrets set CONTACT_ADMIN_EMAIL=admin-receiver@example.com
    supabase secrets set SITE_URL=https://shopclix.live
-   supabase secrets set SITE_LOGO_URL=https://shopclix.live/svgHanakaFullLogoFinal.svg
+   supabase secrets set SITE_LOGO_URL=https://shopclix.live/shopclick_logo.png
    ```
 4. SMTP is used for OTP, welcome, contact, registration payment, upgrade payment, and withdrawal emails. The old `resend` function now uses SMTP internally for any legacy callers.
 5. The Contact Us function sends:
