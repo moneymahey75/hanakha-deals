@@ -35,6 +35,51 @@ const applySearchTerm = (value: string, searchTerm: string | null) => {
   return haystack.includes(needle);
 };
 
+const parseSetting = (raw: any) => {
+  if (raw === null || raw === undefined) return raw;
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+const getVerificationSettings = async (supabase: any) => {
+  const { data } = await supabase
+    .from('tbl_system_settings')
+    .select('tss_setting_key, tss_setting_value')
+    .in('tss_setting_key', [
+      'email_verification_required',
+      'mobile_verification_required',
+      'either_verification_required',
+    ]);
+
+  const map = (data || []).reduce((acc: Record<string, boolean>, setting: any) => {
+    acc[setting.tss_setting_key] = Boolean(parseSetting(setting.tss_setting_value));
+    return acc;
+  }, {});
+
+  return {
+    emailRequired: map.email_verification_required ?? true,
+    mobileRequired: map.mobile_verification_required ?? true,
+    eitherRequired: map.either_verification_required ?? false,
+  };
+};
+
+const meetsVerificationRules = (
+  user: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null },
+  settings: { emailRequired: boolean; mobileRequired: boolean; eitherRequired: boolean }
+) => {
+  const emailVerified = user.tu_email_verified === true;
+  const mobileVerified = user.tu_mobile_verified === true;
+
+  if (settings.eitherRequired) return emailVerified || mobileVerified;
+  if (settings.emailRequired && !emailVerified) return false;
+  if (settings.mobileRequired && !mobileVerified) return false;
+  return true;
+};
+
 const resolveRpcUserId = (row: any): string | null => {
   return (
     row?.tmt_user_id ||
@@ -110,6 +155,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const verificationSettings = await getVerificationSettings(supabase);
     const adminSessionToken = req.headers.get('X-Admin-Session');
     if (!adminSessionToken) {
       return new Response(JSON.stringify({ success: false, error: 'Missing admin session token' }), {
@@ -326,7 +372,8 @@ Deno.serve(async (req: Request) => {
           if (!applySearchTerm(searchBlob, searchTerm)) return null;
 
           const isEnabled = u.tu_is_active === true;
-          const isMemberActive = isEnabled && (u.tu_registration_paid === true) && (u.tu_mobile_verified === true);
+          const verificationComplete = meetsVerificationRules(u, verificationSettings);
+          const isMemberActive = isEnabled && (u.tu_registration_paid === true) && verificationComplete;
           const isPending = isEnabled && !isMemberActive;
           const isDisabled = !isEnabled;
 
@@ -343,6 +390,8 @@ Deno.serve(async (req: Request) => {
             tu_mobile_verified: u.tu_mobile_verified,
             tu_registration_paid: u.tu_registration_paid ?? false,
             tu_is_active: u.tu_is_active,
+            is_active_member: isMemberActive,
+            verification_complete: verificationComplete,
             tu_is_dummy: !!u.tu_is_dummy,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
@@ -400,7 +449,7 @@ Deno.serve(async (req: Request) => {
       throw error;
     }
 
-    // Ensure `tu_registration_paid` is present for status computations in the admin UI.
+    // Ensure status fields are present and follow current verification settings.
     const rows = Array.isArray(data) ? data : [];
     const missingRegFlag = rows.length > 0 && rows.some((row: any) => row?.tu_registration_paid === undefined);
     if (missingRegFlag) {
@@ -428,6 +477,11 @@ Deno.serve(async (req: Request) => {
       const merged = rows.map((row: any) => ({
         ...row,
         tu_registration_paid: row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false),
+        verification_complete: meetsVerificationRules(row, verificationSettings),
+        is_active_member:
+          row?.tu_is_active === true &&
+          (row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false)) === true &&
+          meetsVerificationRules(row, verificationSettings),
       }));
 
       return new Response(JSON.stringify({ success: true, data: merged }), {
@@ -436,7 +490,19 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true, data }), {
+    const normalizedRows = rows.map((row: any) => {
+      const verificationComplete = meetsVerificationRules(row, verificationSettings);
+      return {
+        ...row,
+        verification_complete: verificationComplete,
+        is_active_member:
+          row?.tu_is_active === true &&
+          row?.tu_registration_paid === true &&
+          verificationComplete,
+      };
+    });
+
+    return new Response(JSON.stringify({ success: true, data: normalizedRows }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

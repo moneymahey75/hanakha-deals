@@ -16,6 +16,7 @@ type ReferralRow = {
   parent_sponsorship_number: string | null;
   is_active: boolean;
   is_registration_paid?: boolean;
+  email_verified?: boolean;
   mobile_verified?: boolean;
   is_active_member?: boolean;
   email?: string | null;
@@ -124,7 +125,11 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
   const renderStatus = (node: ReferralRow) => {
     const activeMember =
       node.is_active_member ??
-      (Boolean(node.is_active) && Boolean(node.is_registration_paid) && Boolean(node.mobile_verified));
+      (
+        Boolean(node.is_active) &&
+        Boolean(node.is_registration_paid) &&
+        (Boolean(node.email_verified) || Boolean(node.mobile_verified))
+      );
 
     return (
       <span

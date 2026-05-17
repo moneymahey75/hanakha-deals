@@ -7,6 +7,51 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Session',
 };
 
+const parseSetting = (raw: any) => {
+  if (raw === null || raw === undefined) return raw;
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+const getVerificationSettings = async (supabase: any) => {
+  const { data } = await supabase
+    .from('tbl_system_settings')
+    .select('tss_setting_key, tss_setting_value')
+    .in('tss_setting_key', [
+      'email_verification_required',
+      'mobile_verification_required',
+      'either_verification_required',
+    ]);
+
+  const map = (data || []).reduce((acc: Record<string, boolean>, setting: any) => {
+    acc[setting.tss_setting_key] = Boolean(parseSetting(setting.tss_setting_value));
+    return acc;
+  }, {});
+
+  return {
+    emailRequired: map.email_verification_required ?? true,
+    mobileRequired: map.mobile_verification_required ?? true,
+    eitherRequired: map.either_verification_required ?? false,
+  };
+};
+
+const sponsorMeetsVerificationRules = (
+  sponsorUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null },
+  settings: { emailRequired: boolean; mobileRequired: boolean; eitherRequired: boolean }
+) => {
+  const emailVerified = sponsorUser.tu_email_verified === true;
+  const mobileVerified = sponsorUser.tu_mobile_verified === true;
+
+  if (settings.eitherRequired) return emailVerified || mobileVerified;
+  if (settings.emailRequired && !emailVerified) return false;
+  if (settings.mobileRequired && !mobileVerified) return false;
+  return true;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -229,11 +274,16 @@ Deno.serve(async (req: Request) => {
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
-          .select('tu_is_active, tu_registration_paid, tu_mobile_verified')
+          .select('tu_is_active, tu_registration_paid, tu_email_verified, tu_mobile_verified')
           .eq('tu_id', sponsorUserId)
           .maybeSingle();
 
-        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid || !sponsorUser?.tu_mobile_verified) {
+        const verificationSettings = await getVerificationSettings(supabase);
+        const sponsorIsVerified = sponsorUser
+          ? sponsorMeetsVerificationRules(sponsorUser, verificationSettings)
+          : false;
+
+        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid || !sponsorIsVerified) {
           return new Response(
             JSON.stringify({ success: false, error: 'Parent A/C is not active/verified or registration-paid' }),
             {

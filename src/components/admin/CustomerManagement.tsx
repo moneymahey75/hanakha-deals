@@ -24,6 +24,8 @@ interface Customer {
     tu_mobile_verified: boolean;
     tu_registration_paid?: boolean;
     tu_is_active: boolean;
+    is_active_member?: boolean;
+    verification_complete?: boolean;
     tu_is_dummy?: boolean;
     tu_created_at: string;
     downline_level?: number;
@@ -643,7 +645,12 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                 <td className="px-6 py-4 whitespace-nowrap">
                                         {(() => {
                                           const isEnabled = customer.tu_is_active === true;
-                                          const isMemberActive = isEnabled && customer.tu_registration_paid === true && customer.tu_mobile_verified === true;
+                                          const verificationComplete =
+                                            customer.verification_complete ??
+                                            (customer.tu_email_verified === true || customer.tu_mobile_verified === true);
+                                          const isMemberActive =
+                                            customer.is_active_member ??
+                                            (isEnabled && customer.tu_registration_paid === true && verificationComplete);
                                           if (!isEnabled) {
                                             return (
                                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">

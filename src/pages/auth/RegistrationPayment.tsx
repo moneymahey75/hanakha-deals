@@ -22,7 +22,7 @@ interface RegistrationPlan {
 }
 
 const PAYMENT_POLL_INTERVAL = 5000;
-const MANUAL_RECOVERY_ENABLE_DELAY_MS = 5000;
+const MANUAL_RECOVERY_ENABLE_DELAY_MS = 10000;
 // 24 attempts × 5s = 120s total — gives more time on slow Android networks
 const PAYMENT_POLL_ATTEMPTS = 24;
 // Android MetaMask can take much longer to return from the wallet app; use 90s
@@ -232,6 +232,25 @@ const RegistrationPayment: React.FC = () => {
           return;
         }
 
+        const requiresEither = settings.eitherVerificationRequired;
+        const requiresEmail = settings.emailVerificationRequired && !requiresEither;
+        const requiresMobile = settings.mobileVerificationRequired && !requiresEither;
+
+        if (requiresEither && !sponsorStatus.email_verified && !sponsorStatus.mobile_verified) {
+          setParentAccountError('Parent A/C must be verified to continue. Please contact support or choose a verified parent.');
+          return;
+        }
+
+        if (requiresEmail && !sponsorStatus.email_verified) {
+          setParentAccountError('Parent A/C must have verified email to continue. Please contact support or choose a verified parent.');
+          return;
+        }
+
+        if (requiresMobile && !sponsorStatus.mobile_verified) {
+          setParentAccountError('Parent A/C must have verified mobile to continue. Please contact support or choose a verified parent.');
+          return;
+        }
+
         console.log('✅ Parent A/C validation passed');
         setParentAccountError(null);
       } catch (error) {
@@ -241,7 +260,12 @@ const RegistrationPayment: React.FC = () => {
     };
 
     validateParentAccount();
-  }, [user?.id]);
+  }, [
+    user?.id,
+    settings.eitherVerificationRequired,
+    settings.emailVerificationRequired,
+    settings.mobileVerificationRequired
+  ]);
 
   // On Android MetaMask the DApp browser may fully reload the page when switching back from
   // the wallet app. If that happens, the tx hash that sendUSDTTransfer returned is gone from
@@ -1778,7 +1802,7 @@ const RegistrationPayment: React.FC = () => {
                         {manualRecoveryProcessing
                           ? 'Checking Payment...'
                           : manualRecoveryReady
-                            ? 'Reconnect Wallet & Check Payment'
+                            ? 'Verify Payment'
                             : 'Checking Automatically...'}
                       </span>
                     </button>

@@ -33,6 +33,41 @@ const parseSetting = (raw: any) => {
 const isLocalSupabaseUrl = (supabaseUrl: string) =>
   supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1') || supabaseUrl.includes('0.0.0.0');
 
+const getVerificationSettings = async (supabase: any) => {
+  const { data } = await supabase
+    .from('tbl_system_settings')
+    .select('tss_setting_key, tss_setting_value')
+    .in('tss_setting_key', [
+      'email_verification_required',
+      'mobile_verification_required',
+      'either_verification_required',
+    ]);
+
+  const map = (data || []).reduce((acc: Record<string, boolean>, setting: any) => {
+    acc[setting.tss_setting_key] = Boolean(parseSetting(setting.tss_setting_value));
+    return acc;
+  }, {});
+
+  return {
+    emailRequired: map.email_verification_required ?? true,
+    mobileRequired: map.mobile_verification_required ?? true,
+    eitherRequired: map.either_verification_required ?? false,
+  };
+};
+
+const sponsorMeetsVerificationRules = (
+  sponsorUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null },
+  settings: { emailRequired: boolean; mobileRequired: boolean; eitherRequired: boolean }
+) => {
+  const emailVerified = sponsorUser.tu_email_verified === true;
+  const mobileVerified = sponsorUser.tu_mobile_verified === true;
+
+  if (settings.eitherRequired) return emailVerified || mobileVerified;
+  if (settings.emailRequired && !emailVerified) return false;
+  if (settings.mobileRequired && !mobileVerified) return false;
+  return true;
+};
+
 const ensurePaymentWalletDefault = async (
   supabase: any,
   userId: string,
@@ -474,15 +509,20 @@ Deno.serve(async (req: Request) => {
 
         const { data: sponsorUser } = await supabase
           .from('tbl_users')
-          .select('tu_is_active, tu_registration_paid, tu_mobile_verified')
+          .select('tu_is_active, tu_registration_paid, tu_email_verified, tu_mobile_verified')
           .eq('tu_id', sponsorUserId)
           .maybeSingle();
 
-        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid || !sponsorUser?.tu_mobile_verified) {
+        const verificationSettings = await getVerificationSettings(supabase);
+        const sponsorIsVerified = sponsorUser
+          ? sponsorMeetsVerificationRules(sponsorUser, verificationSettings)
+          : false;
+
+        if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid || !sponsorIsVerified) {
           await supabase
             .from('tbl_payments')
             .update({
-              tp_payment_status: 'failed',
+              tp_payment_status: 'pending',
               tp_error_message: 'Parent A/C is not active/verified or registration-paid'
             })
             .eq('tp_transaction_id', txHash)
