@@ -564,6 +564,7 @@ export class OTPService {
     const updateData: any = {};
     if (otpType === 'email') {
       updateData.tu_email_verified = true;
+      updateData.tu_is_verified = true;
     } else if (otpType === 'mobile') {
       updateData.tu_mobile_verified = true;
       updateData.tu_is_verified = true;

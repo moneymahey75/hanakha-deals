@@ -414,27 +414,10 @@ const CustomerRegister: React.FC = () => {
         return;
       }
 
-      const requiresEither = settings.eitherVerificationRequired;
-      const requiresEmail = settings.emailVerificationRequired && !requiresEither;
-      const requiresMobile = settings.mobileVerificationRequired && !requiresEither;
-
-      if (requiresEither) {
-        if (!sponsor.email_verified && !sponsor.mobile_verified) {
-          setReferralValid(false);
-          setReferralMessage('Parent A/C must be verified (email or mobile).');
-          return;
-        }
-      } else {
-        if (requiresEmail && !sponsor.email_verified) {
-          setReferralValid(false);
-          setReferralMessage('Parent A/C must have verified email.');
-          return;
-        }
-        if (requiresMobile && !sponsor.mobile_verified) {
-          setReferralValid(false);
-          setReferralMessage('Parent A/C must have verified mobile.');
-          return;
-        }
+      if (!sponsor.email_verified && !sponsor.mobile_verified) {
+        setReferralValid(false);
+        setReferralMessage('Parent A/C must be verified (email or mobile).');
+        return;
       }
 
       setReferralValid(true);
@@ -445,7 +428,7 @@ const CustomerRegister: React.FC = () => {
     } finally {
       setValidatingReferral(false);
     }
-  }, [settings.eitherVerificationRequired, settings.emailVerificationRequired, settings.mobileVerificationRequired]);
+  }, []);
 
   // Username validation function
   const validateUsername = useCallback(async (username: string) => {
@@ -909,24 +892,9 @@ const CustomerRegister: React.FC = () => {
           return;
         }
 
-        const requiresEither = settings.eitherVerificationRequired;
-        const requiresEmail = settings.emailVerificationRequired && !requiresEither;
-        const requiresMobile = settings.mobileVerificationRequired && !requiresEither;
-
-        if (requiresEither) {
-          if (!sponsor.email_verified && !sponsor.mobile_verified) {
-            setError('Parent A/C must be verified (email or mobile).');
-            return;
-          }
-        } else {
-          if (requiresEmail && !sponsor.email_verified) {
-            setError('Parent A/C must have verified email.');
-            return;
-          }
-          if (requiresMobile && !sponsor.mobile_verified) {
-            setError('Parent A/C must have verified mobile.');
-            return;
-          }
+        if (!sponsor.email_verified && !sponsor.mobile_verified) {
+          setError('Parent A/C must be verified (email or mobile).');
+          return;
         }
       } catch (referralError) {
         setError('Unable to validate referral code at this time. Please try again.' + referralError);

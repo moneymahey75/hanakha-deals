@@ -851,21 +851,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const emailRequired = settings.email_verification_required || false;
       const mobileRequired = settings.mobile_verification_required || false;
       const eitherRequired = settings.either_verification_required || false;
-
-      let needsVerification = false;
-
-      if (eitherRequired) {
-        // For either verification, user needs at least one verified
-        needsVerification = !userData.tu_email_verified && !userData.tu_mobile_verified;
-      } else {
-        // Check individual requirements
-        if (emailRequired && !userData.tu_email_verified) {
-          needsVerification = true;
-        }
-        if (mobileRequired && !userData.tu_mobile_verified) {
-          needsVerification = true;
-        }
-      }
+      const needsVerification = !userData.tu_email_verified && !userData.tu_mobile_verified;
 
       console.log('📋 Verification check result:', {
         emailVerified: userData.tu_email_verified,

@@ -22,7 +22,9 @@ interface RegistrationPlan {
 }
 
 const PAYMENT_POLL_INTERVAL = 5000;
-const MANUAL_RECOVERY_ENABLE_DELAY_MS = 10000;
+const MANUAL_RECOVERY_ENABLE_DELAY_MS = 30000;
+const AUTO_RECOVERY_INTERVAL_MS = 15000;
+const AUTO_RECOVERY_MAX_ATTEMPTS = 12;
 // 24 attempts × 5s = 120s total — gives more time on slow Android networks
 const PAYMENT_POLL_ATTEMPTS = 24;
 // Android MetaMask can take much longer to return from the wallet app; use 90s
@@ -123,6 +125,7 @@ const RegistrationPayment: React.FC = () => {
   // Prevents durable recovery from running repeatedly after Android reloads the component.
   const durableRecoveryAttemptedRef = useRef(false);
   const softWalletRefreshInFlightRef = useRef(false);
+  const autoRecoveryAttemptsRef = useRef(0);
   // Set to true the moment we navigate to the success page so the dashboard-redirect
   // useEffect does not override the navigation while the component is still mounted.
   const navigatingToSuccessRef = useRef(false);
@@ -232,22 +235,8 @@ const RegistrationPayment: React.FC = () => {
           return;
         }
 
-        const requiresEither = settings.eitherVerificationRequired;
-        const requiresEmail = settings.emailVerificationRequired && !requiresEither;
-        const requiresMobile = settings.mobileVerificationRequired && !requiresEither;
-
-        if (requiresEither && !sponsorStatus.email_verified && !sponsorStatus.mobile_verified) {
+        if (!sponsorStatus.email_verified && !sponsorStatus.mobile_verified) {
           setParentAccountError('Parent A/C must be verified to continue. Please contact support or choose a verified parent.');
-          return;
-        }
-
-        if (requiresEmail && !sponsorStatus.email_verified) {
-          setParentAccountError('Parent A/C must have verified email to continue. Please contact support or choose a verified parent.');
-          return;
-        }
-
-        if (requiresMobile && !sponsorStatus.mobile_verified) {
-          setParentAccountError('Parent A/C must have verified mobile to continue. Please contact support or choose a verified parent.');
           return;
         }
 
@@ -260,12 +249,7 @@ const RegistrationPayment: React.FC = () => {
     };
 
     validateParentAccount();
-  }, [
-    user?.id,
-    settings.eitherVerificationRequired,
-    settings.emailVerificationRequired,
-    settings.mobileVerificationRequired
-  ]);
+  }, [user?.id]);
 
   // On Android MetaMask the DApp browser may fully reload the page when switching back from
   // the wallet app. If that happens, the tx hash that sendUSDTTransfer returned is gone from
@@ -1224,6 +1208,43 @@ const RegistrationPayment: React.FC = () => {
   ]);
 
   useEffect(() => {
+    if (transaction.status !== 'pending') {
+      autoRecoveryAttemptsRef.current = 0;
+      return;
+    }
+
+    if (!manualRecoveryReady || manualRecoveryProcessing || navigatingToSuccessRef.current) return;
+    if (!loadRecoveryAttempt()) return;
+
+    let cancelled = false;
+
+    const runAutomaticRecovery = async () => {
+      if (cancelled || navigatingToSuccessRef.current) return;
+      if (manualRecoveryProcessing || autoRecoveryAttemptsRef.current >= AUTO_RECOVERY_MAX_ATTEMPTS) return;
+
+      autoRecoveryAttemptsRef.current += 1;
+      setStatusMessage('Still checking automatically. This can take longer on Android MetaMask mainnet...');
+      await handleManualPaymentRecovery();
+    };
+
+    void runAutomaticRecovery();
+    const intervalId = window.setInterval(() => {
+      void runAutomaticRecovery();
+    }, AUTO_RECOVERY_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    handleManualPaymentRecovery,
+    loadRecoveryAttempt,
+    manualRecoveryProcessing,
+    manualRecoveryReady,
+    transaction.status
+  ]);
+
+  useEffect(() => {
     if (!user?.id || !plan || loading || settingsLoading) return;
     if (user.hasActiveSubscription || user.registrationPaid) return;
     if (durableRecoveryAttemptedRef.current) return;
@@ -1802,13 +1823,13 @@ const RegistrationPayment: React.FC = () => {
                         {manualRecoveryProcessing
                           ? 'Checking Payment...'
                           : manualRecoveryReady
-                            ? 'Verify Payment'
+                            ? 'Verify Payment Now'
                             : 'Checking Automatically...'}
                       </span>
                     </button>
                     <p className="mt-2 text-xs text-gray-600">
                       {manualRecoveryReady
-                        ? 'Use this if MetaMask confirmed the payment but Android is still waiting here.'
+                        ? 'We are still checking automatically. You can tap this to check immediately.'
                         : 'Please wait while we check the payment automatically.'}
                     </p>
                   </div>

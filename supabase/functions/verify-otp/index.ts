@@ -93,6 +93,7 @@ serve(async (req) => {
       const updateData: any = {}
       if (otp_type === 'email') {
         updateData.tu_email_verified = true
+        updateData.tu_is_verified = true
       } else if (otp_type === 'mobile') {
         updateData.tu_mobile_verified = true
         updateData.tu_is_verified = true
@@ -224,9 +225,9 @@ serve(async (req) => {
     const updateData: any = {}
     if (otp_type === 'email') {
       updateData.tu_email_verified = true
+      updateData.tu_is_verified = true
     } else if (otp_type === 'mobile') {
       updateData.tu_mobile_verified = true
-      // Also mark user as fully verified when mobile is verified
       updateData.tu_is_verified = true
     }
 

@@ -1,11 +1,5 @@
 /*
-  Make "active member" follow current verification settings.
-
-  Supported modes:
-  - Email only: email_verified required
-  - Mobile only: mobile_verified required
-  - Either: email_verified OR mobile_verified required
-  - Both: email_verified AND mobile_verified required
+  Make "active member" require at least one verified contact method.
 */
 
 CREATE OR REPLACE FUNCTION public.meets_current_verification_requirements(
@@ -18,35 +12,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-WITH settings AS (
-  SELECT
-    COALESCE((
-      SELECT tss_setting_value::boolean
-      FROM tbl_system_settings
-      WHERE tss_setting_key = 'email_verification_required'
-      LIMIT 1
-    ), true) AS email_required,
-    COALESCE((
-      SELECT tss_setting_value::boolean
-      FROM tbl_system_settings
-      WHERE tss_setting_key = 'mobile_verification_required'
-      LIMIT 1
-    ), true) AS mobile_required,
-    COALESCE((
-      SELECT tss_setting_value::boolean
-      FROM tbl_system_settings
-      WHERE tss_setting_key = 'either_verification_required'
-      LIMIT 1
-    ), false) AS either_required
-)
-SELECT
-  CASE
-    WHEN either_required THEN COALESCE(p_email_verified, false) OR COALESCE(p_mobile_verified, false)
-    WHEN email_required AND NOT COALESCE(p_email_verified, false) THEN false
-    WHEN mobile_required AND NOT COALESCE(p_mobile_verified, false) THEN false
-    ELSE true
-  END
-FROM settings
+SELECT COALESCE(p_email_verified, false) OR COALESCE(p_mobile_verified, false)
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_user_active_member(p_user_id uuid)
@@ -68,6 +34,166 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.meets_current_verification_requirements(boolean, boolean) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.is_user_active_member(uuid) TO authenticated, service_role;
+
+UPDATE tbl_users
+SET tu_is_verified = true
+WHERE COALESCE(tu_is_verified, false) = false
+  AND (COALESCE(tu_email_verified, false) = true OR COALESCE(tu_mobile_verified, false) = true);
+
+DROP FUNCTION IF EXISTS public.admin_get_customers(TEXT, TEXT, TEXT, INT, INT);
+DROP FUNCTION IF EXISTS public.admin_get_customers(TEXT, TEXT, TEXT, INT, INT, TEXT);
+
+CREATE OR REPLACE FUNCTION public.admin_get_customers(
+  p_search_term TEXT DEFAULT NULL,
+  p_status_filter TEXT DEFAULT 'all',
+  p_verification_filter TEXT DEFAULT 'all',
+  p_offset INT DEFAULT 0,
+  p_limit INT DEFAULT 10,
+  p_dummy_filter TEXT DEFAULT 'all'
+)
+RETURNS TABLE (
+  tu_id UUID,
+  tu_email TEXT,
+  tu_user_type TEXT,
+  tu_is_verified BOOLEAN,
+  tu_email_verified BOOLEAN,
+  tu_mobile_verified BOOLEAN,
+  tu_registration_paid BOOLEAN,
+  tu_is_active BOOLEAN,
+  tu_is_dummy BOOLEAN,
+  tu_created_at TIMESTAMPTZ,
+  tu_updated_at TIMESTAMPTZ,
+  profile_data JSONB,
+  total_count BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_total_count BIGINT;
+  v_status_filter TEXT := LOWER(COALESCE(p_status_filter, 'all'));
+  v_verification_filter TEXT := LOWER(COALESCE(p_verification_filter, 'all'));
+  v_dummy_filter TEXT := LOWER(COALESCE(p_dummy_filter, 'all'));
+BEGIN
+  SELECT COUNT(*)
+  INTO v_total_count
+  FROM tbl_users u
+  LEFT JOIN tbl_user_profiles p ON u.tu_id = p.tup_user_id
+  WHERE u.tu_user_type = 'customer'
+    AND (
+      p_search_term IS NULL OR
+      u.tu_email ILIKE '%' || p_search_term || '%' OR
+      p.tup_first_name ILIKE '%' || p_search_term || '%' OR
+      p.tup_last_name ILIKE '%' || p_search_term || '%' OR
+      p.tup_username ILIKE '%' || p_search_term || '%' OR
+      p.tup_sponsorship_number ILIKE '%' || p_search_term || '%'
+    )
+    AND (
+      v_status_filter = 'all' OR
+      (v_status_filter IN ('disabled', 'inactive') AND COALESCE(u.tu_is_active, false) = false) OR
+      (v_status_filter = 'active' AND public.is_user_active_member(u.tu_id)) OR
+      (
+        v_status_filter = 'pending'
+        AND COALESCE(u.tu_is_active, false) = true
+        AND NOT public.is_user_active_member(u.tu_id)
+      )
+    )
+    AND (
+      v_verification_filter = 'all' OR
+      (
+        v_verification_filter = 'verified'
+        AND public.meets_current_verification_requirements(u.tu_email_verified, u.tu_mobile_verified)
+      ) OR
+      (
+        v_verification_filter = 'unverified'
+        AND NOT public.meets_current_verification_requirements(u.tu_email_verified, u.tu_mobile_verified)
+      )
+    )
+    AND (
+      v_dummy_filter = 'all' OR
+      (v_dummy_filter = 'real' AND COALESCE(u.tu_is_dummy, false) = false) OR
+      (v_dummy_filter = 'dummy' AND COALESCE(u.tu_is_dummy, false) = true)
+    );
+
+  RETURN QUERY
+  SELECT
+    u.tu_id,
+    u.tu_email,
+    u.tu_user_type,
+    public.meets_current_verification_requirements(u.tu_email_verified, u.tu_mobile_verified) AS tu_is_verified,
+    u.tu_email_verified,
+    u.tu_mobile_verified,
+    COALESCE(u.tu_registration_paid, false),
+    COALESCE(u.tu_is_active, false),
+    COALESCE(u.tu_is_dummy, false),
+    u.tu_created_at,
+    u.tu_updated_at,
+    jsonb_build_object(
+      'tup_id', p.tup_id,
+      'tup_first_name', p.tup_first_name,
+      'tup_last_name', p.tup_last_name,
+      'tup_username', p.tup_username,
+      'tup_mobile', p.tup_mobile,
+      'tup_gender', p.tup_gender,
+      'tup_sponsorship_number', p.tup_sponsorship_number,
+      'tup_parent_account', p.tup_parent_account,
+      'tup_parent_name', NULLIF(TRIM(CONCAT_WS(' ', parentp.tup_first_name, parentp.tup_last_name)), ''),
+      'tup_parent_username', parentp.tup_username,
+      'tup_parent_sponsorship_number', parentp.tup_sponsorship_number,
+      'tup_created_at', p.tup_created_at,
+      'tup_updated_at', p.tup_updated_at
+    ) AS profile_data,
+    v_total_count
+  FROM tbl_users u
+  LEFT JOIN tbl_user_profiles p ON u.tu_id = p.tup_user_id
+  LEFT JOIN tbl_user_profiles parentp
+    ON (
+      LOWER(parentp.tup_sponsorship_number) = LOWER(p.tup_parent_account)
+      OR LOWER(parentp.tup_sponsorship_number) = LOWER(REGEXP_REPLACE(p.tup_parent_account, '^sp', '', 'i'))
+    )
+  WHERE u.tu_user_type = 'customer'
+    AND (
+      p_search_term IS NULL OR
+      u.tu_email ILIKE '%' || p_search_term || '%' OR
+      p.tup_first_name ILIKE '%' || p_search_term || '%' OR
+      p.tup_last_name ILIKE '%' || p_search_term || '%' OR
+      p.tup_username ILIKE '%' || p_search_term || '%' OR
+      p.tup_sponsorship_number ILIKE '%' || p_search_term || '%'
+    )
+    AND (
+      v_status_filter = 'all' OR
+      (v_status_filter IN ('disabled', 'inactive') AND COALESCE(u.tu_is_active, false) = false) OR
+      (v_status_filter = 'active' AND public.is_user_active_member(u.tu_id)) OR
+      (
+        v_status_filter = 'pending'
+        AND COALESCE(u.tu_is_active, false) = true
+        AND NOT public.is_user_active_member(u.tu_id)
+      )
+    )
+    AND (
+      v_verification_filter = 'all' OR
+      (
+        v_verification_filter = 'verified'
+        AND public.meets_current_verification_requirements(u.tu_email_verified, u.tu_mobile_verified)
+      ) OR
+      (
+        v_verification_filter = 'unverified'
+        AND NOT public.meets_current_verification_requirements(u.tu_email_verified, u.tu_mobile_verified)
+      )
+    )
+    AND (
+      v_dummy_filter = 'all' OR
+      (v_dummy_filter = 'real' AND COALESCE(u.tu_is_dummy, false) = false) OR
+      (v_dummy_filter = 'dummy' AND COALESCE(u.tu_is_dummy, false) = true)
+    )
+  ORDER BY u.tu_created_at DESC
+  OFFSET p_offset
+  LIMIT p_limit;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_get_customers(TEXT, TEXT, TEXT, INT, INT, TEXT) TO authenticated, anon, service_role;
 
 CREATE OR REPLACE FUNCTION upsert_mlm_level_counts(
   p_sponsorship_number text
@@ -381,3 +507,290 @@ BEGIN
   );
 END;
 $$;
+
+-- Referral network RPCs must also follow current verification settings.
+DROP FUNCTION IF EXISTS public.get_referral_network_v1(uuid, int);
+DROP FUNCTION IF EXISTS public.get_referral_network_page_v1(uuid, int, int, text, int, int);
+
+CREATE OR REPLACE FUNCTION public.get_referral_network_v1(
+  p_user_id uuid,
+  p_max_levels int DEFAULT 10
+)
+RETURNS TABLE (
+  user_id uuid,
+  parent_user_id uuid,
+  level int,
+  sponsorship_number text,
+  parent_account text,
+  is_active boolean,
+  is_registration_paid boolean,
+  email_verified boolean,
+  mobile_verified boolean,
+  is_active_member boolean,
+  email text,
+  first_name text,
+  last_name text,
+  username text
+)
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE sql
+AS $sql$
+WITH RECURSIVE root AS (
+  SELECT
+    up.tup_user_id AS root_user_id,
+    CASE
+      WHEN lower(btrim(up.tup_sponsorship_number)) LIKE 'sp%' THEN substr(lower(btrim(up.tup_sponsorship_number)), 3)
+      ELSE lower(btrim(up.tup_sponsorship_number))
+    END AS root_sponsorship_norm
+  FROM tbl_user_profiles up
+  WHERE up.tup_user_id = p_user_id
+  LIMIT 1
+),
+network AS (
+  SELECT
+    child.tup_user_id AS user_id,
+    root.root_user_id AS parent_user_id,
+    1 AS level,
+    btrim(child.tup_sponsorship_number) AS sponsorship_number,
+    child.tup_parent_account AS parent_account
+  FROM root
+  JOIN tbl_user_profiles child
+    ON (
+      CASE
+        WHEN lower(btrim(child.tup_parent_account)) LIKE 'sp%' THEN substr(lower(btrim(child.tup_parent_account)), 3)
+        ELSE lower(btrim(child.tup_parent_account))
+      END
+    ) = root.root_sponsorship_norm
+  WHERE child.tup_user_id IS NOT NULL
+    AND child.tup_sponsorship_number IS NOT NULL
+    AND root.root_sponsorship_norm IS NOT NULL
+    AND root.root_sponsorship_norm <> ''
+    AND p_max_levels >= 1
+
+  UNION ALL
+
+  SELECT
+    child.tup_user_id,
+    n.user_id AS parent_user_id,
+    n.level + 1,
+    btrim(child.tup_sponsorship_number),
+    child.tup_parent_account
+  FROM network n
+  JOIN tbl_user_profiles child
+    ON (
+      CASE
+        WHEN lower(btrim(child.tup_parent_account)) LIKE 'sp%' THEN substr(lower(btrim(child.tup_parent_account)), 3)
+        ELSE lower(btrim(child.tup_parent_account))
+      END
+    ) = (
+      CASE
+        WHEN lower(btrim(n.sponsorship_number)) LIKE 'sp%' THEN substr(lower(btrim(n.sponsorship_number)), 3)
+        ELSE lower(btrim(n.sponsorship_number))
+      END
+    )
+  WHERE n.level < LEAST(50, GREATEST(1, p_max_levels))
+    AND child.tup_user_id IS NOT NULL
+    AND child.tup_sponsorship_number IS NOT NULL
+)
+SELECT
+  n.user_id,
+  n.parent_user_id,
+  n.level,
+  n.sponsorship_number,
+  n.parent_account,
+  COALESCE(u.tu_is_active, false) AS is_active,
+  COALESCE(u.tu_registration_paid, false) AS is_registration_paid,
+  COALESCE(u.tu_email_verified, false) AS email_verified,
+  COALESCE(u.tu_mobile_verified, false) AS mobile_verified,
+  public.is_user_active_member(n.user_id) AS is_active_member,
+  u.tu_email AS email,
+  p.tup_first_name AS first_name,
+  p.tup_last_name AS last_name,
+  p.tup_username AS username
+FROM network n
+LEFT JOIN tbl_users u ON u.tu_id = n.user_id
+LEFT JOIN tbl_user_profiles p ON p.tup_user_id = n.user_id
+WHERE n.user_id <> p_user_id
+ORDER BY n.level, n.sponsorship_number
+$sql$;
+
+GRANT EXECUTE ON FUNCTION public.get_referral_network_v1(uuid, int) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.get_referral_network_page_v1(
+  p_user_id uuid,
+  p_max_levels int DEFAULT 10,
+  p_level int DEFAULT NULL,
+  p_search_term text DEFAULT NULL,
+  p_offset int DEFAULT 0,
+  p_limit int DEFAULT 50
+)
+RETURNS TABLE (
+  user_id uuid,
+  parent_user_id uuid,
+  level int,
+  sponsorship_number text,
+  parent_account text,
+  parent_sponsorship_number text,
+  is_active boolean,
+  is_registration_paid boolean,
+  email_verified boolean,
+  mobile_verified boolean,
+  is_active_member boolean,
+  email text,
+  first_name text,
+  last_name text,
+  username text,
+  total_count int,
+  direct_referrals int,
+  max_depth int
+)
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE sql
+AS $sql$
+WITH RECURSIVE root AS (
+  SELECT
+    up.tup_user_id AS root_user_id,
+    btrim(up.tup_sponsorship_number) AS root_sponsorship,
+    CASE
+      WHEN lower(btrim(up.tup_sponsorship_number)) LIKE 'sp%' THEN substr(lower(btrim(up.tup_sponsorship_number)), 3)
+      ELSE lower(btrim(up.tup_sponsorship_number))
+    END AS root_sponsorship_norm
+  FROM tbl_user_profiles up
+  WHERE up.tup_user_id = p_user_id
+  LIMIT 1
+),
+params AS (
+  SELECT
+    LEAST(50, GREATEST(1, COALESCE(p_max_levels, 10)))::int AS max_levels,
+    CASE
+      WHEN p_level IS NULL THEN NULL::int
+      WHEN p_level < 1 THEN NULL::int
+      ELSE LEAST(50, p_level)::int
+    END AS level_filter,
+    NULLIF(btrim(COALESCE(p_search_term, '')), '') AS search_term,
+    GREATEST(0, COALESCE(p_offset, 0))::int AS offset_rows,
+    LEAST(200, GREATEST(1, COALESCE(p_limit, 50)))::int AS limit_rows
+),
+network AS (
+  SELECT
+    child.tup_user_id AS user_id,
+    root.root_user_id AS parent_user_id,
+    1 AS level,
+    btrim(child.tup_sponsorship_number) AS sponsorship_number,
+    child.tup_parent_account AS parent_account,
+    root.root_sponsorship AS parent_sponsorship_number
+  FROM root
+  JOIN params ON true
+  JOIN tbl_user_profiles child
+    ON (
+      CASE
+        WHEN lower(btrim(child.tup_parent_account)) LIKE 'sp%' THEN substr(lower(btrim(child.tup_parent_account)), 3)
+        ELSE lower(btrim(child.tup_parent_account))
+      END
+    ) = root.root_sponsorship_norm
+  WHERE child.tup_user_id IS NOT NULL
+    AND child.tup_sponsorship_number IS NOT NULL
+    AND root.root_sponsorship_norm IS NOT NULL
+    AND root.root_sponsorship_norm <> ''
+    AND params.max_levels >= 1
+
+  UNION ALL
+
+  SELECT
+    child.tup_user_id,
+    n.user_id AS parent_user_id,
+    n.level + 1,
+    btrim(child.tup_sponsorship_number),
+    child.tup_parent_account,
+    n.sponsorship_number AS parent_sponsorship_number
+  FROM network n
+  JOIN root ON true
+  JOIN params ON true
+  JOIN tbl_user_profiles child
+    ON (
+      CASE
+        WHEN lower(btrim(child.tup_parent_account)) LIKE 'sp%' THEN substr(lower(btrim(child.tup_parent_account)), 3)
+        ELSE lower(btrim(child.tup_parent_account))
+      END
+    ) = (
+      CASE
+        WHEN lower(btrim(n.sponsorship_number)) LIKE 'sp%' THEN substr(lower(btrim(n.sponsorship_number)), 3)
+        ELSE lower(btrim(n.sponsorship_number))
+      END
+    )
+  WHERE n.level < LEAST(params.max_levels, COALESCE(params.level_filter, params.max_levels))
+    AND child.tup_user_id IS NOT NULL
+    AND child.tup_sponsorship_number IS NOT NULL
+),
+network_enriched AS (
+  SELECT
+    n.user_id,
+    n.parent_user_id,
+    n.level,
+    n.sponsorship_number,
+    n.parent_account,
+    n.parent_sponsorship_number,
+    COALESCE(u.tu_is_active, false) AS is_active,
+    COALESCE(u.tu_registration_paid, false) AS is_registration_paid,
+    COALESCE(u.tu_email_verified, false) AS email_verified,
+    COALESCE(u.tu_mobile_verified, false) AS mobile_verified,
+    public.is_user_active_member(n.user_id) AS is_active_member,
+    u.tu_email AS email,
+    p.tup_first_name AS first_name,
+    p.tup_last_name AS last_name,
+    p.tup_username AS username
+  FROM network n
+  LEFT JOIN tbl_users u ON u.tu_id = n.user_id
+  LEFT JOIN tbl_user_profiles p ON p.tup_user_id = n.user_id
+  WHERE n.user_id <> p_user_id
+),
+network_filtered AS (
+  SELECT ne.*
+  FROM network_enriched ne
+  JOIN params ON true
+  WHERE (params.level_filter IS NULL OR ne.level = params.level_filter)
+    AND (
+      params.search_term IS NULL
+      OR lower(COALESCE(ne.sponsorship_number, '')) LIKE '%' || lower(params.search_term) || '%'
+      OR lower(COALESCE(ne.username, '')) LIKE '%' || lower(params.search_term) || '%'
+      OR lower(COALESCE(ne.email, '')) LIKE '%' || lower(params.search_term) || '%'
+      OR lower(COALESCE(ne.first_name, '')) LIKE '%' || lower(params.search_term) || '%'
+      OR lower(COALESCE(ne.last_name, '')) LIKE '%' || lower(params.search_term) || '%'
+    )
+),
+summary AS (
+  SELECT
+    COALESCE(COUNT(*), 0)::int AS total_count,
+    COALESCE(SUM(CASE WHEN level = 1 THEN 1 ELSE 0 END), 0)::int AS direct_referrals,
+    COALESCE(MAX(level), 0)::int AS max_depth
+  FROM network_enriched
+)
+SELECT
+  nf.user_id,
+  nf.parent_user_id,
+  nf.level,
+  nf.sponsorship_number,
+  nf.parent_account,
+  nf.parent_sponsorship_number,
+  nf.is_active,
+  nf.is_registration_paid,
+  nf.email_verified,
+  nf.mobile_verified,
+  nf.is_active_member,
+  nf.email,
+  nf.first_name,
+  nf.last_name,
+  nf.username,
+  summary.total_count,
+  summary.direct_referrals,
+  summary.max_depth
+FROM network_filtered nf
+CROSS JOIN summary
+JOIN params ON true
+ORDER BY nf.level, nf.sponsorship_number
+LIMIT (SELECT limit_rows FROM params) OFFSET (SELECT offset_rows FROM params)
+$sql$;
+
+GRANT EXECUTE ON FUNCTION public.get_referral_network_page_v1(uuid, int, int, text, int, int) TO authenticated, service_role;

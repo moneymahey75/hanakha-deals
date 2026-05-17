@@ -35,50 +35,9 @@ const applySearchTerm = (value: string, searchTerm: string | null) => {
   return haystack.includes(needle);
 };
 
-const parseSetting = (raw: any) => {
-  if (raw === null || raw === undefined) return raw;
-  if (typeof raw !== 'string') return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-};
-
-const getVerificationSettings = async (supabase: any) => {
-  const { data } = await supabase
-    .from('tbl_system_settings')
-    .select('tss_setting_key, tss_setting_value')
-    .in('tss_setting_key', [
-      'email_verification_required',
-      'mobile_verification_required',
-      'either_verification_required',
-    ]);
-
-  const map = (data || []).reduce((acc: Record<string, boolean>, setting: any) => {
-    acc[setting.tss_setting_key] = Boolean(parseSetting(setting.tss_setting_value));
-    return acc;
-  }, {});
-
-  return {
-    emailRequired: map.email_verification_required ?? true,
-    mobileRequired: map.mobile_verification_required ?? true,
-    eitherRequired: map.either_verification_required ?? false,
-  };
-};
-
 const meetsVerificationRules = (
-  user: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null },
-  settings: { emailRequired: boolean; mobileRequired: boolean; eitherRequired: boolean }
-) => {
-  const emailVerified = user.tu_email_verified === true;
-  const mobileVerified = user.tu_mobile_verified === true;
-
-  if (settings.eitherRequired) return emailVerified || mobileVerified;
-  if (settings.emailRequired && !emailVerified) return false;
-  if (settings.mobileRequired && !mobileVerified) return false;
-  return true;
-};
+  user: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
+) => user.tu_email_verified === true || user.tu_mobile_verified === true;
 
 const resolveRpcUserId = (row: any): string | null => {
   return (
@@ -155,7 +114,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const verificationSettings = await getVerificationSettings(supabase);
     const adminSessionToken = req.headers.get('X-Admin-Session');
     if (!adminSessionToken) {
       return new Response(JSON.stringify({ success: false, error: 'Missing admin session token' }), {
@@ -304,8 +262,12 @@ Deno.serve(async (req: Request) => {
           .in('tu_id', ids)
           .eq('tu_user_type', 'customer');
 
-        if (verificationFilter === 'verified') usersQuery = usersQuery.eq('tu_is_verified', true);
-        if (verificationFilter === 'unverified') usersQuery = usersQuery.eq('tu_is_verified', false);
+        if (verificationFilter === 'verified') {
+          usersQuery = usersQuery.or('tu_email_verified.eq.true,tu_mobile_verified.eq.true');
+        }
+        if (verificationFilter === 'unverified') {
+          usersQuery = usersQuery.eq('tu_email_verified', false).eq('tu_mobile_verified', false);
+        }
         if (dummyFilter === 'real') usersQuery = usersQuery.eq('tu_is_dummy', false);
         if (dummyFilter === 'dummy') usersQuery = usersQuery.eq('tu_is_dummy', true);
 
@@ -372,7 +334,7 @@ Deno.serve(async (req: Request) => {
           if (!applySearchTerm(searchBlob, searchTerm)) return null;
 
           const isEnabled = u.tu_is_active === true;
-          const verificationComplete = meetsVerificationRules(u, verificationSettings);
+          const verificationComplete = meetsVerificationRules(u);
           const isMemberActive = isEnabled && (u.tu_registration_paid === true) && verificationComplete;
           const isPending = isEnabled && !isMemberActive;
           const isDisabled = !isEnabled;
@@ -477,11 +439,11 @@ Deno.serve(async (req: Request) => {
       const merged = rows.map((row: any) => ({
         ...row,
         tu_registration_paid: row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false),
-        verification_complete: meetsVerificationRules(row, verificationSettings),
+        verification_complete: meetsVerificationRules(row),
         is_active_member:
           row?.tu_is_active === true &&
           (row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false)) === true &&
-          meetsVerificationRules(row, verificationSettings),
+          meetsVerificationRules(row),
       }));
 
       return new Response(JSON.stringify({ success: true, data: merged }), {
@@ -491,7 +453,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const normalizedRows = rows.map((row: any) => {
-      const verificationComplete = meetsVerificationRules(row, verificationSettings);
+      const verificationComplete = meetsVerificationRules(row);
       return {
         ...row,
         verification_complete: verificationComplete,
