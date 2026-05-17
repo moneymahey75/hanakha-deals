@@ -16,6 +16,13 @@ build/
 .env.test.local
 .env.production.local
 
+# Local Netlify configs
+netlify.toml
+netlify.*.toml
+!netlify.example.toml
+!netlify.staging.example.toml
+!netlify.live.example.toml
+
 # IDE files
 .vscode/
 .idea/
