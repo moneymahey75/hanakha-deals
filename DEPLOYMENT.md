@@ -23,12 +23,21 @@ git push -u origin main
 
 ### 2. Environment Variables Setup
 
-Create `.env` file with your Supabase credentials:
+For local work, keep separate ignored env files for each target:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+.env.staging.local
+VITE_SUPABASE_URL=your_staging_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_staging_supabase_anon_key
+
+.env.live.local
+VITE_SUPABASE_URL=your_live_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_live_supabase_anon_key
 ```
+
+Use `npm run dev:staging` / `npm run build:staging` for staging and `npm run dev:live` / `npm run build:live` for live.
+
+Do not commit real `.env`, `.env.staging.local`, or `.env.live.local` files.
 
 ### 3. Netlify Deployment
 
@@ -37,12 +46,13 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 2. Click "New site from Git"
 3. Connect your GitHub repository
 4. Set build settings:
-   - Build command: `npm run build`
+   - Staging build command: `npm run build:staging`
+   - Live build command: `npm run build:live`
    - Publish directory: `dist`
-5. Add environment variables in Netlify dashboard
+5. Add the matching environment variables in each hosting dashboard/project
 
 #### Option B: Manual Deployment
-1. Run `npm run build` locally
+1. Run `npm run build:staging` or `npm run build:live` locally
 2. Drag and drop the `dist` folder to Netlify
 
 ### 4. Supabase Configuration
