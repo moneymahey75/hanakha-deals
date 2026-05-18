@@ -602,7 +602,7 @@ Deno.serve(async (req: Request) => {
 
     // Parent A/C income + MLM level rewards
     const paymentAmount = expectedAmount;
-    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0 && !isDefaultParent
+    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0
       ? Math.min(normalizedParentIncome, expectedAmount)
       : 0;
     let adminNetAmount = expectedAmount;
@@ -804,7 +804,7 @@ Deno.serve(async (req: Request) => {
           return amount;
         };
 
-        if (parentIncomeApplied > 0 && sponsorUserId && !isDefaultParent) {
+        if (parentIncomeApplied > 0 && sponsorUserId) {
           const sponsorUpgraded = await hasActiveUpgrade(sponsorUserId);
           const refId = String(paymentId || txHash || sponsorUserId);
 

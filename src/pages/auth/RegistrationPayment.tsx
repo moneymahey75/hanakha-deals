@@ -117,6 +117,7 @@ const RegistrationPayment: React.FC = () => {
   const [reverifyProcessing, setReverifyProcessing] = useState(false);
   const [manualRecoveryProcessing, setManualRecoveryProcessing] = useState(false);
   const [manualRecoveryReady, setManualRecoveryReady] = useState(false);
+  const [manualRecoveryAvailable, setManualRecoveryAvailable] = useState(false);
   const recoveryCheckInFlightRef = useRef(false);
   // Captures the tx hash from transferPromise even if it resolves after the timeout race
   const lateHashRef = useRef<string | null>(null);
@@ -988,7 +989,11 @@ const RegistrationPayment: React.FC = () => {
       const attempt = JSON.parse(raw) as PaymentRecoveryAttempt;
       const savedAt = new Date(attempt.startedAt || 0).getTime();
       const isRecent = Number.isFinite(savedAt) && savedAt > Date.now() - 45 * 60 * 1000;
-      return isRecent ? attempt : null;
+      if (isRecent) return attempt;
+
+      sessionStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
+      localStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
+      return null;
     } catch {
       return null;
     }
@@ -999,12 +1004,14 @@ const RegistrationPayment: React.FC = () => {
     const payload = JSON.stringify(attempt);
     sessionStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, payload);
     localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, payload);
+    setManualRecoveryAvailable(true);
   }, []);
 
   const clearRecoveryAttempt = useCallback(() => {
     if (typeof window === 'undefined') return;
     sessionStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
     localStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY);
+    setManualRecoveryAvailable(false);
   }, []);
 
   const buildRecoveryAttempt = useCallback(async (): Promise<PaymentRecoveryAttempt | null> => {
@@ -1262,15 +1269,18 @@ const RegistrationPayment: React.FC = () => {
       if (cancelled || recoveryCheckInFlightRef.current || navigatingToSuccessRef.current) return;
       attempts += 1;
       recoveryCheckInFlightRef.current = true;
+      const hasSubmittedTxHash = Boolean(loadPendingTxHash());
 
       try {
-        setTransaction(prev => ({
-          ...prev,
-          isProcessing: true,
-          status: 'pending',
-          error: null
-        }));
-        setStatusMessage('Checking blockchain for your submitted payment...');
+        if (hasSubmittedTxHash) {
+          setTransaction(prev => ({
+            ...prev,
+            isProcessing: true,
+            status: 'pending',
+            error: null
+          }));
+          setStatusMessage('Checking blockchain for your submitted payment...');
+        }
         let recovered = await recoverAndVerifyPayment(attempt, 'Android page reload');
         if (!recovered && attempts >= 2) {
           recovered = await refreshWalletAndRecover(attempt, 'automatic wallet refresh');
@@ -1284,6 +1294,23 @@ const RegistrationPayment: React.FC = () => {
         console.warn('Durable payment recovery failed:', error);
       } finally {
         recoveryCheckInFlightRef.current = false;
+      }
+
+      if (!hasSubmittedTxHash && attempts >= 2) {
+        clearRecoveryAttempt();
+        if (intervalId) {
+          window.clearInterval(intervalId);
+          intervalId = null;
+        }
+      }
+
+      if (!hasSubmittedTxHash) {
+        setTransaction(prev => (
+          prev.status === 'pending' && !prev.hash
+            ? { ...prev, isProcessing: false, status: 'idle' }
+            : { ...prev, isProcessing: false }
+        ));
+        setStatusMessage(null);
       }
 
       if (attempts >= maxAttempts && intervalId) {
@@ -1307,6 +1334,7 @@ const RegistrationPayment: React.FC = () => {
       if (intervalId) window.clearInterval(intervalId);
     };
   }, [
+    clearRecoveryAttempt,
     loadRecoveryAttempt,
     loading,
     plan,
@@ -1702,16 +1730,19 @@ const RegistrationPayment: React.FC = () => {
   useEffect(() => {
     if (transaction.status !== 'pending') {
       setManualRecoveryReady(false);
+      setManualRecoveryAvailable(false);
       return;
     }
 
     setManualRecoveryReady(false);
+    setManualRecoveryAvailable(Boolean(loadRecoveryAttempt()));
     const timeoutId = window.setTimeout(() => {
       setManualRecoveryReady(true);
+      setManualRecoveryAvailable(Boolean(loadRecoveryAttempt()));
     }, MANUAL_RECOVERY_ENABLE_DELAY_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [transaction.hash, transaction.status]);
+  }, [loadRecoveryAttempt, transaction.hash, transaction.status]);
 
   const paymentStatusTitle = useMemo(() => {
     if (transaction.status === 'pending' && transaction.hash) return 'Payment sent. Activating your account...';
@@ -1815,22 +1846,22 @@ const RegistrationPayment: React.FC = () => {
                   <div className="mt-4">
                     <button
                       onClick={() => void handleManualPaymentRecovery()}
-                      disabled={manualRecoveryProcessing || !manualRecoveryReady}
+                      disabled={manualRecoveryProcessing || !manualRecoveryReady || !manualRecoveryAvailable}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                     >
                       {manualRecoveryProcessing && <Loader className="h-4 w-4 animate-spin" />}
                       <span>
                         {manualRecoveryProcessing
                           ? 'Checking Payment...'
-                          : manualRecoveryReady
+                          : manualRecoveryReady && manualRecoveryAvailable
                             ? 'Verify Payment Now'
-                            : 'Checking Automatically...'}
+                            : 'Waiting for Wallet...'}
                       </span>
                     </button>
                     <p className="mt-2 text-xs text-gray-600">
-                      {manualRecoveryReady
+                      {manualRecoveryReady && manualRecoveryAvailable
                         ? 'We are still checking automatically. You can tap this to check immediately.'
-                        : 'Please wait while we check the payment automatically.'}
+                        : 'Please approve the payment in your wallet. Recovery becomes available only after payment details are captured.'}
                     </p>
                   </div>
                 )}

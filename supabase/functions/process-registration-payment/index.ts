@@ -319,7 +319,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (sponsorUserId && normalizedParentIncome > 0 && !isDefaultParent) {
+    if (sponsorUserId && normalizedParentIncome > 0) {
       parentIncomeApplied = Math.min(normalizedParentIncome, paymentAmount);
       adminNetAmount = Math.max(0, paymentAmount - parentIncomeApplied);
     }
@@ -505,7 +505,7 @@ Deno.serve(async (req: Request) => {
           return amount;
         };
 
-        if (parentIncomeApplied > 0 && sponsorUserId && !isDefaultParent) {
+        if (parentIncomeApplied > 0 && sponsorUserId) {
           const sponsorUpgraded = await hasActiveUpgrade(sponsorUserId);
           if (sponsorUpgraded) {
             await insertWalletTxIfMissing(
