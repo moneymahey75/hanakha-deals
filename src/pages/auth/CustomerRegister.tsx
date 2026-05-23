@@ -420,6 +420,12 @@ const CustomerRegister: React.FC = () => {
         return;
       }
 
+      if (sponsor.launch_phase_active && !sponsor.is_launch_eligible) {
+        setReferralValid(false);
+        setReferralMessage('Parent customer has to upgrade his account.');
+        return;
+      }
+
       setReferralValid(true);
       setReferralMessage('Valid referral code ✓');
     } catch (error) {
@@ -898,6 +904,11 @@ const CustomerRegister: React.FC = () => {
           setError('Parent A/C must be verified (email or mobile).');
           return;
         }
+
+        if (sponsor.launch_phase_active && !sponsor.is_launch_eligible) {
+          setError('Parent customer has to upgrade his account.');
+          return;
+        }
       } catch (referralError) {
         setError('Unable to validate referral code at this time. Please try again.' + referralError);
         return;
@@ -915,6 +926,12 @@ const CustomerRegister: React.FC = () => {
       finalParentAccount = String(defaultParent || '').trim();
       if (!finalParentAccount) {
         setError('Default parent account is not configured. Please enter a referral code.');
+        return;
+      }
+
+      const defaultSponsor = await getSponsorStatusBySponsorshipNumber(finalParentAccount);
+      if (defaultSponsor?.launch_phase_active && !defaultSponsor.is_launch_eligible) {
+        setError('Parent customer has to upgrade his account.');
         return;
       }
     }

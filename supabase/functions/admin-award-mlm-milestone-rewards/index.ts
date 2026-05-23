@@ -88,6 +88,18 @@ const hasActiveUpgrade = async (
   });
 };
 
+const isLaunchPlanUser = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+) => {
+  const { data, error } = await supabase.rpc('is_user_on_launch_plan', { p_user_id: userId });
+  if (error) {
+    console.error('Failed to check user plan phase:', error);
+    return false;
+  }
+  return data === true;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -133,6 +145,23 @@ Deno.serve(async (req: Request) => {
     const level1Count = Number(countsRow?.level1_count || 0);
     const level2Count = Number(countsRow?.level2_count || 0);
     const level3Count = Number(countsRow?.level3_count || 0);
+
+    if (await isLaunchPlanUser(supabase, userId)) {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          userId,
+          sponsorshipNumber,
+          skipped: [{ reason: 'launch_plan_user' }],
+          inserted: [],
+          totalRewardAmount: 0,
+          message: 'Pre-Launch MLM milestone rewards are disabled for Launch plan users.'
+        }
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const { data: milestonesData, error: milestonesError } = await supabase
       .from('tbl_mlm_reward_milestones')

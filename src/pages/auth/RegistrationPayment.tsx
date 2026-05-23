@@ -241,6 +241,11 @@ const RegistrationPayment: React.FC = () => {
           return;
         }
 
+        if (sponsorStatus.launch_phase_active && !sponsorStatus.is_launch_eligible) {
+          setParentAccountError('Parent customer has to upgrade his account.');
+          return;
+        }
+
         console.log('✅ Parent A/C validation passed');
         setParentAccountError(null);
       } catch (error) {

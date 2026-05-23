@@ -19,11 +19,13 @@ interface SubscriptionPlan {
   tsp_parent_income?: number;
   tsp_is_active: boolean;
   tsp_type: 'registration' | 'upgrade';
+  tsp_plan_phase?: 'prelaunch' | 'launch';
   tsp_created_at: string;
   tsp_updated_at: string;
 }
 
 const SubscriptionManagement: React.FC = () => {
+  const [planPhase, setPlanPhase] = useState<'prelaunch' | 'launch'>('prelaunch');
   const [activeTab, setActiveTab] = useState<'registration' | 'upgrade'>('registration');
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,18 +42,20 @@ const SubscriptionManagement: React.FC = () => {
     coupon_days: '0',
     parent_income: '0',
     features: [''],
-    is_active: true
+    is_active: true,
+    mirror_to_upgrade: false
   });
 
   useEffect(() => {
     loadPlans();
-  }, [activeTab]);
+  }, [activeTab, planPhase]);
 
   const loadPlans = async () => {
     setLoading(true);
     try {
       const requestPayload = {
-        planType: activeTab
+        planType: activeTab,
+        planPhase
       };
       const requestKey = JSON.stringify(requestPayload);
       const requestPromise =
@@ -71,7 +75,7 @@ const SubscriptionManagement: React.FC = () => {
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
-      const requestKey = JSON.stringify({ planType: activeTab });
+      const requestKey = JSON.stringify({ planType: activeTab, planPhase });
       if (inFlightSubscriptionPlansRequest?.key === requestKey) {
         inFlightSubscriptionPlansRequest = null;
       }
@@ -101,10 +105,12 @@ const SubscriptionManagement: React.FC = () => {
         features: featuresObj,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
-        planType: activeTab
+        planType: activeTab,
+        planPhase,
+        mirrorToUpgrade: formData.mirror_to_upgrade
       });
 
-      notification.showSuccess('Success', `${activeTab === 'registration' ? 'Registration' : 'Upgrade'} plan created`);
+      notification.showSuccess('Success', `${planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} ${activeTab === 'registration' ? 'registration' : 'upgrade'} plan created`);
       setShowCreateModal(false);
       resetForm();
       loadPlans();
@@ -138,7 +144,8 @@ const SubscriptionManagement: React.FC = () => {
         features: featuresObj,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
-        planType: activeTab
+        planType: activeTab,
+        planPhase
       });
 
       notification.showSuccess('Success', 'Plan updated successfully');
@@ -176,7 +183,8 @@ const SubscriptionManagement: React.FC = () => {
         features: plan.tsp_features,
         parentIncome: plan.tsp_parent_income ?? 0,
         isActive: !plan.tsp_is_active,
-        planType: plan.tsp_type
+        planType: plan.tsp_type,
+        planPhase: plan.tsp_plan_phase || planPhase
       });
 
       notification.showSuccess('Success', `Plan ${!plan.tsp_is_active ? 'activated' : 'deactivated'}`);
@@ -200,7 +208,8 @@ const SubscriptionManagement: React.FC = () => {
       coupon_days: Math.trunc(Number(plan.tsp_coupon_days ?? 0)).toString(),
       parent_income: (plan.tsp_parent_income ?? 0).toString(),
       features: featuresArray.length > 0 ? featuresArray : [''],
-      is_active: plan.tsp_is_active
+      is_active: plan.tsp_is_active,
+      mirror_to_upgrade: false
     });
     setShowEditModal(true);
   };
@@ -214,7 +223,8 @@ const SubscriptionManagement: React.FC = () => {
       coupon_days: '0',
       parent_income: '0',
       features: [''],
-      is_active: true
+      is_active: true,
+      mirror_to_upgrade: false
     });
   };
 
@@ -237,6 +247,23 @@ const SubscriptionManagement: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Subscription Plans Management</h2>
+      </div>
+
+      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        {(['prelaunch', 'launch'] as const).map((phase) => (
+          <button
+            key={phase}
+            onClick={() => setPlanPhase(phase)}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              planPhase === phase
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+            type="button"
+          >
+            {phase === 'launch' ? 'Launch Panel' : 'Pre-Launch Panel'}
+          </button>
+        ))}
       </div>
 
       <div className="border-b border-gray-200">
@@ -279,7 +306,7 @@ const SubscriptionManagement: React.FC = () => {
           className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
           <Plus className="h-5 w-5" />
-          <span>Create {activeTab === 'registration' ? 'Registration' : 'Upgrade'} Plan</span>
+          <span>Create {planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} {activeTab === 'registration' ? 'Registration' : 'Upgrade'} Plan</span>
         </button>
       </div>
 
@@ -301,6 +328,7 @@ const SubscriptionManagement: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">{plan.tsp_name}</h3>
                   <p className="text-sm text-gray-500 mt-1">{plan.tsp_description}</p>
+                  <p className="text-xs text-gray-400 mt-1">{(plan.tsp_plan_phase || 'prelaunch') === 'launch' ? 'Launch' : 'Pre-Launch'} plan</p>
                 </div>
                 <div className={`px-2 py-1 rounded-full text-xs font-medium ${
                   plan.tsp_is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -370,7 +398,7 @@ const SubscriptionManagement: React.FC = () => {
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-900">
-                {showEditModal ? 'Edit' : 'Create'} {activeTab === 'registration' ? 'Registration' : 'Upgrade'} Plan
+                {showEditModal ? 'Edit' : 'Create'} {planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} {activeTab === 'registration' ? 'Registration' : 'Upgrade'} Plan
               </h3>
             </div>
 
@@ -453,6 +481,18 @@ const SubscriptionManagement: React.FC = () => {
                     Fixed amount credited to the parent account on registration.
                   </p>
                 </div>
+              )}
+
+              {!showEditModal && planPhase === 'launch' && activeTab === 'registration' && (
+                <label className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+                  <input
+                    type="checkbox"
+                    checked={formData.mirror_to_upgrade}
+                    onChange={(e) => setFormData({ ...formData, mirror_to_upgrade: e.target.checked })}
+                    className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span>Create matching Launch upgrade plan for existing Pre-Launch users</span>
+                </label>
               )}
 
               <div>

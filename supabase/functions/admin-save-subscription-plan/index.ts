@@ -70,14 +70,22 @@ Deno.serve(async (req: Request) => {
       features,
       parentIncome,
       isActive,
-      planType
+      planType,
+      planPhase,
+      mirrorToUpgrade
     } = await req.json();
 
     const normalizedName = String(name || '').trim();
     const normalizedPlanType = String(planType || '').trim();
+    const normalizedPlanPhase = ['prelaunch', 'launch'].includes(String(planPhase || '').toLowerCase())
+      ? String(planPhase).toLowerCase()
+      : 'prelaunch';
     const normalizedPrice = Number(price);
     const normalizedDurationDays = Number(durationDays);
     const normalizedCouponDays = Math.trunc(Number(couponDays ?? 0));
+    const normalizedParentIncome = normalizedPlanType === 'registration'
+      ? Math.max(0, Number(parentIncome || 0))
+      : 0;
 
     // durationDays can be 0 for "lifetime"
     if (!normalizedName || !normalizedPlanType || !Number.isFinite(normalizedPrice) || normalizedPrice <= 0 || !Number.isFinite(normalizedDurationDays) || normalizedDurationDays < 0) {
@@ -97,8 +105,9 @@ Deno.serve(async (req: Request) => {
           tsp_duration_days: Math.trunc(normalizedDurationDays),
           tsp_coupon_days: Math.max(0, normalizedCouponDays),
           tsp_features: features,
-          tsp_parent_income: parentIncome,
-          tsp_is_active: isActive
+          tsp_parent_income: normalizedParentIncome,
+          tsp_is_active: isActive,
+          tsp_plan_phase: normalizedPlanPhase
         })
         .eq('tsp_id', id);
 
@@ -115,13 +124,35 @@ Deno.serve(async (req: Request) => {
           tsp_duration_days: Math.trunc(normalizedDurationDays),
           tsp_coupon_days: Math.max(0, normalizedCouponDays),
           tsp_features: features,
-          tsp_parent_income: parentIncome,
+          tsp_parent_income: normalizedParentIncome,
           tsp_is_active: isActive,
-          tsp_type: normalizedPlanType
+          tsp_type: normalizedPlanType,
+          tsp_plan_phase: normalizedPlanPhase
         });
 
       if (error) {
         throw error;
+      }
+
+      if (mirrorToUpgrade === true && normalizedPlanType === 'registration' && normalizedPlanPhase === 'launch') {
+        const { error: mirrorError } = await supabase
+          .from('tbl_subscription_plans')
+          .insert({
+            tsp_name: normalizedName,
+            tsp_description: description,
+            tsp_price: normalizedPrice,
+            tsp_duration_days: Math.trunc(normalizedDurationDays),
+            tsp_coupon_days: Math.max(0, normalizedCouponDays),
+            tsp_features: features,
+            tsp_parent_income: 0,
+            tsp_is_active: isActive,
+            tsp_type: 'upgrade',
+            tsp_plan_phase: normalizedPlanPhase
+          });
+
+        if (mirrorError) {
+          throw mirrorError;
+        }
       }
     }
 
@@ -131,6 +162,8 @@ Deno.serve(async (req: Request) => {
       price,
       duration_days: durationDays,
       plan_type: planType,
+      plan_phase: normalizedPlanPhase,
+      mirror_to_upgrade: mirrorToUpgrade === true,
       is_active: isActive
     });
 

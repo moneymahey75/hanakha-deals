@@ -11,6 +11,18 @@ const sponsorMeetsVerificationRules = (
   sponsorUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
 ) => sponsorUser.tu_email_verified === true || sponsorUser.tu_mobile_verified === true;
 
+const isSponsorLaunchEligible = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+) => {
+  const { data, error } = await supabase.rpc('is_user_launch_eligible', { p_user_id: userId });
+  if (error) {
+    console.error('Failed to check launch sponsor eligibility:', error);
+    return false;
+  }
+  return data === true;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -186,7 +198,9 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const parentIncomeSetting = Number(registrationPlan.tsp_parent_income ?? 0);
+    const { data: launchPhaseActiveData } = await supabase.rpc('is_launch_phase_active');
+    const launchPhaseActive = launchPhaseActiveData === true;
+    const parentIncomeSetting = launchPhaseActive ? 0 : Number(registrationPlan.tsp_parent_income ?? 0);
     const normalizedParentIncome = Number.isFinite(parentIncomeSetting) && parentIncomeSetting > 0
       ? parentIncomeSetting
       : 0;
@@ -242,6 +256,16 @@ Deno.serve(async (req: Request) => {
         if (!sponsorUser?.tu_is_active || !sponsorUser?.tu_registration_paid || !sponsorIsVerified) {
           return new Response(
             JSON.stringify({ success: false, error: 'Parent A/C is not active/verified or registration-paid' }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
+          );
+        }
+
+        if (!(await isSponsorLaunchEligible(supabase, sponsorUserId))) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Parent customer has to upgrade his account.' }),
             {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -319,7 +343,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (sponsorUserId && normalizedParentIncome > 0) {
+    if (!launchPhaseActive && sponsorUserId && normalizedParentIncome > 0) {
       parentIncomeApplied = Math.min(normalizedParentIncome, paymentAmount);
       adminNetAmount = Math.max(0, paymentAmount - parentIncomeApplied);
     }
@@ -362,7 +386,7 @@ Deno.serve(async (req: Request) => {
       })
       .eq('tu_id', payment.tp_user_id);
 
-    if (sponsorUserId) {
+    if (!launchPhaseActive && sponsorUserId) {
         const walletCache = new Map<
           string,
           { walletId: string; baseBalance: number; baseReservedBalance: number; totalBalanceInserted: number; totalReservedInserted: number }

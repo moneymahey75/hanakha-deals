@@ -37,6 +37,18 @@ const sponsorMeetsVerificationRules = (
   sponsorUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
 ) => sponsorUser.tu_email_verified === true || sponsorUser.tu_mobile_verified === true;
 
+const isSponsorLaunchEligible = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+) => {
+  const { data, error } = await supabase.rpc('is_user_launch_eligible', { p_user_id: userId });
+  if (error) {
+    console.error('Failed to check launch sponsor eligibility:', error);
+    return false;
+  }
+  return data === true;
+};
+
 const ensurePaymentWalletDefault = async (
   supabase: any,
   userId: string,
@@ -173,7 +185,7 @@ Deno.serve(async (req: Request) => {
         subscription:tp_subscription_id(
           tus_id,
           tus_status,
-          plan:tus_plan_id(tsp_id, tsp_price, tsp_type, tsp_parent_income, tsp_duration_days)
+          plan:tus_plan_id(tsp_id, tsp_price, tsp_type, tsp_plan_phase, tsp_parent_income, tsp_duration_days)
         )
       `)
       .eq('tp_id', paymentId)
@@ -319,6 +331,7 @@ Deno.serve(async (req: Request) => {
         .from('tbl_subscription_plans')
         .select('*')
         .eq('tsp_type', 'registration')
+        .eq('tsp_plan_phase', 'prelaunch')
         .eq('tsp_is_active', true)
         .maybeSingle();
 
@@ -340,7 +353,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const parentIncomeSetting = Number(registrationPlan.tsp_parent_income || 0);
+    const planPhase = String(registrationPlan.tsp_plan_phase || 'prelaunch').toLowerCase();
+    const { data: launchPhaseActiveData } = await supabase.rpc('is_launch_phase_active');
+    const launchPhaseActive = launchPhaseActiveData === true;
+    const usePrelaunchRewards = planPhase !== 'launch' && !launchPhaseActive;
+    const parentIncomeSetting = usePrelaunchRewards ? Number(registrationPlan.tsp_parent_income || 0) : 0;
     const normalizedParentIncome = Number.isFinite(parentIncomeSetting) && parentIncomeSetting > 0
       ? parentIncomeSetting
       : 0;
@@ -504,6 +521,25 @@ Deno.serve(async (req: Request) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
+
+        if (!(await isSponsorLaunchEligible(supabase, sponsorUserId))) {
+          await supabase
+            .from('tbl_payments')
+            .update({
+              tp_payment_status: 'pending',
+              tp_error_message: 'Parent customer has to upgrade his account.'
+            })
+            .eq('tp_id', paymentId);
+
+          return new Response(JSON.stringify({
+            success: false,
+            status: 'failed',
+            error: 'Parent customer has to upgrade his account.'
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
       }
     }
 
@@ -580,7 +616,8 @@ Deno.serve(async (req: Request) => {
           tus_status: 'active',
           tus_start_date: startDate.toISOString(),
           tus_end_date: endDate.toISOString(),
-          tus_payment_amount: expectedAmount
+          tus_payment_amount: expectedAmount,
+          tus_plan_phase: planPhase
         })
         .eq('tus_id', existingSubscription.tus_id);
     } else {
@@ -592,7 +629,8 @@ Deno.serve(async (req: Request) => {
           tus_status: 'active',
           tus_start_date: startDate.toISOString(),
           tus_end_date: endDate.toISOString(),
-          tus_payment_amount: expectedAmount
+          tus_payment_amount: expectedAmount,
+          tus_plan_phase: planPhase
         })
         .select()
         .single();
@@ -602,7 +640,7 @@ Deno.serve(async (req: Request) => {
 
     // Parent A/C income + MLM level rewards
     const paymentAmount = expectedAmount;
-    const parentIncomeApplied = sponsorUserId && normalizedParentIncome > 0
+    const parentIncomeApplied = usePrelaunchRewards && sponsorUserId && normalizedParentIncome > 0
       ? Math.min(normalizedParentIncome, expectedAmount)
       : 0;
     let adminNetAmount = expectedAmount;
@@ -641,6 +679,7 @@ Deno.serve(async (req: Request) => {
           block_number: receipt.blockNumber,
           confirmations,
           status: 'success',
+          plan_phase: planPhase,
           gross_amount: paymentAmount,
           parent_income: parentIncomeApplied,
           admin_income: adminNetAmount,
@@ -662,7 +701,7 @@ Deno.serve(async (req: Request) => {
       })
       .eq('tu_id', userId);
 
-    if (sponsorUserId) {
+    if (usePrelaunchRewards && sponsorUserId) {
         const walletCache = new Map<
           string,
           { walletId: string; baseBalance: number; baseReservedBalance: number; totalBalanceInserted: number; totalReservedInserted: number }
@@ -689,6 +728,15 @@ Deno.serve(async (req: Request) => {
             if (!endDateRaw) return true;
             return endDateRaw.getTime() > now.getTime();
           });
+        };
+
+        const isLaunchPlanUser = async (userId: string) => {
+          const { data, error } = await supabase.rpc('is_user_on_launch_plan', { p_user_id: userId });
+          if (error) {
+            console.error('Failed to check user plan phase:', error);
+            return false;
+          }
+          return data === true;
         };
 
         const ensureWalletForUser = async (userId: string) => {
@@ -807,39 +855,44 @@ Deno.serve(async (req: Request) => {
         };
 
         if (parentIncomeApplied > 0 && sponsorUserId) {
-          const sponsorUpgraded = await hasActiveUpgrade(sponsorUserId);
-          const refId = String(paymentId || sponsorUserId);
-
-          if (sponsorUpgraded) {
-            await insertWalletTxIfMissing(
-              sponsorUserId,
-              'registration_parent_income',
-              parentIncomeApplied,
-              `Registration commission from ${childCommissionLabel}`,
-              refId,
-              'available'
-            );
+          const sponsorIsLaunchUser = await isLaunchPlanUser(sponsorUserId);
+          if (sponsorIsLaunchUser) {
+            console.log('Skipping Pre-Launch parent income for Launch plan sponsor:', sponsorUserId);
           } else {
-            const availablePortion = Number((parentIncomeApplied * 0.5).toFixed(6));
-            const reservedPortion = Number((parentIncomeApplied - availablePortion).toFixed(6));
+            const sponsorUpgraded = await hasActiveUpgrade(sponsorUserId);
+            const refId = String(paymentId || sponsorUserId);
 
-            await insertWalletTxIfMissing(
-              sponsorUserId,
-              'registration_parent_income',
-              availablePortion,
-              `Registration commission from ${childCommissionLabel}`,
-              refId,
-              'available'
-            );
+            if (sponsorUpgraded) {
+              await insertWalletTxIfMissing(
+                sponsorUserId,
+                'registration_parent_income',
+                parentIncomeApplied,
+                `Registration commission from ${childCommissionLabel}`,
+                refId,
+                'available'
+              );
+            } else {
+              const availablePortion = Number((parentIncomeApplied * 0.5).toFixed(6));
+              const reservedPortion = Number((parentIncomeApplied - availablePortion).toFixed(6));
 
-            await insertWalletTxIfMissing(
-              sponsorUserId,
-              'registration_parent_income_reserved',
-              reservedPortion,
-              `Reserved from registration commission (for future upgrade) from ${childCommissionLabel}`,
-              refId,
-              'reserved'
-            );
+              await insertWalletTxIfMissing(
+                sponsorUserId,
+                'registration_parent_income',
+                availablePortion,
+                `Registration commission from ${childCommissionLabel}`,
+                refId,
+                'available'
+              );
+
+              await insertWalletTxIfMissing(
+                sponsorUserId,
+                'registration_parent_income_reserved',
+                reservedPortion,
+                `Reserved from registration commission (for future upgrade) from ${childCommissionLabel}`,
+                refId,
+                'reserved'
+              );
+            }
           }
         }
 
@@ -885,6 +938,10 @@ Deno.serve(async (req: Request) => {
               const sponsorshipNumber = String(upline.sponsorship_number || '').trim();
               const uplineUserId = String(upline.user_id || '').trim();
               if (!sponsorshipNumber || !uplineUserId) continue;
+              if (await isLaunchPlanUser(uplineUserId)) {
+                console.log('Skipping Pre-Launch MLM reward for Launch plan upline:', uplineUserId);
+                continue;
+              }
 
               const { data: countsRow, error: countsError } = await supabase
                 .rpc('upsert_mlm_level_counts', { p_sponsorship_number: sponsorshipNumber })

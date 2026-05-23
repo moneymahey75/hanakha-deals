@@ -13,6 +13,8 @@ interface SubscriptionPlan {
   tsp_duration_days: number;
   tsp_features: any;
   tsp_is_active: boolean;
+  tsp_type?: 'registration' | 'upgrade';
+  tsp_plan_phase?: 'prelaunch' | 'launch';
   tsp_created_at: string;
 }
 
@@ -24,11 +26,12 @@ const SubscriptionPlans: React.FC = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const userPlanType = user?.registrationPaid || user?.hasActiveSubscription ? 'upgrade' : 'registration';
 
   useEffect(() => {
     loadPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchPhase]);
+  }, [launchPhase, userPlanType]);
 
   const loadPlans = async () => {
     try {
@@ -67,7 +70,8 @@ const SubscriptionPlans: React.FC = () => {
         .from('tbl_subscription_plans')
         .select('*')
         .eq('tsp_is_active', true)
-        .eq('tsp_type', 'upgrade')
+        .eq('tsp_type', userPlanType)
+        .eq('tsp_plan_phase', 'launch')
         .order('tsp_price', { ascending: true });
 
       if (error) {
@@ -174,8 +178,10 @@ const SubscriptionPlans: React.FC = () => {
             Choose Your <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">USDT Plan</span>
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-            {user 
-              ? 'Select the perfect USDT subscription plan to unlock your referral dashboard and start earning.'
+            {user
+              ? userPlanType === 'upgrade'
+                ? 'Select a Launch upgrade plan to move from Pre-Launch benefits into the Launch earning system.'
+                : 'Select a Launch registration plan to activate your account and start with the Launch earning system.'
               : 'Explore our USDT subscription plans. Login to purchase and start your referral journey.'
             }
           </p>
@@ -308,8 +314,8 @@ const SubscriptionPlans: React.FC = () => {
                 >
                   <CreditCard className="h-5 w-5" />
                   <span>
-                    {user 
-                      ? `Pay ${plan.tsp_price} USDT - Select Plan`
+                    {user
+                      ? `${userPlanType === 'upgrade' ? 'Upgrade' : 'Pay'} ${plan.tsp_price} USDT - Select Plan`
                       : `Select ${plan.tsp_name} - ${plan.tsp_price} USDT`
                     }
                   </span>

@@ -91,9 +91,9 @@ const Payment: React.FC = () => {
 
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
-  const hasActivePlan = user?.hasActiveSubscription;
-  const hasPaidSuccessfully = hasActivePlan || transaction.status === 'success';
   const isUpgradePlanUi = String(selectedPlan?.tsp_type || '').toLowerCase() === 'upgrade';
+  const hasActivePlan = Boolean(user?.hasActiveSubscription && !isUpgradePlanUi);
+  const hasPaidSuccessfully = hasActivePlan || transaction.status === 'success';
   const canUseReservedForUpgradeUi = isUpgradePlanUi && workingWalletReservedBalance > 0;
 
   const reservedUsedForUpgrade = useReservedBalance && isUpgradePlanUi
@@ -686,9 +686,29 @@ const Payment: React.FC = () => {
 
       setTransaction(finalTransactionState);
 
-      // Create subscription + payment atomically via RPC
-      const { data: paymentData, error: paymentError } = await supabase
-        .rpc('create_registration_payment', {
+      const gatewayResponse = {
+        blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
+        contract_address: settings.subscriptionContractAddress,
+        usdt_contract: settings.usdtAddress,
+        subscription_wallet: settings.subscriptionWalletAddress,
+        transaction_hash: hash,
+        wallet_address: walletState.address,
+        processed_at: new Date().toISOString(),
+        status: 'success',
+        steps: steps
+      };
+
+      const { data: paymentData, error: paymentError } = isUpgradePlan
+        ? await supabase.rpc('create_upgrade_payment_with_reserved_and_chain', {
+          p_user_id: user.id,
+          p_plan_id: selectedPlan.tsp_id,
+          p_chain_amount: selectedPlan.tsp_price,
+          p_reserved_used: 0,
+          p_currency: 'USDT',
+          p_transaction_id: hash,
+          p_gateway_response: gatewayResponse
+        })
+        : await supabase.rpc('create_registration_payment', {
           p_user_id: user.id,
           p_plan_id: selectedPlan.tsp_id,
           p_amount: selectedPlan.tsp_price,
@@ -696,17 +716,7 @@ const Payment: React.FC = () => {
           p_payment_method: 'blockchain',
           p_payment_status: 'completed',
           p_transaction_id: hash,
-          p_gateway_response: {
-            blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
-            contract_address: settings.subscriptionContractAddress,
-            usdt_contract: settings.usdtAddress,
-            subscription_wallet: settings.subscriptionWalletAddress,
-            transaction_hash: hash,
-            wallet_address: walletState.address,
-            processed_at: new Date().toISOString(),
-            status: 'success',
-            steps: steps
-          }
+          p_gateway_response: gatewayResponse
         });
 
       if (paymentError) {

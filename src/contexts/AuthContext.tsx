@@ -16,6 +16,7 @@ interface User {
   isVerified: boolean;
   hasActiveSubscription: boolean;
   registrationPaid?: boolean;
+  currentPlanPhase?: 'prelaunch' | 'launch';
   mobileVerified: boolean;
   profileLoaded?: boolean;
 }
@@ -84,6 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let profileData = null;
       let companyData = null;
       let subscriptionData = null;
+      let activePlanPhase: 'prelaunch' | 'launch' = 'prelaunch';
 
       try {
         // Fetch user and profile data (always needed)
@@ -144,12 +146,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('💳 Checking for active subscription for user:', userId);
           const { data: subscriptionDataArray } = await supabase
               .from('tbl_user_subscriptions')
-              .select('*')
+              .select('*, plan:tus_plan_id(tsp_plan_phase, tsp_type)')
               .eq('tus_user_id', userId)
               .eq('tus_status', 'active')
               .gte('tus_end_date', new Date().toISOString());
           console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
           subscriptionData = subscriptionDataArray?.[0];
+          const launchSubscription = subscriptionDataArray?.find((row: any) =>
+            String(row?.plan?.tsp_plan_phase || row?.tus_plan_phase || '').toLowerCase() === 'launch'
+          );
+          activePlanPhase = launchSubscription ? 'launch' : 'prelaunch';
         } catch (subscriptionRlsError) {
           console.warn('RLS blocking user_subscriptions table:', subscriptionRlsError);
         }
@@ -186,6 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVerified: userData?.tu_is_verified || false,
         hasActiveSubscription: !!subscriptionData,
         registrationPaid,
+        currentPlanPhase: (userData?.tu_current_plan_phase === 'launch' || activePlanPhase === 'launch') ? 'launch' : 'prelaunch',
         mobileVerified: userData?.tu_mobile_verified || false,
         profileLoaded: true
       };
@@ -561,6 +568,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVerified: false,
         hasActiveSubscription: false,
         registrationPaid: false,
+        currentPlanPhase: 'prelaunch',
         mobileVerified: false,
         profileLoaded: false
       };
