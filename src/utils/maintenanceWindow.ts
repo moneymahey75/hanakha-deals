@@ -1,7 +1,8 @@
-type MaintenanceNoticeState = {
+export type MaintenanceNoticeState = {
   showBanner: boolean;
   urgent: boolean;
   message: string;
+  showFromAt: Date | null;
   startsAt: Date | null;
   endsAt: Date | null;
   activeWindow: boolean;
@@ -17,10 +18,12 @@ const parseDate = (value: unknown): Date | null => {
 export const getMaintenanceNoticeState = (settings: {
   maintenanceNoticeEnabled?: boolean;
   maintenanceNoticeMessage?: string;
+  maintenanceNoticeShowFromAt?: string | null;
   maintenanceWindowStartAt?: string | null;
   maintenanceWindowEndAt?: string | null;
 }): MaintenanceNoticeState => {
   const now = new Date();
+  const showFromAt = parseDate(settings?.maintenanceNoticeShowFromAt);
   const startsAt = parseDate(settings?.maintenanceWindowStartAt);
   const endsAt = parseDate(settings?.maintenanceWindowEndAt);
 
@@ -32,8 +35,10 @@ export const getMaintenanceNoticeState = (settings: {
 
   const showBanner =
     Boolean(settings?.maintenanceNoticeEnabled) &&
+    !!showFromAt &&
     !!startsAt &&
     !activeWindow &&
+    now.getTime() >= showFromAt.getTime() &&
     now.getTime() < startsAt.getTime();
 
   const urgent =
@@ -47,6 +52,7 @@ export const getMaintenanceNoticeState = (settings: {
     showBanner,
     urgent,
     message,
+    showFromAt,
     startsAt,
     endsAt,
     activeWindow,
@@ -58,11 +64,14 @@ export const isMaintenanceActiveNow = (settings: {
   maintenanceWindowStartAt?: string | null;
   maintenanceWindowEndAt?: string | null;
 }): boolean => {
-  if (Boolean(settings?.maintenanceMode)) return true;
   const now = new Date();
   const startsAt = parseDate(settings?.maintenanceWindowStartAt);
   const endsAt = parseDate(settings?.maintenanceWindowEndAt);
-  if (!startsAt || !endsAt) return false;
-  return now.getTime() >= startsAt.getTime() && now.getTime() <= endsAt.getTime();
-};
 
+  if (endsAt && now.getTime() > endsAt.getTime()) return false;
+  if (Boolean(settings?.maintenanceMode)) return true;
+  if (!startsAt) return false;
+  if (now.getTime() < startsAt.getTime()) return false;
+  if (!endsAt) return true;
+  return now.getTime() <= endsAt.getTime();
+};

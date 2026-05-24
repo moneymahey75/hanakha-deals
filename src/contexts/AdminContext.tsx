@@ -13,6 +13,7 @@ interface GeneralSettings {
   maintenanceMessage: string;
   maintenanceNoticeEnabled: boolean;
   maintenanceNoticeMessage: string;
+  maintenanceNoticeShowFromAt: string | null;
   maintenanceWindowStartAt: string | null;
   maintenanceWindowEndAt: string | null;
   maintenanceAllowedIps: string[];
@@ -153,6 +154,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     maintenanceMessage: 'We’re doing some maintenance right now. Please check back shortly.',
     maintenanceNoticeEnabled: false,
     maintenanceNoticeMessage: '',
+    maintenanceNoticeShowFromAt: null,
     maintenanceWindowStartAt: null,
     maintenanceWindowEndAt: null,
     maintenanceAllowedIps: [],
@@ -354,6 +356,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'maintenance_notice_message':
                 loadedSettings.maintenanceNoticeMessage = String(value || '');
                 break;
+              case 'maintenance_notice_show_from_at': {
+                const v = value === null || value === undefined ? null : String(value || '').trim();
+                loadedSettings.maintenanceNoticeShowFromAt = v ? v : null;
+                break;
+              }
               case 'maintenance_window_start_at': {
                 const v = value === null || value === undefined ? null : String(value || '').trim();
                 loadedSettings.maintenanceWindowStartAt = v ? v : null;

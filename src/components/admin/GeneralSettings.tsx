@@ -17,6 +17,7 @@ const GeneralSettings: React.FC = () => {
         maintenanceMessage: settings.maintenanceMessage,
         maintenanceNoticeEnabled: settings.maintenanceNoticeEnabled,
         maintenanceNoticeMessage: settings.maintenanceNoticeMessage,
+        maintenanceNoticeShowFromAt: settings.maintenanceNoticeShowFromAt,
         maintenanceWindowStartAt: settings.maintenanceWindowStartAt,
         maintenanceWindowEndAt: settings.maintenanceWindowEndAt,
         maintenanceAllowedIps: (settings.maintenanceAllowedIps || []).join('\n')
@@ -37,6 +38,7 @@ const GeneralSettings: React.FC = () => {
             maintenanceMessage: settings.maintenanceMessage,
             maintenanceNoticeEnabled: settings.maintenanceNoticeEnabled,
             maintenanceNoticeMessage: settings.maintenanceNoticeMessage,
+            maintenanceNoticeShowFromAt: settings.maintenanceNoticeShowFromAt,
             maintenanceWindowStartAt: settings.maintenanceWindowStartAt,
             maintenanceWindowEndAt: settings.maintenanceWindowEndAt,
             maintenanceAllowedIps: (settings.maintenanceAllowedIps || []).join('\n')
@@ -49,6 +51,18 @@ const GeneralSettings: React.FC = () => {
         setSaveResult(null);
 
         try {
+            const noticeAt = parseIsoDate(formData.maintenanceNoticeShowFromAt);
+            const startAt = parseIsoDate(formData.maintenanceWindowStartAt);
+            const endAt = parseIsoDate(formData.maintenanceWindowEndAt);
+
+            if (noticeAt && startAt && startAt.getTime() <= noticeAt.getTime()) {
+                throw new Error('Maintenance Mode Start DateTime must be greater than Show Frontend User From DateTime.');
+            }
+
+            if (startAt && endAt && endAt.getTime() <= startAt.getTime()) {
+                throw new Error('Auto Finish Maintenance Mode DateTime must be greater than Maintenance Mode Start DateTime.');
+            }
+
             // Update settings in database
             const updates = [
                 // `tss_setting_value` is `jsonb`, so send primitives directly (not JSON-stringified strings).
@@ -62,6 +76,7 @@ const GeneralSettings: React.FC = () => {
                 { key: 'maintenance_message', value: String(formData.maintenanceMessage || '') },
                 { key: 'maintenance_notice_enabled', value: Boolean(formData.maintenanceNoticeEnabled) },
                 { key: 'maintenance_notice_message', value: String(formData.maintenanceNoticeMessage || '') },
+                { key: 'maintenance_notice_show_from_at', value: formData.maintenanceNoticeShowFromAt ? String(formData.maintenanceNoticeShowFromAt) : '' },
                 { key: 'maintenance_window_start_at', value: formData.maintenanceWindowStartAt ? String(formData.maintenanceWindowStartAt) : '' },
                 { key: 'maintenance_window_end_at', value: formData.maintenanceWindowEndAt ? String(formData.maintenanceWindowEndAt) : '' },
                 {
@@ -93,6 +108,7 @@ const GeneralSettings: React.FC = () => {
                 maintenanceMessage: formData.maintenanceMessage,
                 maintenanceNoticeEnabled: formData.maintenanceNoticeEnabled,
                 maintenanceNoticeMessage: formData.maintenanceNoticeMessage,
+                maintenanceNoticeShowFromAt: formData.maintenanceNoticeShowFromAt,
                 maintenanceWindowStartAt: formData.maintenanceWindowStartAt,
                 maintenanceWindowEndAt: formData.maintenanceWindowEndAt,
                 maintenanceAllowedIps: String(formData.maintenanceAllowedIps || '')
@@ -112,7 +128,7 @@ const GeneralSettings: React.FC = () => {
             console.error('Failed to save settings:', error);
             setSaveResult({
                 success: false,
-                message: 'Failed to save settings. Please try again.'
+                message: error instanceof Error ? error.message : 'Failed to save settings. Please try again.'
             });
         } finally {
             setSaving(false);
@@ -133,7 +149,7 @@ const GeneralSettings: React.FC = () => {
         }));
     };
 
-    const handleDateTimeLocalChange = (name: 'maintenanceWindowStartAt' | 'maintenanceWindowEndAt') =>
+    const handleDateTimeLocalChange = (name: 'maintenanceNoticeShowFromAt' | 'maintenanceWindowStartAt' | 'maintenanceWindowEndAt') =>
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const value = e.target.value;
             setFormData(prev => ({
@@ -148,6 +164,12 @@ const GeneralSettings: React.FC = () => {
         if (Number.isNaN(date.getTime())) return '';
         const pad = (n: number) => String(n).padStart(2, '0');
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+
+    const parseIsoDate = (value: string | null | undefined) => {
+        if (!value) return null;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
     };
 
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -441,24 +463,38 @@ const GeneralSettings: React.FC = () => {
                 <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
                     <div className="flex items-center justify-between gap-4">
                         <div>
-                            <h4 className="text-sm font-semibold text-gray-900">Maintenance</h4>
-                            <p className="text-xs text-gray-600 mt-1">Configure scheduled maintenance, topbar notice, and access allowlist.</p>
+                            <h4 className="text-sm font-semibold text-gray-900">Maintenance Mode</h4>
+                            <p className="text-xs text-gray-600 mt-1">Schedule downtime, notify frontend users, and allow trusted IP access.</p>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={!!formData.maintenanceMode}
-                                onChange={handleToggle('maintenanceMode')}
-                            />
-                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-500 peer-checked:bg-amber-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
-                        </label>
+                        <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, maintenanceMode: !prev.maintenanceMode }))}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                                formData.maintenanceMode
+                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            }`}
+                        >
+                            {formData.maintenanceMode ? 'Disable Maintenance' : 'Enable Maintenance'}
+                        </button>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label htmlFor="maintenanceNoticeShowFromAt" className="block text-sm font-medium text-gray-700 mb-2">
+                                Show Frontend User From DateTime
+                            </label>
+                            <input
+                                type="datetime-local"
+                                id="maintenanceNoticeShowFromAt"
+                                value={toDateTimeLocalValue(formData.maintenanceNoticeShowFromAt)}
+                                onChange={handleDateTimeLocalChange('maintenanceNoticeShowFromAt')}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            />
+                        </div>
                         <div>
                             <label htmlFor="maintenanceWindowStartAt" className="block text-sm font-medium text-gray-700 mb-2">
-                                Scheduled Start (optional)
+                                Maintenance Mode Start DateTime
                             </label>
                             <input
                                 type="datetime-local"
@@ -470,7 +506,7 @@ const GeneralSettings: React.FC = () => {
                         </div>
                         <div>
                             <label htmlFor="maintenanceWindowEndAt" className="block text-sm font-medium text-gray-700 mb-2">
-                                Scheduled End (optional)
+                                Auto Finish Maintenance Mode DateTime
                             </label>
                             <input
                                 type="datetime-local"
@@ -481,6 +517,10 @@ const GeneralSettings: React.FC = () => {
                             />
                         </div>
                     </div>
+
+                    <p className="text-xs text-gray-500 mt-3">
+                        DateTime values are saved as UTC ISO timestamps and shown in your browser timezone while editing.
+                    </p>
 
                     <div className="mt-4">
                         <label htmlFor="maintenanceAllowedIps" className="block text-sm font-medium text-gray-700 mb-2">
@@ -496,15 +536,15 @@ const GeneralSettings: React.FC = () => {
                             placeholder="One IP per line (or comma separated)"
                         />
                         <p className="text-xs text-gray-500 mt-2">
-                            During maintenance mode or during the scheduled window, only these IPs can access the site.
+                            Supports comma-separated or line-separated IPs. These IPs bypass both maintenance mode and upcoming notices.
                         </p>
                     </div>
 
                     <div className="mt-4 border-t border-gray-200 pt-4">
                         <div className="flex items-center justify-between gap-4">
                             <div>
-                                <h5 className="text-sm font-semibold text-gray-900">Topbar Notice</h5>
-                                <p className="text-xs text-gray-600 mt-1">Shows a banner before the scheduled start. It highlights 15 minutes before start.</p>
+                                <h5 className="text-sm font-semibold text-gray-900">Upcoming Maintenance Notification</h5>
+                                <p className="text-xs text-gray-600 mt-1">Shows a dismissible banner from the notification datetime until maintenance starts.</p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
                                 <input
@@ -528,7 +568,7 @@ const GeneralSettings: React.FC = () => {
                                 value={formData.maintenanceNoticeMessage}
                                 onChange={handleChange}
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                                placeholder="Example: Site will be under maintenance tomorrow at 10:00 AM"
+                                placeholder="Website maintenance is scheduled on [date time]."
                             />
                         </div>
                     </div>
@@ -544,7 +584,7 @@ const GeneralSettings: React.FC = () => {
                             onChange={(e) => setFormData(prev => ({ ...prev, maintenanceMessage: e.target.value }))}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                             rows={3}
-                            placeholder="We’re doing some maintenance right now. Please check back shortly."
+                            placeholder="Website is currently under maintenance. Please try again later."
                         />
                     </div>
                 </div>
