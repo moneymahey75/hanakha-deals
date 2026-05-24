@@ -16,7 +16,7 @@ export const TrustIndicators: React.FC = () => {
       
       <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
         <Award className="w-5 h-5 text-yellow-400" />
-        <span className="text-sm font-medium text-yellow-800">Verified Smart Contract</span>
+        <span className="text-sm font-medium text-yellow-800">Verified USDT Payment</span>
       </div>
       
       <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">

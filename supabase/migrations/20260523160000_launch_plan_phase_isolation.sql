@@ -204,8 +204,11 @@ BEGIN
     RAISE EXCEPTION 'Subscription plan not found';
   END IF;
 
-  IF lower(coalesce(v_plan_type, '')) <> 'registration' THEN
-    RAISE EXCEPTION 'Only registration plans can be used for registration payment';
+  IF NOT (
+    lower(coalesce(v_plan_type, '')) = 'registration'
+    OR (v_plan_phase = 'launch' AND lower(coalesce(v_plan_type, '')) = 'upgrade')
+  ) THEN
+    RAISE EXCEPTION 'Only registration plans, or Launch plans, can be used for registration payment';
   END IF;
 
   IF p_amount IS NULL OR p_amount <= 0 THEN

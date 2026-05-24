@@ -91,7 +91,9 @@ const Payment: React.FC = () => {
 
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
-  const isUpgradePlanUi = String(selectedPlan?.tsp_type || '').toLowerCase() === 'upgrade';
+  const selectedPlanType = String(selectedPlan?.tsp_type || '').toLowerCase();
+  const isExistingPaidUser = Boolean(user?.registrationPaid || user?.hasActiveSubscription);
+  const isUpgradePlanUi = selectedPlanType === 'upgrade' && isExistingPaidUser;
   const hasActivePlan = Boolean(user?.hasActiveSubscription && !isUpgradePlanUi);
   const hasPaidSuccessfully = hasActivePlan || transaction.status === 'success';
   const canUseReservedForUpgradeUi = isUpgradePlanUi && workingWalletReservedBalance > 0;
@@ -100,6 +102,7 @@ const Payment: React.FC = () => {
     ? Math.min(workingWalletReservedBalance, Number(selectedPlan?.tsp_price || 0))
     : 0;
   const chainPayAmountForUpgrade = Math.max(0, Number(selectedPlan?.tsp_price || 0) - reservedUsedForUpgrade);
+  const adminReceivingWallet = String(settings?.adminPaymentWallet || '').trim();
 
   const loadWorkingWalletReservedBalance = useCallback(async () => {
     if (!user?.id) return;
@@ -155,29 +158,23 @@ const Payment: React.FC = () => {
       // Validate admin settings before using them
       const validateAddress = (addr: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(addr);
 
-      if (!validateAddress(settings.usdtAddress) && settings.usdtAddress !== '') {
+      if (!validateAddress(String(settings.usdtAddress || '')) && String(settings.usdtAddress || '') !== '') {
         console.error('Invalid USDT address in settings');
         notification.showError('Configuration Error', 'Invalid USDT contract address');
         return;
       }
 
-      if (!validateAddress(settings.subscriptionContractAddress) && settings.subscriptionContractAddress !== '') {
-        console.error('Invalid subscription contract address in settings');
-        notification.showError('Configuration Error', 'Invalid subscription contract address');
-        return;
-      }
-
-      if (!validateAddress(settings.subscriptionWalletAddress) && settings.subscriptionWalletAddress !== '') {
-        console.error('Invalid subscription wallet address in settings');
-        notification.showError('Configuration Error', 'Invalid subscription wallet address');
+      if (!validateAddress(String(settings.adminPaymentWallet || '')) && String(settings.adminPaymentWallet || '') !== '') {
+        console.error('Invalid admin payment wallet in settings');
+        notification.showError('Configuration Error', 'Invalid admin payment wallet');
         return;
       }
 
       walletService.setAdminSettings({
         paymentMode: settings.paymentMode?.toString() || '0',
         usdtAddress: settings.usdtAddress || '',
-        subscriptionContractAddress: settings.subscriptionContractAddress || '',
-        subscriptionWalletAddress: settings.subscriptionWalletAddress || ''
+        subscriptionContractAddress: '',
+        subscriptionWalletAddress: ''
       });
     }
   }, [settings, walletService, notification]);
@@ -234,12 +231,12 @@ const Payment: React.FC = () => {
   }, [walletService]);
 
   useEffect(() => {
-    const isUpgrade = String(selectedPlan?.tsp_type || '').toLowerCase() === 'upgrade';
+    const isUpgrade = String(selectedPlan?.tsp_type || '').toLowerCase() === 'upgrade' && Boolean(user?.registrationPaid || user?.hasActiveSubscription);
     const canUseReserved = isUpgrade && workingWalletReservedBalance > 0;
     if (!canUseReserved) {
       setUseReservedBalance(false);
     }
-  }, [selectedPlan?.tsp_id, selectedPlan?.tsp_type, selectedPlan?.tsp_price, workingWalletReservedBalance]);
+  }, [selectedPlan?.tsp_id, selectedPlan?.tsp_type, selectedPlan?.tsp_price, workingWalletReservedBalance, user?.registrationPaid, user?.hasActiveSubscription]);
 
 	  // FIX: Restore wallet state from service on re-render if connection is active
 	  useEffect(() => {
@@ -411,7 +408,7 @@ const Payment: React.FC = () => {
     }
 
     const planType = String(selectedPlan.tsp_type || '').toLowerCase();
-    const isUpgradePlan = planType === 'upgrade';
+    const isUpgradePlan = planType === 'upgrade' && Boolean(user.registrationPaid || user.hasActiveSubscription);
 
     // FIX: Re-check active subscription before payment
     if (user.hasActiveSubscription && !isUpgradePlan) {
@@ -515,11 +512,16 @@ const Payment: React.FC = () => {
         return;
       }
 
+      if (!adminReceivingWallet || !validateAddress(adminReceivingWallet)) {
+        notification.showError('Configuration Error', 'Admin payment wallet is not configured correctly.');
+        return;
+      }
+
       walletService.setAdminSettings({
         paymentMode: settings.paymentMode?.toString() || '0',
         usdtAddress: settings.usdtAddress || '',
-        subscriptionContractAddress: settings.subscriptionContractAddress || '',
-        subscriptionWalletAddress: settings.subscriptionWalletAddress || ''
+        subscriptionContractAddress: '',
+        subscriptionWalletAddress: ''
       });
 
       const usdtBalance = parseFloat(walletState.usdtBalance);
@@ -541,7 +543,7 @@ const Payment: React.FC = () => {
       sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
 
       try {
-        const { hash, steps } = await walletService.executeUSDTDistribution(chainAmount);
+        const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, chainAmount);
 
         const { error } = await supabase.rpc('create_upgrade_payment_with_reserved_and_chain', {
           p_user_id: user.id,
@@ -553,10 +555,13 @@ const Payment: React.FC = () => {
           p_gateway_response: {
             blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
             usdt_contract: settings.usdtAddress,
-            subscription_wallet: settings.subscriptionWalletAddress,
+            admin_wallet: adminReceivingWallet,
             transaction_hash: hash,
             wallet_address: walletState.address,
+            wallet_name: walletState.walletName,
+            chain_id: walletState.chainId,
             processed_at: new Date().toISOString(),
+            status: 'success',
             steps
           }
         });
@@ -591,7 +596,7 @@ const Payment: React.FC = () => {
           reservedUsed: reservedUsedRounded,
           network: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
         });
-        notification.showSuccess('Payment Successful!', 'Upgrade has been activated (reserved + blockchain).');
+        notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance and USDT payment.');
         return;
       } catch (error: any) {
         const errorMessage = extractEdgeFunctionErrorMessage(error) || error?.message || 'Payment processing failed';
@@ -625,18 +630,13 @@ const Payment: React.FC = () => {
     }
 
     // Validate settings addresses
-    if (!validateAddress(settings.usdtAddress) && settings.usdtAddress !== '') {
+    if (!validateAddress(String(settings.usdtAddress || '')) && String(settings.usdtAddress || '') !== '') {
       notification.showError('Configuration Error', 'Invalid USDT contract address in settings');
       return;
     }
 
-    if (!validateAddress(settings.subscriptionContractAddress) && settings.subscriptionContractAddress !== '') {
-      notification.showError('Configuration Error', 'Invalid subscription contract address in settings');
-      return;
-    }
-
-    if (!validateAddress(settings.subscriptionWalletAddress) && settings.subscriptionWalletAddress !== '') {
-      notification.showError('Configuration Error', 'Invalid subscription wallet address in settings');
+    if (!adminReceivingWallet || !validateAddress(adminReceivingWallet)) {
+      notification.showError('Configuration Error', 'Admin payment wallet is not configured correctly.');
       return;
     }
 
@@ -644,8 +644,8 @@ const Payment: React.FC = () => {
     walletService.setAdminSettings({
       paymentMode: settings.paymentMode?.toString() || '0',
       usdtAddress: settings.usdtAddress || '',
-      subscriptionContractAddress: settings.subscriptionContractAddress || '',
-      subscriptionWalletAddress: settings.subscriptionWalletAddress || ''
+      subscriptionContractAddress: '',
+      subscriptionWalletAddress: ''
     });
 
     const usdtBalance = parseFloat(walletState.usdtBalance);
@@ -671,10 +671,10 @@ const Payment: React.FC = () => {
     let paymentData = null;
 
     try {
-      console.log('Processing smart contract payment for plan:', selectedPlan.tsp_name);
+      console.log('Processing direct USDT payment for plan:', selectedPlan.tsp_name);
 
-      // Execute USDT distribution
-      const { hash, steps } = await walletService.executeUSDTDistribution(selectedPlan.tsp_price);
+      // Send USDT directly to the admin receiving wallet.
+      const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, selectedPlan.tsp_price);
 
       const finalTransactionState = {
         isProcessing: false,
@@ -688,11 +688,12 @@ const Payment: React.FC = () => {
 
       const gatewayResponse = {
         blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
-        contract_address: settings.subscriptionContractAddress,
         usdt_contract: settings.usdtAddress,
-        subscription_wallet: settings.subscriptionWalletAddress,
+        admin_wallet: adminReceivingWallet,
         transaction_hash: hash,
         wallet_address: walletState.address,
+        wallet_name: walletState.walletName,
+        chain_id: walletState.chainId,
         processed_at: new Date().toISOString(),
         status: 'success',
         steps: steps
@@ -746,7 +747,7 @@ const Payment: React.FC = () => {
         });
       }
 
-      notification.showSuccess('Payment Successful!', 'Your subscription has been activated via blockchain.');
+      notification.showSuccess('Payment Successful!', 'Your subscription has been activated.');
 
       // Local state update is handled, the component will re-render and re-initialize from storage
 
@@ -781,11 +782,12 @@ const Payment: React.FC = () => {
               tp_error_message: errorMessage,
               tp_gateway_response: {
                 blockchain: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
-                contract_address: settings.subscriptionContractAddress,
                 usdt_contract: settings.usdtAddress,
-                subscription_wallet: settings.subscriptionWalletAddress,
+                admin_wallet: adminReceivingWallet,
                 transaction_hash: transaction.hash,
                 wallet_address: walletState.address,
+                wallet_name: walletState.walletName,
+                chain_id: walletState.chainId,
                 processed_at: new Date().toISOString(),
                 status: 'failed',
                 error: errorMessage,
@@ -902,9 +904,9 @@ const Payment: React.FC = () => {
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Plans
             </Link>
-            <h1 className="text-4xl font-bold text-white mb-2">USDT Smart Contract Payment</h1>
+            <h1 className="text-4xl font-bold text-white mb-2">USDT Payment</h1>
             <p className="text-purple-200">
-              Secure blockchain payment processing
+              Secure BEP-20 USDT payment processing
               {settings && (
                   <span className="ml-2 px-2 py-1 bg-purple-600/30 rounded-md text-sm">
                 {settings.paymentMode === true ||
@@ -1135,8 +1137,8 @@ const Payment: React.FC = () => {
                 <div className="bg-purple-500/30 w-8 h-8 rounded-full flex items-center justify-center mb-3">
                   <span className="text-white font-bold">2</span>
                 </div>
-                <h4 className="font-medium text-white mb-2">Approve Transaction</h4>
-                <p>Review the smart contract transaction and approve the USDT distribution.</p>
+                <h4 className="font-medium text-white mb-2">Send USDT</h4>
+                <p>Review the wallet transaction and send USDT to the admin receiving wallet.</p>
               </div>
               <div>
                 <div className="bg-purple-500/30 w-8 h-8 rounded-full flex items-center justify-center mb-3">

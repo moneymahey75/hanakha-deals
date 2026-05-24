@@ -26,7 +26,10 @@ const SubscriptionPlans: React.FC = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const userPlanType = user?.registrationPaid || user?.hasActiveSubscription ? 'upgrade' : 'registration';
+  const [phaseMismatchHint, setPhaseMismatchHint] = useState<string | null>(null);
+  const userPlanType = launchPhase === 'launched'
+    ? 'upgrade'
+    : (user?.registrationPaid || user?.hasActiveSubscription ? 'upgrade' : 'registration');
 
   useEffect(() => {
     loadPlans();
@@ -37,6 +40,7 @@ const SubscriptionPlans: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      setPhaseMismatchHint(null);
 
       if (launchPhase !== 'launched') {
         setPlans([]);
@@ -85,6 +89,25 @@ const SubscriptionPlans: React.FC = () => {
       }));
 
       console.log('✅ Plans loaded successfully:', normalized.length, 'plans');
+
+      if (normalized.length === 0) {
+        const { data: prelaunchPlans, error: prelaunchError } = await supabase
+          .from('tbl_subscription_plans')
+          .select('tsp_id')
+          .eq('tsp_is_active', true)
+          .eq('tsp_type', userPlanType)
+          .eq('tsp_plan_phase', 'prelaunch')
+          .limit(1);
+
+        if (!prelaunchError && (prelaunchPlans || []).length > 0) {
+          setPhaseMismatchHint(
+            userPlanType === 'upgrade'
+              ? 'Pre-Launch upgrade plans exist, but no active Launch upgrade plans are available yet.'
+              : 'Pre-Launch registration plans exist, but no active Launch registration plans are available yet.'
+          );
+        }
+      }
+
       setPlans(normalized);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
@@ -180,7 +203,9 @@ const SubscriptionPlans: React.FC = () => {
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
             {user
               ? userPlanType === 'upgrade'
-                ? 'Select a Launch upgrade plan to move from Pre-Launch benefits into the Launch earning system.'
+                ? user?.registrationPaid || user?.hasActiveSubscription
+                  ? 'Select a Launch upgrade plan to move from Pre-Launch benefits into the Launch earning system.'
+                  : 'Select a Launch plan to register your account and start with the Launch earning system.'
                 : 'Select a Launch registration plan to activate your account and start with the Launch earning system.'
               : 'Explore our USDT subscription plans. Login to purchase and start your referral journey.'
             }
@@ -340,6 +365,11 @@ const SubscriptionPlans: React.FC = () => {
             <p className="text-gray-600 mb-6">
               No active subscription plans are currently available. Please contact support.
             </p>
+            {phaseMismatchHint && (
+              <p className="mx-auto mb-6 max-w-xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {phaseMismatchHint}
+              </p>
+            )}
             {!user && (
               <div className="mt-6">
                 <Link

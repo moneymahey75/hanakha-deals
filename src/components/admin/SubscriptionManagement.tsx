@@ -50,6 +50,14 @@ const SubscriptionManagement: React.FC = () => {
     loadPlans();
   }, [activeTab, planPhase]);
 
+  useEffect(() => {
+    if (planPhase === 'prelaunch' && activeTab === 'upgrade') {
+      setActiveTab('registration');
+    } else if (planPhase === 'launch' && activeTab === 'registration') {
+      setActiveTab('upgrade');
+    }
+  }, [planPhase, activeTab]);
+
   const loadPlans = async () => {
     setLoading(true);
     try {
@@ -268,6 +276,7 @@ const SubscriptionManagement: React.FC = () => {
 
       <div className="border-b border-gray-200">
         <nav className="flex space-x-8">
+          {planPhase === 'prelaunch' && (
           <button
             onClick={() => setActiveTab('registration')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
@@ -281,6 +290,8 @@ const SubscriptionManagement: React.FC = () => {
               <span>Registration Plans</span>
             </div>
           </button>
+          )}
+          {planPhase === 'launch' && (
           <button
             onClick={() => setActiveTab('upgrade')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
@@ -291,9 +302,10 @@ const SubscriptionManagement: React.FC = () => {
           >
             <div className="flex items-center space-x-2">
               <TrendingUp className="h-5 w-5" />
-              <span>Upgrade Plans</span>
+              <span>Launch Plans</span>
             </div>
           </button>
+          )}
         </nav>
       </div>
 
@@ -306,7 +318,7 @@ const SubscriptionManagement: React.FC = () => {
           className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
           <Plus className="h-5 w-5" />
-          <span>Create {planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} {activeTab === 'registration' ? 'Registration' : 'Upgrade'} Plan</span>
+          <span>Create {planPhase === 'launch' ? 'Launch' : 'Pre-Launch Registration'} Plan</span>
         </button>
       </div>
 
