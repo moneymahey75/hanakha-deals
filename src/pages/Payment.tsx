@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdmin } from '../contexts/AdminContext';
@@ -6,11 +6,8 @@ import { useNotification } from '../components/ui/NotificationProvider';
 import { supabase } from '../lib/supabase';
 import { WalletService } from '../services/walletService';
 import { WalletInfo, WalletState, TransactionState } from '../types/wallet';
-import { WalletSelector } from '../components/payment/WalletSelector';
 import { WalletInfo as WalletInfoComponent } from '../components/payment/WalletInfo';
-import { PaymentSection } from '../components/payment/PaymentSection';
-import { TrustIndicators } from '../components/payment/TrustIndicators';
-import { CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle } from 'lucide-react';
+import { CheckCircle, CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle, Loader, XCircle, ExternalLink, Copy } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
 import { sendAccountEmail } from '../utils/accountEmails';
 
@@ -26,6 +23,37 @@ interface SubscriptionPlan {
 
 // Key for storing transaction data
 const PAYMENT_SUCCESS_KEY = 'payment_success_state';
+const PAYMENT_SELECTED_PLAN_KEY = 'payment_selected_plan_state';
+
+const saveSelectedPlanState = (plan: SubscriptionPlan) => {
+  try {
+    const value = JSON.stringify({ plan, savedAt: Date.now() });
+    sessionStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+    localStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+  } catch {
+    // Storage can be unavailable in some embedded wallet browsers.
+  }
+};
+
+const loadSelectedPlanState = (): SubscriptionPlan | null => {
+  try {
+    const raw = sessionStorage.getItem(PAYMENT_SELECTED_PLAN_KEY) || localStorage.getItem(PAYMENT_SELECTED_PLAN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.plan || null;
+  } catch {
+    return null;
+  }
+};
+
+const clearSelectedPlanState = () => {
+  try {
+    sessionStorage.removeItem(PAYMENT_SELECTED_PLAN_KEY);
+    localStorage.removeItem(PAYMENT_SELECTED_PLAN_KEY);
+  } catch {
+    // ignore
+  }
+};
 
 // Helper function to determine wallet type from provider
 const getWalletType = (provider: any): string => {
@@ -60,29 +88,13 @@ const Payment: React.FC = () => {
   const [workingWalletReservedBalance, setWorkingWalletReservedBalance] = useState(0);
   const [useReservedBalance, setUseReservedBalance] = useState(false);
 
-  // FIX: Initialize transaction state from session storage
-  const initialTransactionState: TransactionState = (() => {
-    try {
-      const storedState = sessionStorage.getItem(PAYMENT_SUCCESS_KEY);
-      if (storedState) {
-        const { success, tx } = JSON.parse(storedState);
-        if (success) {
-          return tx as TransactionState;
-        }
-      }
-    } catch (e) {
-      console.error("Failed to parse payment success state from session storage:", e);
-      sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
-    }
-    // Default initial state
-    return {
-      isProcessing: false,
-      hash: null,
-      status: 'idle',
-      error: null,
-      distributionSteps: [],
-    } as TransactionState;
-  })();
+  const initialTransactionState: TransactionState = {
+    isProcessing: false,
+    hash: null,
+    status: 'idle',
+    error: null,
+    distributionSteps: [],
+  };
 
   const [transaction, setTransaction] = useState<TransactionState>(initialTransactionState);
 
@@ -180,8 +192,11 @@ const Payment: React.FC = () => {
   }, [settings, walletService, notification]);
 
   useEffect(() => {
-    // Validate and get selected plan from navigation state
-    const planFromState = location.state?.selectedPlan;
+    sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+
+    // Validate and get selected plan from navigation state, then fall back to
+    // durable storage because mobile wallet confirmation can reload this route.
+    const planFromState = location.state?.selectedPlan || loadSelectedPlanState();
 
     if (planFromState) {
       // Input validation functions
@@ -196,6 +211,7 @@ const Payment: React.FC = () => {
       }
 
       setSelectedPlan(planFromState);
+      saveSelectedPlanState(planFromState);
     } else {
       // No plan selected, redirect to subscription plans
       notification.showError('No Plan Selected', 'Please select a subscription plan first.');
@@ -257,6 +273,90 @@ const Payment: React.FC = () => {
   const validatePrice = (price: number): boolean => {
     return price > 0 && price < 1000000; // Reasonable upper limit
   };
+
+  const isLivePaymentMode = settings?.paymentMode === true ||
+    settings?.paymentMode === 1 ||
+    settings?.paymentMode === '1' ||
+    settings?.paymentMode === 'true';
+
+  const networkName = isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet';
+
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const copyToClipboard = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      notification.showSuccess('Copied', 'Address copied to clipboard');
+    } catch {
+      notification.showError('Copy Failed', 'Unable to copy address');
+    }
+  };
+
+  const openTransaction = () => {
+    if (!transaction.hash) return;
+    const explorerUrl = isLivePaymentMode
+      ? `https://bscscan.com/tx/${transaction.hash}`
+      : `https://testnet.bscscan.com/tx/${transaction.hash}`;
+    window.open(explorerUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const goToPaymentSuccess = (details: {
+    txHash?: string | null;
+    amount: number;
+    reservedUsed?: number;
+  }) => {
+    sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+    clearSelectedPlanState();
+    navigate('/payment-success', {
+      replace: true,
+      state: {
+        txHash: details.txHash || null,
+        amount: details.amount,
+        reservedUsed: details.reservedUsed || 0,
+        network: settings?.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
+        planName: selectedPlan?.tsp_name,
+      }
+    });
+  };
+
+  const handleAddUsdtToken = async () => {
+    try {
+      await walletService.watchUSDTToken();
+      notification.showSuccess('Token Added', 'USDT token was added to your wallet.');
+    } catch (error: any) {
+      notification.showError('Token Add Failed', error?.message || 'Unable to add USDT token.');
+    }
+  };
+
+  const payNowDisabledReason = useMemo(() => {
+    if (transaction.isProcessing) return 'A payment is already being processed.';
+    if (!adminReceivingWallet) return 'Admin receiving wallet is not configured yet.';
+    if (!validateAddress(adminReceivingWallet)) return 'Admin receiving wallet is not configured correctly.';
+    if (useReservedBalance && canUseReservedForUpgradeUi && chainPayAmountForUpgrade === 0) return null;
+    if (!walletState.isConnected || !walletState.address) return 'Please connect your wallet to continue.';
+    if (walletState.warning) return walletState.warning;
+    const amountToPay = useReservedBalance && canUseReservedForUpgradeUi
+      ? chainPayAmountForUpgrade
+      : Number(selectedPlan?.tsp_price || 0);
+    if (parseFloat(walletState.usdtBalance || '0') < amountToPay) {
+      return `You need at least ${amountToPay.toFixed(2)} USDT. Current balance: ${parseFloat(walletState.usdtBalance || '0').toFixed(2)} USDT.`;
+    }
+    return null;
+  }, [
+    adminReceivingWallet,
+    canUseReservedForUpgradeUi,
+    chainPayAmountForUpgrade,
+    selectedPlan?.tsp_price,
+    transaction.isProcessing,
+    useReservedBalance,
+    walletState.address,
+    walletState.isConnected,
+    walletState.usdtBalance,
+    walletState.warning
+  ]);
 
 		  // Save wallet connection to database (best-effort)
 		  const saveWalletConnection = async (address: string, walletName: string, walletType: string, chainId: number | null) => {
@@ -480,9 +580,14 @@ const Payment: React.FC = () => {
             reservedUsed: reservedUsedRounded,
           });
           notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance.');
+          goToPaymentSuccess({
+            txHash: null,
+            amount: selectedPlan.tsp_price,
+            reservedUsed: reservedUsedRounded,
+          });
           return;
         } catch (error: any) {
-          const message = extractEdgeFunctionErrorMessage(error) || error?.message || 'Upgrade payment failed';
+          const message = await extractEdgeFunctionErrorMessage(error) || error?.message || 'Upgrade payment failed';
           setTransaction({
             isProcessing: false,
             hash: null,
@@ -540,6 +645,7 @@ const Payment: React.FC = () => {
         error: null,
         distributionSteps: [`Reserved used: ${reservedUsedRounded} USDT`, `Remaining to pay: ${chainAmount} USDT`]
       });
+      saveSelectedPlanState(selectedPlan);
       sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
 
       try {
@@ -597,9 +703,14 @@ const Payment: React.FC = () => {
           network: settings.paymentMode == '1' ? 'BSC Mainnet' : 'BSC Testnet',
         });
         notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance and USDT payment.');
+        goToPaymentSuccess({
+          txHash: hash,
+          amount: selectedPlan.tsp_price,
+          reservedUsed: reservedUsedRounded,
+        });
         return;
       } catch (error: any) {
-        const errorMessage = extractEdgeFunctionErrorMessage(error) || error?.message || 'Payment processing failed';
+        const errorMessage = await extractEdgeFunctionErrorMessage(error) || error?.message || 'Payment processing failed';
         setTransaction({
           isProcessing: false,
           hash: transaction.hash,
@@ -658,13 +769,15 @@ const Payment: React.FC = () => {
     }
 
     // Reset transaction state
-    setTransaction({
+    const pendingTransactionState = {
       isProcessing: true,
       hash: null,
       status: 'pending',
       error: null,
       distributionSteps: []
-    });
+    } as TransactionState;
+    setTransaction(pendingTransactionState);
+    saveSelectedPlanState(selectedPlan);
     sessionStorage.removeItem(PAYMENT_SUCCESS_KEY); // Clear session storage flag
 
     let subscriptionData = null;
@@ -748,8 +861,11 @@ const Payment: React.FC = () => {
       }
 
       notification.showSuccess('Payment Successful!', 'Your subscription has been activated.');
-
-      // Local state update is handled, the component will re-render and re-initialize from storage
+      goToPaymentSuccess({
+        txHash: hash,
+        amount: selectedPlan.tsp_price,
+        reservedUsed: 0,
+      });
 
     } catch (error: any) {
       console.error('Payment processing failed:', error);
@@ -814,6 +930,7 @@ const Payment: React.FC = () => {
   const handleGoToDashboard = () => {
     // FIX: Clear the persistent state upon navigating away
     sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+    clearSelectedPlanState();
 
     navigate('/customer/dashboard', {
       state: {
@@ -893,264 +1010,318 @@ const Payment: React.FC = () => {
 
 
   return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 py-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="mb-8">
-            <Link
-                to="/subscription-plans"
-                className="inline-flex items-center text-purple-300 hover:text-purple-200 mb-4"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Plans
-            </Link>
-            <h1 className="text-4xl font-bold text-white mb-2">USDT Payment</h1>
-            <p className="text-purple-200">
-              Secure BEP-20 USDT payment processing
-              {settings && (
-                  <span className="ml-2 px-2 py-1 bg-purple-600/30 rounded-md text-sm">
-                {settings.paymentMode === true ||
-                settings.paymentMode === 1 ||
-                settings.paymentMode === '1' ||
-                settings.paymentMode === 'true'
-                  ? 'BSC Mainnet'
-                  : 'BSC Testnet'}
-              </span>
-              )}
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <div>
+          <Link
+            to="/subscription-plans"
+            className="inline-flex items-center text-blue-700 hover:text-blue-800 mb-4 text-sm font-medium"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Plans
+          </Link>
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {isUpgradePlanUi ? 'Upgrade Payment' : 'Registration Payment'}
+            </h1>
+            <p className="text-gray-600">Connect your wallet and pay with USDT (BEP-20) to activate your plan.</p>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Plan Summary */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 shadow-xl">
-              <h2 className="text-2xl font-semibold text-white mb-6 flex items-center">
-                <CreditCard className="w-6 h-6 mr-3 text-purple-300" />
-                Subscription Details
-              </h2>
+        {transaction.status !== 'idle' && (
+          <div className={`rounded-2xl border p-4 sm:p-5 shadow-sm ${
+            transaction.status === 'success'
+              ? 'bg-green-50 border-green-200'
+              : transaction.status === 'error'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-blue-50 border-blue-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                transaction.status === 'success'
+                  ? 'bg-green-100 text-green-700'
+                  : transaction.status === 'error'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-blue-100 text-blue-700'
+              }`}>
+                {transaction.status === 'pending' && <Loader className="h-5 w-5 animate-spin" />}
+                {transaction.status === 'success' && <CheckCircle className="h-5 w-5" />}
+                {transaction.status === 'error' && <XCircle className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                  {transaction.status === 'pending' && 'Processing Payment...'}
+                  {transaction.status === 'success' && 'Payment Confirmed'}
+                  {transaction.status === 'error' && 'Payment Failed'}
+                </h2>
+                {transaction.error && (
+                  <p className="mt-1 text-sm text-gray-700">{transaction.error}</p>
+                )}
+                {transaction.hash && (
+                  <div className="transaction-hash-container mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <code className="transaction-hash-code min-w-0 flex-1 overflow-x-auto scrollbar-hide whitespace-nowrap rounded-lg border border-gray-200 bg-white/80 px-3 py-2 font-mono text-xs text-gray-900">
+                      {transaction.hash}
+                    </code>
+                    <button
+                      onClick={openTransaction}
+                      className="transaction-hash-button inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      <span>View Tx</span>
+                    </button>
+                  </div>
+                )}
+                {transaction.status === 'success' && (
+                  <button
+                    onClick={handleGoToDashboard}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 sm:w-auto"
+                  >
+                    Go to Dashboard
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 mb-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white">{selectedPlan.tsp_name}</h3>
-                    <p className="text-purple-200 text-sm mt-1">{selectedPlan.tsp_description}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-bold text-white">{selectedPlan.tsp_price}</p>
-                    <p className="text-purple-300 text-sm">USDT</p>
-                  </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-xl shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Selected Plan</h2>
+              <div className="flex justify-between items-start gap-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">{selectedPlan.tsp_name}</h3>
+                  <p className="text-gray-600 text-sm mt-1">{selectedPlan.tsp_description}</p>
                 </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-3xl font-bold text-blue-600">${selectedPlan.tsp_price}</div>
+                  <div className="text-sm text-gray-500">USDT (BEP-20)</div>
+                </div>
+              </div>
 
-                <div className="border-t border-white/20 pt-4">
-                  <h4 className="font-medium text-white mb-3">Features included:</h4>
+              {Array.isArray(selectedPlan.tsp_features) && selectedPlan.tsp_features.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Features Included:</h4>
                   <ul className="space-y-2">
                     {selectedPlan.tsp_features.map((feature, index) => (
-                        <li key={index} className="flex items-center text-sm text-purple-200">
-                          <div className="w-2 h-2 bg-green-400 rounded-full mr-3 flex-shrink-0"></div>
-                          {feature}
-                        </li>
+                      <li key={index} className="flex items-center text-gray-600">
+                        <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                        <span>{feature}</span>
+                      </li>
                     ))}
                   </ul>
                 </div>
-              </div>
-
-              <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-xl p-4 border border-green-400/30">
-                <div className="flex justify-between items-center">
-                  <span className="text-white font-medium">Total Payment</span>
-                  <span className="text-2xl font-bold text-green-300">{selectedPlan.tsp_price} USDT</span>
-                </div>
-                <p className="text-green-200 text-sm mt-1">
-                  {selectedPlan.tsp_duration_days > 0 ? `${selectedPlan.tsp_duration_days} days` : 'Lifetime'} subscription • BEP-20 Token
-                </p>
-              </div>
+              )}
             </div>
 
-            {/* Payment Section */}
-            <div className="space-y-6">
-              {!walletState.isConnected && !hasActivePlan && (!useReservedBalance || chainPayAmountForUpgrade > 0) ? (
-                  <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 shadow-xl">
-                    <h2 className="text-2xl font-semibold text-white mb-6 flex items-center">
-                      <Wallet className="w-6 h-6 mr-3 text-purple-300" />
-                      Connect Your Wallet
-                    </h2>
+            <div className="bg-white rounded-xl shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Connect Wallet</h2>
 
-                    {availableWallets.length === 0 && (
-                        <div className="bg-yellow-500/20 border border-yellow-400/30 rounded-xl p-4 mb-6">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <AlertTriangle className="h-5 w-5 text-yellow-300" />
-                            <span className="font-medium text-yellow-200">No Wallet Detected</span>
-                          </div>
-                          <p className="text-yellow-100 text-sm">
-                            Please install MetaMask, Trust Wallet, or another Web3 wallet to continue with USDT payments.
-                          </p>
-                        </div>
-                    )}
+              {!walletState.isConnected ? (
+                <div className="space-y-4">
+                  {availableWallets.length === 0 ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                      <div className="flex items-center gap-2 font-medium mb-1">
+                        <AlertTriangle className="h-4 w-4" />
+                        No compatible wallet detected
+                      </div>
+                      Please install MetaMask, Trust Wallet, or SafePal.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {availableWallets.map((wallet) => (
+                        <button
+                          key={wallet.name}
+                          onClick={() => handleWalletConnect(wallet.provider)}
+                          disabled={isConnecting}
+                          className="p-4 border-2 rounded-lg transition-all border-gray-200 hover:border-blue-400 bg-white disabled:opacity-60"
+                        >
+                          <div className="text-2xl mb-2">{wallet.icon}</div>
+                          <p className="text-sm font-medium text-gray-900">{wallet.name}</p>
+                          <p className="text-xs text-gray-500 mt-1">{isConnecting ? 'Connecting...' : 'Connect'}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                    {lastConnectedWallet && (
-                        <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-6">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <Shield className="h-5 w-5 text-blue-300" />
-                            <span className="font-medium text-blue-200">Previously Connected Wallet</span>
-                          </div>
-                          <div className="text-blue-100 text-sm">
-                            <p className="break-all">{lastConnectedWallet.tuwc_wallet_address}</p>
-                            <p className="text-blue-200 mt-1">
-                              {lastConnectedWallet.tuwc_wallet_name} •
-                              Last connected: {new Date(lastConnectedWallet.tuwc_last_connected_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <button
-                              onClick={handleReconnectPreviousWallet}
-                              disabled={isConnecting}
-                              className="mt-3 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
-                          >
-                            {isConnecting ? 'Reconnecting...' : 'Reconnect Previous Wallet'}
-                          </button>
-                        </div>
-                    )}
-
-	                    <WalletSelector
-	                        wallets={availableWallets}
-	                        onConnect={handleWalletConnect}
-	                        isConnecting={isConnecting}
-	                    />
-
-                      {canUseReservedForUpgradeUi && !hasActivePlan && (
-                        <div className="mt-6 bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 shadow-xl">
-                          <h2 className="text-xl font-semibold text-white mb-3">Use Reserved Balance</h2>
-                          <p className="text-purple-200 text-sm mb-4">
-                            Reserved balance (working wallet): {workingWalletReservedBalance.toFixed(2)} USDT
-                          </p>
-
-                          {useReservedBalance && (
-                            <p className="text-purple-200 text-sm mb-4">
-                              Using reserved: {reservedUsedForUpgrade.toFixed(2)} USDT • Remaining: {chainPayAmountForUpgrade.toFixed(2)} USDT
-                            </p>
-                          )}
-
-                          <label className="flex items-center space-x-3 text-sm text-purple-100">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4"
-                              checked={useReservedBalance}
-                              onChange={(e) => setUseReservedBalance(e.target.checked)}
-                            />
-                            <span>Apply reserved balance to this upgrade</span>
-                          </label>
-                        </div>
-                      )}
-	                  </div>
-	              ) : (
-	                <>
-	                  {canUseReservedForUpgradeUi && !hasActivePlan && (
-	                    <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 shadow-xl">
-	                      <h2 className="text-xl font-semibold text-white mb-3">Pay From Reserved Balance</h2>
-	                      <p className="text-purple-200 text-sm mb-4">
-	                        Reserved balance (working wallet): {workingWalletReservedBalance.toFixed(2)} USDT
-	                      </p>
-                        {useReservedBalance && chainPayAmountForUpgrade > 0 && (
-                          <p className="text-purple-200 text-sm mb-4">
-                            Using reserved: {reservedUsedForUpgrade.toFixed(2)} USDT • Remaining: {chainPayAmountForUpgrade.toFixed(2)} USDT
-                          </p>
-                        )}
-	
-	                      <label className="flex items-center space-x-3 text-sm text-purple-100 mb-4">
-	                        <input
-	                          type="checkbox"
-	                          className="h-4 w-4"
-	                          checked={useReservedBalance}
-	                          onChange={(e) => setUseReservedBalance(e.target.checked)}
-	                          disabled={!canUseReservedForUpgradeUi}
-	                        />
-	                        <span>Use reserved balance for this upgrade</span>
-	                      </label>
-	
-	                      {useReservedBalance && transaction.status !== 'success' && (
-	                        <button
-	                          onClick={handlePayment}
-	                          disabled={transaction.isProcessing}
-	                          className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium transition-all duration-200 disabled:cursor-not-allowed shadow-lg"
-	                        >
-	                          <span>
-                                {transaction.isProcessing
-                                  ? 'Processing...'
-                                  : chainPayAmountForUpgrade > 0
-                                    ? `Pay Remaining ${chainPayAmountForUpgrade.toFixed(2)} USDT`
-                                    : `Pay ${selectedPlan.tsp_price} USDT`}
-                              </span>
-	                        </button>
-	                      )}
-	
-	                      {useReservedBalance && transaction.status === 'success' && (
-	                        <button
-	                          onClick={handleGoToDashboard}
-	                          className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-medium transition-all duration-200 shadow-lg"
-	                        >
-	                          <span>Go to Dashboard</span>
-	                        </button>
-	                      )}
-	
-	                      {useReservedBalance && transaction.status === 'error' && transaction.error && (
-	                        <div className="mt-4 p-4 bg-red-500/20 border border-red-400/30 rounded-xl text-red-100 text-sm">
-	                          {transaction.error}
-	                        </div>
-	                      )}
-	                    </div>
-	                  )}
-	
-	                  {walletState.isConnected && (
-	                    <WalletInfoComponent
-	                      wallet={walletState}
-	                      onDisconnect={handleWalletDisconnect}
-	                      settings={settings}
-	                    />
-	                  )}
-	
-	                  {walletState.isConnected && (!useReservedBalance || !canUseReservedForUpgradeUi) && (
-	                    <PaymentSection
-	                      onPayment={handlePayment}
-	                      transaction={transaction}
-	                      distributionSteps={transaction.distributionSteps}
-	                      planPrice={selectedPlan.tsp_price}
-	                      settings={settings}
-	                      onGoToDashboard={handleGoToDashboard}
-	                    />
-	                  )}
-	                </>
-	              )}
+                  {lastConnectedWallet && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Shield className="h-5 w-5 text-blue-600" />
+                        <span className="font-medium text-blue-900">Previously Connected Wallet</span>
+                      </div>
+                      <p className="break-all text-sm text-blue-800">{lastConnectedWallet.tuwc_wallet_address}</p>
+                      <button
+                        onClick={handleReconnectPreviousWallet}
+                        disabled={isConnecting}
+                        className="mt-3 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
+                      >
+                        {isConnecting ? 'Reconnecting...' : 'Reconnect Previous Wallet'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <WalletInfoComponent
+                  wallet={walletState}
+                  onDisconnect={handleWalletDisconnect}
+                  onRefresh={async () => {
+                    const updated = await walletService.syncCurrentWalletState();
+                    setWalletState(updated);
+                  }}
+                />
+              )}
             </div>
           </div>
 
-          <TrustIndicators />
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-xl shadow-md p-6 sticky top-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h3>
 
-          {/* Instructions */}
-          <div className="mt-12 bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20">
-            <h3 className="text-xl font-semibold text-white mb-4">Payment Instructions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-purple-200">
-              <div>
-                <div className="bg-purple-500/30 w-8 h-8 rounded-full flex items-center justify-center mb-3">
-                  <span className="text-white font-bold">1</span>
+              {canUseReservedForUpgradeUi && (
+                <div className="mb-5 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <label className="flex items-start gap-3 text-sm text-blue-900">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={useReservedBalance}
+                      onChange={(e) => setUseReservedBalance(e.target.checked)}
+                    />
+                    <span>
+                      Use reserved balance
+                      <span className="block text-xs text-blue-700 mt-1">
+                        Available: {workingWalletReservedBalance.toFixed(2)} USDT
+                      </span>
+                    </span>
+                  </label>
                 </div>
-                <h4 className="font-medium text-white mb-2">Connect Wallet</h4>
-                <p>Connect your MetaMask or compatible wallet with USDT balance on BNB Smart Chain.</p>
-              </div>
-              <div>
-                <div className="bg-purple-500/30 w-8 h-8 rounded-full flex items-center justify-center mb-3">
-                  <span className="text-white font-bold">2</span>
+              )}
+
+              <div className="space-y-3 mb-6 text-sm text-gray-600">
+                <div className="flex justify-between">
+                  <span>Plan Price</span>
+                  <span className="font-medium">${selectedPlan.tsp_price}</span>
                 </div>
-                <h4 className="font-medium text-white mb-2">Send USDT</h4>
-                <p>Review the wallet transaction and send USDT to the admin receiving wallet.</p>
-              </div>
-              <div>
-                <div className="bg-purple-500/30 w-8 h-8 rounded-full flex items-center justify-center mb-3">
-                  <span className="text-white font-bold">3</span>
+                {useReservedBalance && canUseReservedForUpgradeUi && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Reserved Used</span>
+                      <span className="font-medium">{reservedUsedForUpgrade.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Wallet Payment</span>
+                      <span className="font-medium">{chainPayAmountForUpgrade.toFixed(2)} USDT</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between">
+                  <span>Network</span>
+                  <span className="font-medium">{networkName}</span>
                 </div>
-                <h4 className="font-medium text-white mb-2">Verify & Access</h4>
-                <p>Verify your transaction using the provided link, then proceed to dashboard.</p>
+                {!!adminReceivingWallet && (
+                  <div className="flex justify-between items-center gap-3">
+                    <span>Receiving Wallet</span>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-xs">
+                        {formatAddress(adminReceivingWallet)}
+                      </code>
+                      <button
+                        onClick={() => void copyToClipboard(adminReceivingWallet)}
+                        className="p-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200"
+                        title="Copy receiving wallet"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {!!String(settings?.usdtAddress || '').trim() && (
+                  <div className="flex justify-between items-center gap-3">
+                    <span>USDT Contract</span>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-xs">
+                        {formatAddress(String(settings?.usdtAddress || '').trim())}
+                      </code>
+                      <button
+                        onClick={() => void copyToClipboard(String(settings?.usdtAddress || '').trim())}
+                        className="p-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200"
+                        title="Copy USDT contract"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-gray-900 border-t pt-3">
+                  <span>Total</span>
+                  <span className="text-blue-600">
+                    {useReservedBalance && canUseReservedForUpgradeUi
+                      ? `${chainPayAmountForUpgrade.toFixed(2)} USDT`
+                      : `${selectedPlan.tsp_price} USDT`}
+                  </span>
+                </div>
               </div>
+
+              <div className="space-y-3 text-sm text-gray-600 mb-6">
+                <div className="flex items-start">
+                  <Shield className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
+                  <span>Payment sent directly to the admin wallet</span>
+                </div>
+                <div className="flex items-start">
+                  <CreditCard className="h-5 w-5 text-green-500 mr-2 mt-0.5" />
+                  <span>USDT (BEP-20) only</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handlePayment}
+                disabled={!!payNowDisabledReason}
+                className={`w-full py-3 rounded-lg font-medium flex items-center justify-center space-x-2 ${
+                  !payNowDisabledReason
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {transaction.isProcessing ? (
+                  <>
+                    <Loader className="h-5 w-5 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="h-5 w-5" />
+                    <span>{useReservedBalance && chainPayAmountForUpgrade === 0 ? 'Pay From Reserved' : 'Pay Now'}</span>
+                  </>
+                )}
+              </button>
+
+              {walletState.isConnected && (
+                <button
+                  type="button"
+                  onClick={() => void handleAddUsdtToken()}
+                  className="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                >
+                  Add USDT Token
+                </button>
+              )}
+
+              {payNowDisabledReason && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                  {payNowDisabledReason}
+                </p>
+              )}
+
+              <p className="text-xs text-gray-500 text-center mt-4">
+                By proceeding, you agree to our terms and conditions
+              </p>
             </div>
           </div>
         </div>
       </div>
+    </div>
   );
 };
 

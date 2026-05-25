@@ -206,6 +206,31 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
         return [];
     };
 
+    const getGatewayResponse = (payment: Payment) => {
+        const response = payment.tp_gateway_response;
+        if (!response) return {};
+        if (typeof response === 'string') {
+            try {
+                return JSON.parse(response);
+            } catch {
+                return {};
+            }
+        }
+        return response;
+    };
+
+    const getConsumedReservedAmount = (payment: Payment) => {
+        const gateway = getGatewayResponse(payment);
+        return Number(gateway.reserved_used ?? gateway.reservedUsed ?? 0);
+    };
+
+    const getPlanTotalAmount = (payment: Payment) => {
+        const gateway = getGatewayResponse(payment);
+        const planPrice = Number(gateway.plan_price ?? payment.subscription?.plan?.tsp_price ?? 0);
+        if (planPrice > 0) return planPrice;
+        return Number(payment.tp_amount || 0) + getConsumedReservedAmount(payment);
+    };
+
     if (loading) {
         return (
             <div className="text-center py-8">
@@ -267,6 +292,11 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                         <p className="text-sm text-gray-500 capitalize">
                                             {payment.tp_payment_method}
                                         </p>
+                                        {getConsumedReservedAmount(payment) > 0 && (
+                                            <p className="mt-1 text-xs font-medium text-amber-700">
+                                                Consumed reserved: {getConsumedReservedAmount(payment).toFixed(2)} USDT
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -362,6 +392,20 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                             <span className="text-gray-600">Amount:</span>
                                             <span className="font-medium">{selectedPayment.tp_amount} {selectedPayment.tp_currency}</span>
                                         </div>
+                                        {getConsumedReservedAmount(selectedPayment) > 0 && (
+                                            <>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Consumed Reserved:</span>
+                                                    <span className="font-medium text-amber-700">
+                                                        {getConsumedReservedAmount(selectedPayment).toFixed(2)} USDT
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Plan Total:</span>
+                                                    <span className="font-medium">{getPlanTotalAmount(selectedPayment).toFixed(2)} USDT</span>
+                                                </div>
+                                            </>
+                                        )}
                                         <div className="flex justify-between">
                                             <span className="text-gray-600">Status:</span>
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(selectedPayment.tp_payment_status)}`}>

@@ -86,6 +86,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           '/registration-payment',
           '/registration-payment-success',
           '/payment',
+          '/payment-success',
           '/subscription-plans',
           '/verify-otp',
         ];
@@ -232,6 +233,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     // Allow access to specific pages without subscription
     const allowedWithoutSubscription = [
       '/payment',
+      '/payment-success',
       '/subscription-plans',
       '/registration-payment',
       '/registration-payment-success',

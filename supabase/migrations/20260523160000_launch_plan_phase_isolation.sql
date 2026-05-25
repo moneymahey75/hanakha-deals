@@ -11,6 +11,13 @@ ADD COLUMN IF NOT EXISTS tsp_plan_phase text NOT NULL DEFAULT 'prelaunch';
 ALTER TABLE public.tbl_user_subscriptions
 ADD COLUMN IF NOT EXISTS tus_plan_phase text NOT NULL DEFAULT 'prelaunch';
 
+ALTER TABLE public.tbl_user_subscriptions
+DROP CONSTRAINT IF EXISTS tbl_user_subscriptions_tus_status_check;
+
+ALTER TABLE public.tbl_user_subscriptions
+ADD CONSTRAINT tbl_user_subscriptions_tus_status_check
+CHECK (tus_status IN ('active', 'expired', 'cancelled', 'upgraded'));
+
 ALTER TABLE public.tbl_users
 ADD COLUMN IF NOT EXISTS tu_current_plan_phase text NOT NULL DEFAULT 'prelaunch',
 ADD COLUMN IF NOT EXISTS tu_launch_plan_activated_at timestamptz;
@@ -506,7 +513,7 @@ BEGIN
     'Upgrade paid from reserved balance',
     'completed',
     'upgrade_from_reserved',
-    v_payment_id::text,
+    v_payment_id,
     now()
   );
 
@@ -631,19 +638,19 @@ BEGIN
   v_start_date := now();
   v_end_date := v_start_date + (COALESCE(v_duration_days, 30) || ' days')::interval;
 
-  SELECT tw_id, tw_balance, tw_reserved_balance
-    INTO v_wallet_id, v_wallet_balance, v_wallet_reserved
-  FROM public.tbl_wallets
-  WHERE tw_user_id = p_user_id
-    AND tw_currency = COALESCE(p_currency, 'USDT')
-    AND tw_wallet_type = 'working'
-  FOR UPDATE;
-
-  IF v_wallet_id IS NULL THEN
-    RAISE EXCEPTION 'Wallet not found';
-  END IF;
-
   IF p_reserved_used > 0 THEN
+    SELECT tw_id, tw_balance, tw_reserved_balance
+      INTO v_wallet_id, v_wallet_balance, v_wallet_reserved
+    FROM public.tbl_wallets
+    WHERE tw_user_id = p_user_id
+      AND tw_currency = COALESCE(p_currency, 'USDT')
+      AND tw_wallet_type = 'working'
+    FOR UPDATE;
+
+    IF v_wallet_id IS NULL THEN
+      RAISE EXCEPTION 'Wallet not found';
+    END IF;
+
     IF COALESCE(v_wallet_reserved, 0) < p_reserved_used THEN
       RAISE EXCEPTION 'Insufficient reserved balance';
     END IF;
@@ -727,7 +734,7 @@ BEGIN
       'Upgrade portion paid from reserved balance',
       'completed',
       'upgrade_from_reserved',
-      v_payment_id::text,
+      v_payment_id,
       now()
     );
   END IF;
