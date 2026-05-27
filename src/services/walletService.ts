@@ -51,6 +51,7 @@ const DISTRIBUTION_ABI = [
 
 const ERC20_TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
 const READONLY_RPC_TIMEOUT_MS = 8000;
+type SupportedWalletName = 'SafePal' | 'Trust Wallet' | 'MetaMask' | 'TokenPocket' | 'Bitget Wallet';
 
 // Admin Settings Interface
 interface AdminSettings {
@@ -68,6 +69,88 @@ type Eip6963ProviderDetail = {
     uuid?: string;
   };
   provider?: any;
+};
+
+const getProviderFlag = (provider: any, flag: string): boolean => {
+  try {
+    return Boolean(provider?.[flag]);
+  } catch {
+    return false;
+  }
+};
+
+const hasProviderRequest = (provider: any): boolean => {
+  try {
+    return typeof provider?.request === 'function';
+  } catch {
+    return false;
+  }
+};
+
+const hasLegacyProviderRequest = (provider: any): boolean => {
+  try {
+    return typeof provider?.sendAsync === 'function' || typeof provider?.send === 'function';
+  } catch {
+    return false;
+  }
+};
+
+const normalizeProviderRequest = (provider: any): any => {
+  if (!provider || hasProviderRequest(provider)) return provider;
+  if (!hasLegacyProviderRequest(provider)) return provider;
+
+  return {
+    ...provider,
+    request: ({ method, params }: { method: string; params?: any[] }) =>
+      new Promise((resolve, reject) => {
+        const payload = {
+          id: Date.now(),
+          jsonrpc: '2.0',
+          method,
+          params: params || [],
+        };
+        const callback = (error: any, response: any) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          if (response?.error) {
+            reject(response.error);
+            return;
+          }
+          resolve(response?.result ?? response);
+        };
+
+        if (typeof provider.sendAsync === 'function') {
+          provider.sendAsync(payload, callback);
+          return;
+        }
+
+        try {
+          const result = provider.send(payload, callback);
+          if (result && typeof result.then === 'function') {
+            result.then(resolve).catch(reject);
+          } else if (result !== undefined) {
+            resolve(result?.result ?? result);
+          }
+        } catch (error) {
+          reject(error);
+        }
+      }),
+  };
+};
+
+const normalizeUsableProvider = (provider: any): any | null => {
+  const normalizedProvider = normalizeProviderRequest(provider);
+  return hasProviderRequest(normalizedProvider) ? normalizedProvider : null;
+};
+
+const getEthereumProviderList = (ethereum: any): any[] => {
+  try {
+    return Array.isArray(ethereum?.providers) ? ethereum.providers : [];
+  } catch {
+    return [];
+  }
 };
 
 // Wallet Service Class
@@ -234,12 +317,132 @@ export class WalletService {
 
   private getEthereumProviders(): any[] {
     if (typeof window === 'undefined') return [];
+    const providers: any[] = [];
     const ethereum = (window as any).ethereum;
-    if (!ethereum) return [];
-    if (Array.isArray(ethereum.providers) && ethereum.providers.length > 0) {
-      return ethereum.providers;
+    const ethereumProviders = getEthereumProviderList(ethereum);
+
+    if (ethereumProviders.length > 0) {
+      providers.push(...ethereumProviders);
+    } else if (ethereum) {
+      providers.push(ethereum);
     }
-    return [ethereum];
+
+    for (const provider of [
+      this.getTokenPocketProvider(),
+      this.getBitgetProvider()
+    ]) {
+      if (provider && !providers.includes(provider)) {
+        providers.push(provider);
+      }
+    }
+
+    return providers;
+  }
+
+  private getTokenPocketProvider(): any | null {
+    if (typeof window === 'undefined') return null;
+    return (window as any).tokenpocket?.ethereum || null;
+  }
+
+  private getBitgetProvider(): any | null {
+    if (typeof window === 'undefined') return null;
+    const bitkeep = (window as any).bitkeep;
+    const bitget = (window as any).bitget;
+    const BitKeep = (window as any).BitKeep;
+
+    return (
+      normalizeUsableProvider(bitkeep?.ethereum) ||
+      normalizeUsableProvider(bitkeep?.ethereumProvider) ||
+      normalizeUsableProvider(bitkeep) ||
+      normalizeUsableProvider(bitget?.ethereum) ||
+      normalizeUsableProvider(bitget?.ethereumProvider) ||
+      normalizeUsableProvider(bitget) ||
+      normalizeUsableProvider(BitKeep?.ethereum) ||
+      normalizeUsableProvider(BitKeep?.ethereumProvider) ||
+      normalizeUsableProvider(BitKeep) ||
+      normalizeUsableProvider((window as any).bitgetWallet) ||
+      null
+    );
+  }
+
+  private getDetectedBitgetProvider(): any | null {
+    const directProvider = this.getBitgetProvider();
+    if (directProvider) return directProvider;
+
+    for (const detail of this.eip6963Providers) {
+      const provider = detail.provider;
+      const name = String(detail.info?.name || '').toLowerCase();
+      const rdns = String(detail.info?.rdns || '').toLowerCase();
+
+      if (
+        provider &&
+        (
+          this.isBitgetProvider(provider) ||
+          name.includes('bitget') ||
+          name.includes('bitkeep') ||
+          rdns.includes('bitget') ||
+          rdns.includes('bitkeep')
+        )
+      ) {
+        return normalizeUsableProvider(provider);
+      }
+    }
+
+    return null;
+  }
+
+  private getSingleInjectedEthereumProvider(): any | null {
+    if (typeof window === 'undefined') return null;
+    const ethereum = (window as any).ethereum;
+    if (!ethereum || (!hasProviderRequest(ethereum) && !hasLegacyProviderRequest(ethereum))) return null;
+    if (getEthereumProviderList(ethereum).length > 0) return null;
+
+    // Some Bitget extension builds expose only window.ethereum and no BitKeep flags.
+    // Use it only as a last-resort click-time fallback for the Bitget button.
+    if (
+      getProviderFlag(ethereum, 'isMetaMask') ||
+      getProviderFlag(ethereum, 'isSafePal') ||
+      getProviderFlag(ethereum, 'isTrust') ||
+      getProviderFlag(ethereum, 'isTrustWallet') ||
+      this.isTokenPocketProvider(ethereum)
+    ) {
+      return null;
+    }
+
+    return normalizeProviderRequest(ethereum);
+  }
+
+  private providerHasWalletMarker(provider: any, markers: string[]): boolean {
+    if (!provider) return false;
+
+    try {
+      const keys = Object.keys(provider);
+      return keys.some((key) => {
+        const normalizedKey = key.toLowerCase();
+        return (
+          markers.some((marker) => normalizedKey.includes(marker)) &&
+          !hasProviderRequest(provider[key])
+        );
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  private isTokenPocketProvider(provider: any): boolean {
+    return Boolean(getProviderFlag(provider, 'isTokenPocket') || provider === this.getTokenPocketProvider() || this.providerHasWalletMarker(provider, ['tokenpocket', 'tpwallet']));
+  }
+
+  private isBitgetProvider(provider: any): boolean {
+    return Boolean(
+      getProviderFlag(provider, 'isBitKeep') ||
+      getProviderFlag(provider, 'isBitkeep') ||
+      getProviderFlag(provider, 'isBitKeepChrome') ||
+      getProviderFlag(provider, 'isBitget') ||
+      getProviderFlag(provider, 'isBitgetWallet') ||
+      provider === this.getBitgetProvider() ||
+      this.providerHasWalletMarker(provider, ['bitkeep', 'bitget'])
+    );
   }
 
   private requestEip6963Providers(): Eip6963ProviderDetail[] {
@@ -259,27 +462,52 @@ export class WalletService {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
   }
 
-  private getInAppWalletName(): 'SafePal' | 'Trust Wallet' | 'MetaMask' | null {
+  private getInAppWalletName(): SupportedWalletName | null {
     if (typeof navigator === 'undefined') return null;
     const ua = navigator.userAgent || '';
     if (/SafePal/i.test(ua)) return 'SafePal';
     if (/Trust|TrustWallet/i.test(ua)) return 'Trust Wallet';
     if (/MetaMask/i.test(ua)) return 'MetaMask';
+    if (/TokenPocket|TPWallet/i.test(ua)) return 'TokenPocket';
+    if (/Bitget|BitKeep/i.test(ua)) return 'Bitget Wallet';
     return null;
   }
 
-  private findProviderByWalletName(walletName: 'SafePal' | 'Trust Wallet' | 'MetaMask'): any | null {
+  private findProviderByWalletName(walletName: SupportedWalletName): any | null {
     const providers = [
       ...this.requestEip6963Providers().map((detail) => detail.provider).filter(Boolean),
       ...this.getEthereumProviders()
     ];
     if (walletName === 'SafePal') {
-      return providers.find((provider) => provider?.isSafePal) || null;
+      return providers.find((provider) => getProviderFlag(provider, 'isSafePal')) || null;
     }
     if (walletName === 'Trust Wallet') {
-      return providers.find((provider) => provider?.isTrust || provider?.isTrustWallet) || null;
+      return providers.find((provider) => getProviderFlag(provider, 'isTrust') || getProviderFlag(provider, 'isTrustWallet')) || null;
     }
-    return providers.find((provider) => provider?.isMetaMask && !provider?.isSafePal && !provider?.isTrust && !provider?.isTrustWallet) || null;
+    if (walletName === 'TokenPocket') {
+      return providers.find((provider) => this.isTokenPocketProvider(provider)) || null;
+    }
+    if (walletName === 'Bitget Wallet') {
+      return providers.find((provider) => this.isBitgetProvider(provider)) || this.getDetectedBitgetProvider();
+    }
+    return providers.find((provider) =>
+      getProviderFlag(provider, 'isMetaMask') &&
+      !getProviderFlag(provider, 'isSafePal') &&
+      !getProviderFlag(provider, 'isTrust') &&
+      !getProviderFlag(provider, 'isTrustWallet') &&
+      !this.isTokenPocketProvider(provider) &&
+      !getProviderFlag(provider, 'isBitKeep') &&
+      !getProviderFlag(provider, 'isBitget') &&
+      !this.isBitgetProvider(provider)
+    ) || null;
+  }
+
+  private getWalletIcon(walletName: SupportedWalletName): string {
+    if (walletName === 'MetaMask') return '🦊';
+    if (walletName === 'Trust Wallet') return '🔷';
+    if (walletName === 'SafePal') return '🛡️';
+    if (walletName === 'TokenPocket') return 'TP';
+    return 'BG';
   }
 
   private addWalletIfAvailable(
@@ -301,15 +529,23 @@ export class WalletService {
     const name = String(detail.info?.name || '').toLowerCase();
     const rdns = String(detail.info?.rdns || '').toLowerCase();
 
-    if (provider.isSafePal || name.includes('safepal') || rdns.includes('safepal')) {
+    if (getProviderFlag(provider, 'isSafePal') || name.includes('safepal') || rdns.includes('safepal')) {
       return { name: 'SafePal', icon: '🛡️', isInstalled: true, provider };
     }
 
-    if (provider.isTrust || provider.isTrustWallet || name.includes('trust') || rdns.includes('trust')) {
+    if (getProviderFlag(provider, 'isTrust') || getProviderFlag(provider, 'isTrustWallet') || name.includes('trust') || rdns.includes('trust')) {
       return { name: 'Trust Wallet', icon: '🔷', isInstalled: true, provider };
     }
 
-    if (provider.isMetaMask || name.includes('metamask') || rdns.includes('metamask')) {
+    if (this.isTokenPocketProvider(provider) || name.includes('tokenpocket') || rdns.includes('tokenpocket') || rdns.includes('tpwallet')) {
+      return { name: 'TokenPocket', icon: 'TP', isInstalled: true, provider };
+    }
+
+    if (this.isBitgetProvider(provider) || name.includes('bitget') || name.includes('bitkeep') || rdns.includes('bitget') || rdns.includes('bitkeep')) {
+      return { name: 'Bitget Wallet', icon: 'BG', isInstalled: true, provider };
+    }
+
+    if (getProviderFlag(provider, 'isMetaMask') || name.includes('metamask') || rdns.includes('metamask')) {
       return { name: 'MetaMask', icon: '🦊', isInstalled: true, provider };
     }
 
@@ -354,10 +590,13 @@ export class WalletService {
     const inAppWalletName = this.getInAppWalletName();
     if (inAppWalletName && this.isMobileBrowser()) {
       const provider = this.findProviderByWalletName(inAppWalletName) || (window as any).ethereum;
-      const icon = inAppWalletName === 'MetaMask' ? '🦊' : inAppWalletName === 'Trust Wallet' ? '🔷' : '🛡️';
+      if (inAppWalletName === 'Bitget Wallet' && !normalizeUsableProvider(provider)) {
+        console.log('Detected Bitget mobile browser, but no usable Bitget provider is available.');
+        return wallets;
+      }
       wallets.push({
         name: inAppWalletName,
-        icon,
+        icon: this.getWalletIcon(inAppWalletName),
         isInstalled: true,
         provider,
       });
@@ -373,10 +612,19 @@ export class WalletService {
     }
 
     const providers = this.getEthereumProviders();
-    const safePalProvider = providers.find((provider) => provider?.isSafePal);
-    const trustProvider = providers.find((provider) => provider?.isTrust || provider?.isTrustWallet);
+    const safePalProvider = providers.find((provider) => getProviderFlag(provider, 'isSafePal'));
+    const trustProvider = providers.find((provider) => getProviderFlag(provider, 'isTrust') || getProviderFlag(provider, 'isTrustWallet'));
+    const tokenPocketProvider = providers.find((provider) => this.isTokenPocketProvider(provider));
+    const bitgetProvider = normalizeUsableProvider(providers.find((provider) => this.isBitgetProvider(provider))) || this.getDetectedBitgetProvider();
     const metaMaskProvider = providers.find((provider) =>
-      provider?.isMetaMask && !provider?.isSafePal && !provider?.isTrust && !provider?.isTrustWallet
+      getProviderFlag(provider, 'isMetaMask') &&
+      !getProviderFlag(provider, 'isSafePal') &&
+      !getProviderFlag(provider, 'isTrust') &&
+      !getProviderFlag(provider, 'isTrustWallet') &&
+      !this.isTokenPocketProvider(provider) &&
+      !getProviderFlag(provider, 'isBitKeep') &&
+      !getProviderFlag(provider, 'isBitget') &&
+      !this.isBitgetProvider(provider)
     );
 
     if (safePalProvider) {
@@ -394,6 +642,24 @@ export class WalletService {
         icon: '🔷',
         isInstalled: true,
         provider: trustProvider,
+      }, seenNames, seenProviders);
+    }
+
+    if (tokenPocketProvider) {
+      this.addWalletIfAvailable(wallets, {
+        name: 'TokenPocket',
+        icon: 'TP',
+        isInstalled: true,
+        provider: tokenPocketProvider,
+      }, seenNames, seenProviders);
+    }
+
+    if (bitgetProvider) {
+      this.addWalletIfAvailable(wallets, {
+        name: 'Bitget Wallet',
+        icon: 'BG',
+        isInstalled: true,
+        provider: bitgetProvider,
       }, seenNames, seenProviders);
     }
 
@@ -1071,10 +1337,12 @@ export class WalletService {
 
   // Get wallet name from provider
   private getWalletName(provider: any): string {
-    if (provider.isSafePal) return 'SafePal';
-    if (provider.isTrust || provider.isTrustWallet) return 'Trust Wallet';
-    if (provider.isMetaMask) return 'MetaMask';
-    if (provider.isBinanceChain || provider.isBinance) return 'Binance Chain Wallet';
+    if (getProviderFlag(provider, 'isSafePal')) return 'SafePal';
+    if (getProviderFlag(provider, 'isTrust') || getProviderFlag(provider, 'isTrustWallet')) return 'Trust Wallet';
+    if (this.isTokenPocketProvider(provider)) return 'TokenPocket';
+    if (this.isBitgetProvider(provider)) return 'Bitget Wallet';
+    if (getProviderFlag(provider, 'isMetaMask')) return 'MetaMask';
+    if (getProviderFlag(provider, 'isBinanceChain') || getProviderFlag(provider, 'isBinance')) return 'Binance Chain Wallet';
     return 'Web3 Wallet';
   }
 

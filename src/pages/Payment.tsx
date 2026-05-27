@@ -6,6 +6,7 @@ import { useNotification } from '../components/ui/NotificationProvider';
 import { supabase } from '../lib/supabase';
 import { WalletService } from '../services/walletService';
 import { WalletInfo, WalletState, TransactionState } from '../types/wallet';
+import { WalletSelector } from '../components/payment/WalletSelector';
 import { WalletInfo as WalletInfoComponent } from '../components/payment/WalletInfo';
 import { CheckCircle, CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle, Loader, XCircle, ExternalLink, Copy } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
@@ -58,8 +59,26 @@ const clearSelectedPlanState = () => {
 // Helper function to determine wallet type from provider
 const getWalletType = (provider: any): string => {
   if (provider.isMetaMask) return 'metamask';
-  if (provider.isTrust) return 'trust';
+  if (provider.isTrust || provider.isTrustWallet) return 'trust';
   if (provider.isSafePal) return 'safepal';
+  if (provider.isTokenPocket || provider.isTp || provider.isTP) return 'tokenpocket';
+  if (
+    provider.isBitKeep ||
+    provider.isBitkeep ||
+    provider.isBitKeepChrome ||
+    provider.isBitget ||
+    provider.isBitgetWallet ||
+    provider === (window as any).bitkeep?.ethereum ||
+    provider === (window as any).bitkeep?.ethereumProvider ||
+    provider === (window as any).bitkeep ||
+    provider === (window as any).bitget?.ethereum ||
+    provider === (window as any).bitget?.ethereumProvider ||
+    provider === (window as any).bitget ||
+    provider === (window as any).BitKeep?.ethereum ||
+    provider === (window as any).BitKeep?.ethereumProvider ||
+    provider === (window as any).BitKeep ||
+    provider === (window as any).bitgetWallet
+  ) return 'bitget';
   if (provider.isBinanceChain || provider.isBinance) return 'binance';
   return 'web3';
 };
@@ -100,6 +119,26 @@ const Payment: React.FC = () => {
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastConnectedWallet, setLastConnectedWallet] = useState<any>(null);
+
+  const enabledWallets = useMemo(() => ({
+    trust_wallet: true,
+    metamask: true,
+    safepal: true,
+    tokenpocket: true,
+    bitget: true,
+    ...settings?.paymentWalletsEnabled,
+  }), [settings?.paymentWalletsEnabled]);
+
+  const filteredWallets = useMemo(() => {
+    return availableWallets.filter((wallet) => {
+      if (wallet.name === 'Trust Wallet') return enabledWallets.trust_wallet;
+      if (wallet.name === 'MetaMask') return enabledWallets.metamask;
+      if (wallet.name === 'SafePal') return enabledWallets.safepal;
+      if (wallet.name === 'TokenPocket') return enabledWallets.tokenpocket;
+      if (wallet.name === 'Bitget Wallet') return enabledWallets.bitget;
+      return true;
+    });
+  }, [availableWallets, enabledWallets]);
 
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
@@ -230,7 +269,7 @@ const Payment: React.FC = () => {
 
     refreshDetectedWallets();
 
-    const timeoutIds = [250, 1000, 2500].map((delay) =>
+    const timeoutIds = [250, 1000, 2500, 5000].map((delay) =>
       window.setTimeout(refreshDetectedWallets, delay)
     );
 
@@ -957,6 +996,10 @@ const Payment: React.FC = () => {
         provider = (window as any).ethereum;
       } else if (walletType === 'safepal' && (window as any).ethereum?.isSafePal) {
         provider = (window as any).ethereum;
+      } else if (walletType === 'tokenpocket' && ((window as any).ethereum?.isTokenPocket || (window as any).tokenpocket?.ethereum)) {
+        provider = (window as any).tokenpocket?.ethereum || (window as any).ethereum;
+      } else if (walletType === 'bitget' && ((window as any).ethereum?.isBitKeep || (window as any).ethereum?.isBitkeep || (window as any).ethereum?.isBitKeepChrome || (window as any).ethereum?.isBitget || (window as any).ethereum?.isBitgetWallet || (window as any).bitkeep?.ethereum || (window as any).bitkeep?.ethereumProvider || (window as any).bitkeep?.request || (window as any).bitget?.ethereum || (window as any).bitget?.ethereumProvider || (window as any).bitget?.request || (window as any).BitKeep?.ethereum || (window as any).BitKeep?.ethereumProvider || (window as any).BitKeep?.request || (window as any).bitgetWallet)) {
+        provider = (window as any).bitkeep?.ethereum || (window as any).bitkeep?.ethereumProvider || (window as any).bitkeep || (window as any).bitget?.ethereum || (window as any).bitget?.ethereumProvider || (window as any).bitget || (window as any).BitKeep?.ethereum || (window as any).BitKeep?.ethereumProvider || (window as any).BitKeep || (window as any).bitgetWallet || (window as any).ethereum;
       } else if (walletType === 'binance' && (window as any).BinanceChain) {
         provider = (window as any).BinanceChain;
       } else if ((window as any).ethereum) {
@@ -1122,29 +1165,20 @@ const Payment: React.FC = () => {
 
               {!walletState.isConnected ? (
                 <div className="space-y-4">
-                  {availableWallets.length === 0 ? (
+                  {filteredWallets.length === 0 ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
                       <div className="flex items-center gap-2 font-medium mb-1">
                         <AlertTriangle className="h-4 w-4" />
                         No compatible wallet detected
                       </div>
-                      Please install MetaMask, Trust Wallet, or SafePal.
+                      Please install MetaMask, Trust Wallet, SafePal, TokenPocket, or Bitget Wallet.
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {availableWallets.map((wallet) => (
-                        <button
-                          key={wallet.name}
-                          onClick={() => handleWalletConnect(wallet.provider)}
-                          disabled={isConnecting}
-                          className="p-4 border-2 rounded-lg transition-all border-gray-200 hover:border-blue-400 bg-white disabled:opacity-60"
-                        >
-                          <div className="text-2xl mb-2">{wallet.icon}</div>
-                          <p className="text-sm font-medium text-gray-900">{wallet.name}</p>
-                          <p className="text-xs text-gray-500 mt-1">{isConnecting ? 'Connecting...' : 'Connect'}</p>
-                        </button>
-                      ))}
-                    </div>
+                    <WalletSelector
+                      wallets={filteredWallets}
+                      onConnect={handleWalletConnect}
+                      isConnecting={isConnecting}
+                    />
                   )}
 
                   {lastConnectedWallet && (

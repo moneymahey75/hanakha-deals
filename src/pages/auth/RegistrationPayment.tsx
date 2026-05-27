@@ -433,7 +433,7 @@ const RegistrationPayment: React.FC = () => {
 
     refreshDetectedWallets();
 
-    const timeoutIds = [250, 1000, 2500].map((delay) =>
+    const timeoutIds = [250, 1000, 2500, 5000].map((delay) =>
       window.setTimeout(refreshDetectedWallets, delay)
     );
 
@@ -460,10 +460,13 @@ const RegistrationPayment: React.FC = () => {
   }, [walletService, walletState.isConnected, isConnecting]);
 
   const enabledWallets = useMemo(() => {
-    return settings?.paymentWalletsEnabled || {
+    return {
       trust_wallet: true,
       metamask: true,
-      safepal: true
+      safepal: true,
+      tokenpocket: true,
+      bitget: true,
+      ...settings?.paymentWalletsEnabled
     };
   }, [settings]);
 
@@ -472,6 +475,8 @@ const RegistrationPayment: React.FC = () => {
       if (wallet.name === 'Trust Wallet') return enabledWallets.trust_wallet;
       if (wallet.name === 'MetaMask') return enabledWallets.metamask;
       if (wallet.name === 'SafePal') return enabledWallets.safepal;
+      if (wallet.name === 'TokenPocket') return enabledWallets.tokenpocket;
+      if (wallet.name === 'Bitget Wallet') return enabledWallets.bitget;
       return false;
     });
   }, [availableWallets, enabledWallets]);
@@ -610,6 +615,26 @@ const RegistrationPayment: React.FC = () => {
             ? 'safepal'
             : (provider.isTrust || provider.isTrustWallet)
               ? 'trust'
+              : provider.isTokenPocket
+                ? 'tokenpocket'
+                : (
+                  provider.isBitKeep ||
+                  provider.isBitkeep ||
+                  provider.isBitKeepChrome ||
+                  provider.isBitget ||
+                  provider.isBitgetWallet ||
+                  provider === (window as any).bitkeep?.ethereum ||
+                  provider === (window as any).bitkeep?.ethereumProvider ||
+                  provider === (window as any).bitkeep ||
+                  provider === (window as any).bitget?.ethereum ||
+                  provider === (window as any).bitget?.ethereumProvider ||
+                  provider === (window as any).bitget ||
+                  provider === (window as any).BitKeep?.ethereum ||
+                  provider === (window as any).BitKeep?.ethereumProvider ||
+                  provider === (window as any).BitKeep ||
+                  provider === (window as any).bitgetWallet
+                )
+                  ? 'bitget'
               : provider.isMetaMask
                 ? 'metamask'
                 : 'web3';
@@ -1918,7 +1943,7 @@ const RegistrationPayment: React.FC = () => {
                 <div className="space-y-4">
                   {filteredWallets.length === 0 ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-                      No compatible wallet detected. Please install MetaMask, Trust Wallet, or SafePal.
+                      No compatible wallet detected. Please install MetaMask, Trust Wallet, SafePal, TokenPocket, or Bitget Wallet.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

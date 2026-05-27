@@ -44,7 +44,7 @@ const FAQ: React.FC = () => {
       },
       {
         question: "What if I forget my password?",
-        answer: "Use the 'Forgot Password' link on the login page. Enter your User ID and registered mobile number to receive a mobile OTP. Enter the OTP, choose a new password, and submit the reset form. If you don’t receive the OTP, check your mobile network and try resending it."
+        answer: "Use the 'Forgot Password' link on the login page. Enter your User ID and registered email address to receive an email OTP. Enter the OTP, choose a new password, and submit the reset form. If you don’t receive the OTP, check your inbox or spam folder and try resending it."
       },
       {
         question: "How do I update my profile information?",
@@ -54,7 +54,7 @@ const FAQ: React.FC = () => {
     payments: [
       {
         question: "What payment methods do you accept?",
-        answer: "We currently accept cryptocurrency payments in USDT (BEP20 / Binance Smart Chain). You can pay using supported wallets like MetaMask, Trust Wallet, or SafePal."
+        answer: "We currently accept cryptocurrency payments in USDT (BEP20 / Binance Smart Chain). You can pay using supported wallets like MetaMask, Trust Wallet, SafePal, TokenPocket, or Bitget Wallet."
       },
       {
         question: "When and how are commissions paid?",

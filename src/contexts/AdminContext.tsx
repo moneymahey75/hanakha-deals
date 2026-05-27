@@ -57,6 +57,8 @@ interface GeneralSettings {
     trust_wallet: boolean;
     metamask: boolean;
     safepal: boolean;
+    tokenpocket: boolean;
+    bitget: boolean;
   };
   withdrawalMinAmount: number;
   withdrawalStepAmount: number;
@@ -107,6 +109,14 @@ interface EmailSMTP {
   password: string;
   encryption: string;
 }
+
+const defaultPaymentWalletsEnabled = {
+  trust_wallet: true,
+  metamask: true,
+  safepal: true,
+  tokenpocket: true,
+  bitget: true
+};
 
 interface SubscriptionPlan {
   id: string;
@@ -195,9 +205,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     adminPaymentWalletTestnet: '',
     adminPaymentWalletMainnet: '',
     paymentWalletsEnabled: {
-      trust_wallet: true,
-      metamask: true,
-      safepal: true
+      ...defaultPaymentWalletsEnabled
     },
     withdrawalMinAmount: 10,
     withdrawalStepAmount: 10,
@@ -499,7 +507,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 loadedSettings.adminPaymentWalletMainnet = value;
                 break;
               case 'payment_wallets_enabled':
-                loadedSettings.paymentWalletsEnabled = value;
+                loadedSettings.paymentWalletsEnabled = {
+                  ...defaultPaymentWalletsEnabled,
+                  ...value
+                };
                 break;
               case 'withdrawal_min_amount':
                 loadedSettings.withdrawalMinAmount = Number(value);
