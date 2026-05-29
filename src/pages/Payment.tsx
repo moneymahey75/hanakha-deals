@@ -143,11 +143,16 @@ const Payment: React.FC = () => {
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
   const selectedPlanType = String(selectedPlan?.tsp_type || '').toLowerCase();
+  const isUpgradePaymentPage = selectedPlanType === 'upgrade';
   const isExistingPaidUser = Boolean(user?.registrationPaid || user?.hasActiveSubscription);
-  const isUpgradePlanUi = selectedPlanType === 'upgrade' && isExistingPaidUser;
+  const isUpgradePlanUi = isUpgradePaymentPage && isExistingPaidUser;
   const hasActivePlan = Boolean(user?.hasActiveSubscription && !isUpgradePlanUi);
   const hasPaidSuccessfully = hasActivePlan || transaction.status === 'success';
   const canUseReservedForUpgradeUi = isUpgradePlanUi && workingWalletReservedBalance > 0;
+  const paymentPageTitle = isUpgradePaymentPage ? 'Upgrade Account' : 'Registration Payment';
+  const paymentPageDescription = isUpgradePaymentPage
+    ? 'Connect your wallet and pay with USDT (BEP-20) to upgrade your account.'
+    : 'Connect your wallet and pay with USDT (BEP-20) to complete your registration.';
 
   const reservedUsedForUpgrade = useReservedBalance && isUpgradePlanUi
     ? Math.min(workingWalletReservedBalance, Number(selectedPlan?.tsp_price || 0))
@@ -1068,9 +1073,9 @@ const Payment: React.FC = () => {
               <CheckCircle className="h-8 w-8 text-green-600" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              {isUpgradePlanUi ? 'Upgrade Payment' : 'Registration Payment'}
+              {paymentPageTitle}
             </h1>
-            <p className="text-gray-600">Connect your wallet and pay with USDT (BEP-20) to activate your plan.</p>
+            <p className="text-gray-600">{paymentPageDescription}</p>
           </div>
         </div>
 

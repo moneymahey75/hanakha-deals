@@ -13,6 +13,7 @@ import EarningsDashboard from '../../components/customer/EarningsDashboard';
 import WithdrawalsDashboard from '../../components/customer/WithdrawalsDashboard';
 import ProfileUpdateForm from '../../components/customer/ProfileUpdateForm';
 import PasswordUpdateForm from '../../components/customer/PasswordUpdateForm';
+import SpinWheel from '../../components/customer/SpinWheel';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
@@ -30,10 +31,13 @@ import {
   X,
   Home,
   CreditCard,
+  CheckCircle,
+  AlertCircle,
   Ticket,
   Share2,
   Wallet as WalletIcon,
   User,
+  Gift,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
@@ -99,6 +103,9 @@ const CustomerDashboard: React.FC = () => {
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [spinWheelVisible, setSpinWheelVisible] = useState(false);
+  const [hasLaunchUpgrade, setHasLaunchUpgrade] = useState(false);
+  const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -108,6 +115,7 @@ const CustomerDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'overview', label: 'Dashboard', icon: BarChart3 },
+    ...(spinWheelVisible ? [{ id: 'spin-wheel', label: 'Spin Wheel', icon: Gift }] : []),
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
     { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
@@ -119,6 +127,69 @@ const CustomerDashboard: React.FC = () => {
     { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
   ];
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSpinWheelVisibility = async () => {
+      if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'launched') {
+        if (mounted) setSpinWheelVisible(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.rpc('customer_get_spin_wheel_status');
+        if (error) throw error;
+        const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean };
+        if (mounted) {
+          setSpinWheelVisible(Boolean(spinStatus.active));
+        }
+      } catch (error) {
+        console.error('Failed to load spin wheel visibility:', error);
+        if (mounted) setSpinWheelVisible(false);
+      }
+    };
+
+    loadSpinWheelVisibility();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, settings?.launchPhase]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadUpgradeStatus = async () => {
+      if (!user?.id) {
+        if (mounted) {
+          setHasLaunchUpgrade(false);
+          setUpgradeStatusLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setUpgradeStatusLoading(true);
+        const { data, error } = await supabase.rpc('has_completed_launch_upgrade', {
+          p_user_id: user.id,
+        });
+        if (error) throw error;
+        if (mounted) setHasLaunchUpgrade(Boolean(data));
+      } catch (error) {
+        console.error('Failed to load launch upgrade status:', error);
+        if (mounted) setHasLaunchUpgrade(false);
+      } finally {
+        if (mounted) setUpgradeStatusLoading(false);
+      }
+    };
+
+    loadUpgradeStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   // FIXED: Load dashboard data with proper error handling
   useEffect(() => {
@@ -493,6 +564,23 @@ const CustomerDashboard: React.FC = () => {
                   User ID:{' '}
                   <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
                 </p>
+                <div className="mt-3">
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold ${
+                      hasLaunchUpgrade
+                        ? 'border-green-200 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                    title={hasLaunchUpgrade ? 'Customer has completed Launch upgrade' : 'Customer has not completed Launch upgrade yet'}
+                  >
+                    {hasLaunchUpgrade ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    {upgradeStatusLoading ? 'Checking upgrade status...' : hasLaunchUpgrade ? 'Account Upgraded' : 'Not Upgraded Yet'}
+                  </span>
+                </div>
               </div>
 
               {/* Mobile sidebar toggle (in-flow so it won't overlap content) */}
@@ -560,6 +648,15 @@ const CustomerDashboard: React.FC = () => {
 	                              <span>Upgrade Plan</span>
 	                            </button>
 	                          )}
+                          {spinWheelVisible && (
+                            <button
+                              onClick={() => setActiveTab('spin-wheel')}
+                              className="w-full bg-teal-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-teal-700 transition-colors flex items-center justify-center space-x-2"
+                            >
+                              <Gift className="h-4 w-4" />
+                              <span>Spin the Wheel</span>
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -610,6 +707,12 @@ const CustomerDashboard: React.FC = () => {
                     <div>
                       <ProfileUpdateForm />
                       <PasswordUpdateForm />
+                    </div>
+                )}
+
+                {activeTab === 'spin-wheel' && (
+                    <div>
+                      <SpinWheel />
                     </div>
                 )}
 
