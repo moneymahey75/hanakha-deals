@@ -13,7 +13,6 @@ import EarningsDashboard from '../../components/customer/EarningsDashboard';
 import WithdrawalsDashboard from '../../components/customer/WithdrawalsDashboard';
 import ProfileUpdateForm from '../../components/customer/ProfileUpdateForm';
 import PasswordUpdateForm from '../../components/customer/PasswordUpdateForm';
-import SpinWheel from '../../components/customer/SpinWheel';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
@@ -37,7 +36,6 @@ import {
   Share2,
   Wallet as WalletIcon,
   User,
-  Gift,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
@@ -103,7 +101,6 @@ const CustomerDashboard: React.FC = () => {
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const [hasLaunchUpgrade, setHasLaunchUpgrade] = useState(false);
   const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const currentUserIdRef = useRef<string | null>(null);
@@ -115,7 +112,6 @@ const CustomerDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'overview', label: 'Dashboard', icon: BarChart3 },
-    ...(spinWheelVisible ? [{ id: 'spin-wheel', label: 'Spin Wheel', icon: Gift }] : []),
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
     { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
@@ -127,35 +123,6 @@ const CustomerDashboard: React.FC = () => {
     { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
   ];
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadSpinWheelVisibility = async () => {
-      if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'launched') {
-        if (mounted) setSpinWheelVisible(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.rpc('customer_get_spin_wheel_status');
-        if (error) throw error;
-        const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean };
-        if (mounted) {
-          setSpinWheelVisible(Boolean(spinStatus.active));
-        }
-      } catch (error) {
-        console.error('Failed to load spin wheel visibility:', error);
-        if (mounted) setSpinWheelVisible(false);
-      }
-    };
-
-    loadSpinWheelVisibility();
-
-    return () => {
-      mounted = false;
-    };
-  }, [user?.id, settings?.launchPhase]);
 
   useEffect(() => {
     let mounted = true;
@@ -648,15 +615,6 @@ const CustomerDashboard: React.FC = () => {
 	                              <span>Upgrade Plan</span>
 	                            </button>
 	                          )}
-                          {spinWheelVisible && (
-                            <button
-                              onClick={() => setActiveTab('spin-wheel')}
-                              className="w-full bg-teal-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-teal-700 transition-colors flex items-center justify-center space-x-2"
-                            >
-                              <Gift className="h-4 w-4" />
-                              <span>Spin the Wheel</span>
-                            </button>
-                          )}
                         </div>
                       </div>
 
@@ -707,12 +665,6 @@ const CustomerDashboard: React.FC = () => {
                     <div>
                       <ProfileUpdateForm />
                       <PasswordUpdateForm />
-                    </div>
-                )}
-
-                {activeTab === 'spin-wheel' && (
-                    <div>
-                      <SpinWheel />
                     </div>
                 )}
 
