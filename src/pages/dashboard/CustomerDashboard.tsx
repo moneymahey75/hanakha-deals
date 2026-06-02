@@ -13,6 +13,7 @@ import EarningsDashboard from '../../components/customer/EarningsDashboard';
 import WithdrawalsDashboard from '../../components/customer/WithdrawalsDashboard';
 import ProfileUpdateForm from '../../components/customer/ProfileUpdateForm';
 import PasswordUpdateForm from '../../components/customer/PasswordUpdateForm';
+import SpinWheel from '../../components/customer/SpinWheel';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
@@ -36,6 +37,7 @@ import {
   Share2,
   Wallet as WalletIcon,
   User,
+  Gift,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
@@ -103,6 +105,7 @@ const CustomerDashboard: React.FC = () => {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [hasLaunchUpgrade, setHasLaunchUpgrade] = useState(false);
   const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
+  const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -112,6 +115,7 @@ const CustomerDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'overview', label: 'Dashboard', icon: BarChart3 },
+    ...(spinWheelVisible ? [{ id: 'spin-wheel', label: 'Spin Wheel', icon: Gift }] : []),
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
     { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
@@ -151,12 +155,32 @@ const CustomerDashboard: React.FC = () => {
       }
     };
 
+    const loadSpinWheelVisibility = async () => {
+      if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'prelaunch') {
+        if (mounted) setSpinWheelVisible(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.rpc('customer_get_spin_wheel_status');
+        if (error) throw error;
+        const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean };
+        if (mounted) {
+          setSpinWheelVisible(Boolean(spinStatus.active));
+        }
+      } catch (error) {
+        console.error('Failed to load spin wheel visibility:', error);
+        if (mounted) setSpinWheelVisible(false);
+      }
+    };
+
     loadUpgradeStatus();
+    loadSpinWheelVisibility();
 
     return () => {
       mounted = false;
     };
-  }, [user?.id]);
+  }, [user?.id, settings?.launchPhase]);
 
   // FIXED: Load dashboard data with proper error handling
   useEffect(() => {
@@ -494,17 +518,17 @@ const CustomerDashboard: React.FC = () => {
                               ? 'bg-indigo-50 text-indigo-700 border-r-2 border-indigo-600'
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
-	                  >
-	                    <Icon className="h-5 w-5 flex-shrink-0" />
-	                    <div className="flex-1 flex items-center justify-between min-w-0">
-	                      <span className="font-medium truncate">{item.label}</span>
-	                      {item.badge && (
-	                        <span className="ml-2 inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold text-yellow-800">
-	                          {item.badge}
-	                        </span>
-	                      )}
-	                    </div>
-	                  </button>
+                      >
+                        <Icon className="h-5 w-5 flex-shrink-0" />
+                        <div className="flex-1 flex items-center justify-between min-w-0">
+                          <span className="font-medium truncate">{item.label}</span>
+                          {item.badge && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold text-yellow-800">
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                      </button>
 	              );
 	            })}
 	          </nav>
@@ -665,6 +689,12 @@ const CustomerDashboard: React.FC = () => {
                     <div>
                       <ProfileUpdateForm />
                       <PasswordUpdateForm />
+                    </div>
+                )}
+
+                {activeTab === 'spin-wheel' && (
+                    <div>
+                      <SpinWheel />
                     </div>
                 )}
 
