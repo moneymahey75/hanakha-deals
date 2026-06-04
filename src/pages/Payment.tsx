@@ -163,6 +163,9 @@ const Payment: React.FC = () => {
     ? Math.min(workingWalletReservedBalance, Number(selectedPlan?.tsp_price || 0))
     : 0;
   const chainPayAmountForUpgrade = Math.max(0, Number(selectedPlan?.tsp_price || 0) - reservedUsedForUpgrade);
+  const reservedAmountToVanishForUpgrade = useReservedBalance && isUpgradePlanUi
+    ? Math.max(0, workingWalletReservedBalance - Number(selectedPlan?.tsp_price || 0))
+    : 0;
   const adminReceivingWallet = String(settings?.adminPaymentWallet || '').trim();
 
   const loadWorkingWalletReservedBalance = useCallback(async () => {
@@ -300,6 +303,8 @@ const Payment: React.FC = () => {
     const canUseReserved = isUpgrade && workingWalletReservedBalance > 0;
     if (!canUseReserved) {
       setUseReservedBalance(false);
+    } else {
+      setUseReservedBalance(true);
     }
   }, [selectedPlan?.tsp_id, selectedPlan?.tsp_type, selectedPlan?.tsp_price, workingWalletReservedBalance, user?.registrationPaid, user?.hasActiveSubscription]);
 
@@ -379,9 +384,14 @@ const Payment: React.FC = () => {
 
   const payNowDisabledReason = useMemo(() => {
     if (transaction.isProcessing) return 'A payment is already being processed.';
+    if (useReservedBalance && canUseReservedForUpgradeUi && chainPayAmountForUpgrade === 0) {
+      if (!walletState.isConnected || !walletState.address) return 'Please connect your wallet to continue.';
+      if (!validateAddress(walletState.address)) return 'Connected wallet address is invalid.';
+      if (walletState.warning) return walletState.warning;
+      return null;
+    }
     if (!adminReceivingWallet) return 'Admin receiving wallet is not configured yet.';
     if (!validateAddress(adminReceivingWallet)) return 'Admin receiving wallet is not configured correctly.';
-    if (useReservedBalance && canUseReservedForUpgradeUi && chainPayAmountForUpgrade === 0) return null;
     if (!walletState.isConnected || !walletState.address) return 'Please connect your wallet to continue.';
     if (walletState.warning) return walletState.warning;
     const amountToPay = useReservedBalance && canUseReservedForUpgradeUi
@@ -572,14 +582,35 @@ const Payment: React.FC = () => {
       const reservedUsed = Math.min(workingWalletReservedBalance, selectedPlan.tsp_price);
       const chainAmount = Number(Math.max(0, selectedPlan.tsp_price - reservedUsed).toFixed(6));
       const reservedUsedRounded = Number(reservedUsed.toFixed(6));
+      const reservedAmountToVanish = Number(Math.max(0, workingWalletReservedBalance - selectedPlan.tsp_price).toFixed(6));
 
       if (reservedUsedRounded <= 0) {
         notification.showError('Reserved Balance', 'No reserved balance available to use.');
         return;
       }
 
+      if (reservedAmountToVanish > 0) {
+        const confirmed = window.confirm(
+          `Your reserved balance is ${workingWalletReservedBalance.toFixed(2)} USDT, but this upgrade plan costs ${selectedPlan.tsp_price.toFixed(2)} USDT.\n\n` +
+          `After this upgrade, the remaining ${reservedAmountToVanish.toFixed(2)} USDT reserved balance will be removed. Choose a bigger package if you want to use the full reserved amount.\n\n` +
+          'Do you still want to continue with this plan?'
+        );
+
+        if (!confirmed) return;
+      }
+
       // Reserved-only path.
       if (chainAmount === 0) {
+        if (!walletState.isConnected || !walletState.address) {
+          notification.showError('Wallet Required', 'Please connect your wallet to continue.');
+          return;
+        }
+
+        if (!validateAddress(walletState.address)) {
+          notification.showError('Invalid Wallet', 'Connected wallet address is invalid');
+          return;
+        }
+
         setTransaction({
           isProcessing: true,
           hash: null,
@@ -597,6 +628,10 @@ const Payment: React.FC = () => {
             p_gateway_response: {
               source: 'reserved_wallet',
               reserved_used: reservedUsedRounded,
+              reserved_forfeited: reservedAmountToVanish,
+              wallet_address: walletState.address,
+              wallet_name: walletState.walletName,
+              chain_id: walletState.chainId,
               processed_at: new Date().toISOString(),
             },
           });
@@ -716,6 +751,7 @@ const Payment: React.FC = () => {
             wallet_address: walletState.address,
             wallet_name: walletState.walletName,
             chain_id: walletState.chainId,
+            reserved_forfeited: reservedAmountToVanish,
             processed_at: new Date().toISOString(),
             status: 'success',
             steps
@@ -1238,12 +1274,15 @@ const Payment: React.FC = () => {
                       type="checkbox"
                       className="mt-1 h-4 w-4"
                       checked={useReservedBalance}
-                      onChange={(e) => setUseReservedBalance(e.target.checked)}
+                      readOnly
                     />
                     <span>
                       Use reserved balance
                       <span className="block text-xs text-blue-700 mt-1">
                         Available: {workingWalletReservedBalance.toFixed(2)} USDT
+                      </span>
+                      <span className="block text-xs text-blue-700 mt-1">
+                        Reserved balance is automatically applied to upgrade payments.
                       </span>
                     </span>
                   </label>
@@ -1265,6 +1304,11 @@ const Payment: React.FC = () => {
                       <span>Wallet Payment</span>
                       <span className="font-medium">{chainPayAmountForUpgrade.toFixed(2)} USDT</span>
                     </div>
+                    {reservedAmountToVanishForUpgrade > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                        You will lose the remaining {reservedAmountToVanishForUpgrade.toFixed(2)} USDT reserved balance after this upgrade. Choose a bigger package if you want to use the full reserved amount.
+                      </div>
+                    )}
                   </>
                 )}
                 <div className="flex justify-between">
