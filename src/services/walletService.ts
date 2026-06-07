@@ -160,6 +160,7 @@ export class WalletService {
   private signer: ethers.JsonRpcSigner | null = null;
   private externalProvider: any | null = null;
   private isConnecting: boolean = false;
+  private isSendingTransaction: boolean = false;
   private adminSettings: AdminSettings | null = null;
   private eip6963Providers: Eip6963ProviderDetail[] = [];
   // FIX: Store the current wallet state internally to restore on re-render
@@ -1080,6 +1081,10 @@ export class WalletService {
 
   // Direct USDT transfer to admin wallet (registration payments)
   async sendUSDTTransfer(toAddress: string, amount: number): Promise<{ hash: string; steps: string[] }> {
+    if (this.isSendingTransaction) {
+      throw new Error('A wallet transaction is already pending. Please finish or reject the open wallet request before trying again.');
+    }
+
     if (!this.provider || !this.externalProvider) {
       throw new Error('Wallet not connected');
     }
@@ -1116,6 +1121,8 @@ export class WalletService {
     steps.push(`From: ${signerAddress}`);
     steps.push(`To: ${toAddress}`);
 
+    this.isSendingTransaction = true;
+
     try {
       // Step 1: Load token decimals
       steps.push("\n1. Reading token decimals...");
@@ -1144,6 +1151,8 @@ export class WalletService {
       console.error('USDT transfer failed:', error);
       steps.push(`\n❌ Error: ${error.message}`);
       throw error;
+    } finally {
+      this.isSendingTransaction = false;
     }
   }
 

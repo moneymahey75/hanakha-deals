@@ -76,10 +76,11 @@ Deno.serve(async (req: Request) => {
     } = await req.json();
 
     const normalizedName = String(name || '').trim();
-    const normalizedPlanType = String(planType || '').trim();
     const normalizedPlanPhase = ['prelaunch', 'launch'].includes(String(planPhase || '').toLowerCase())
       ? String(planPhase).toLowerCase()
       : 'prelaunch';
+    const normalizedRequestedPlanType = String(planType || '').trim();
+    const normalizedPlanType = normalizedPlanPhase === 'launch' ? 'upgrade' : normalizedRequestedPlanType;
     const normalizedPrice = Number(price);
     const normalizedDurationDays = Number(durationDays);
     const normalizedCouponDays = Math.trunc(Number(couponDays ?? 0));

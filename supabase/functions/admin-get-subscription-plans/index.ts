@@ -69,6 +69,7 @@ Deno.serve(async (req: Request) => {
       .select('*')
       .eq('tsp_type', planType)
       .eq('tsp_plan_phase', normalizedPlanPhase)
+      .is('tsp_deleted_at', null)
       .order('tsp_created_at', { ascending: false });
 
     if (error) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdmin } from '../contexts/AdminContext';
@@ -20,6 +20,18 @@ interface SubscriptionPlan {
   tsp_duration_days: number;
   tsp_type?: string;
   tsp_features: string[];
+}
+
+interface UpgradePaymentRecoveryAttempt {
+  userId: string;
+  planId: string;
+  walletAddress: string;
+  toAddress: string;
+  chainAmount: number;
+  reservedUsed: number;
+  reservedForfeited: number;
+  chainId: number | null;
+  startBlock: number | null;
 }
 
 // Key for storing transaction data
@@ -88,6 +100,52 @@ const isLivePaymentModeValue = (paymentMode: unknown): boolean => {
   return paymentMode === true || paymentMode === 1 || normalized === '1' || normalized === 'true' || normalized === 'live' || normalized === 'mainnet';
 };
 
+const isWalletRequestAlreadyOpenMessage = (message: string): boolean => {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('wallet confirmation is already open') ||
+    normalized.includes('wallet transaction is already pending') ||
+    normalized.includes('duplicate call') ||
+    normalized.includes('ethsendtransaction')
+  );
+};
+
+const getPaymentErrorMessage = async (error: any, fallback: string): Promise<string> => {
+  const rawMessage = String(
+    (await extractEdgeFunctionErrorMessage(error)) ||
+    error?.shortMessage ||
+    error?.reason ||
+    error?.info?.error?.message ||
+    error?.error?.message ||
+    error?.message ||
+    fallback
+  );
+  const normalized = rawMessage.toLowerCase();
+
+  if (normalized.includes('duplicate call') || normalized.includes('ethsendtransaction')) {
+    return 'A wallet confirmation is already open. Please finish or reject that wallet request before trying again.';
+  }
+
+  if (normalized.includes('user rejected') || normalized.includes('user denied') || error?.code === 4001) {
+    return 'Payment was rejected in your wallet.';
+  }
+
+  if (normalized.includes('insufficient funds') || normalized.includes('insufficient balance')) {
+    return rawMessage.replace(/[<>]/g, '');
+  }
+
+  if (
+    rawMessage.length > 220 ||
+    normalized.includes('jsonrpc') ||
+    normalized.includes('payload=') ||
+    normalized.includes('originalerror') ||
+    normalized.includes('chrome-extension://')
+  ) {
+    return fallback;
+  }
+
+  return rawMessage.replace(/[<>]/g, '');
+};
 
 const Payment: React.FC = () => {
   // FIX: Access user object which contains hasActiveSubscription
@@ -124,6 +182,9 @@ const Payment: React.FC = () => {
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastConnectedWallet, setLastConnectedWallet] = useState<any>(null);
+  const [walletRequestLocked, setWalletRequestLocked] = useState(false);
+  const paymentInFlightRef = useRef(false);
+  const upgradeRecoveryAttemptRef = useRef<UpgradePaymentRecoveryAttempt | null>(null);
 
   const enabledWallets = useMemo(() => ({
     trust_wallet: true,
@@ -382,7 +443,121 @@ const Payment: React.FC = () => {
     }
   };
 
+  const pauseWalletRetry = () => {
+    setWalletRequestLocked(true);
+    window.setTimeout(() => setWalletRequestLocked(false), 12000);
+  };
+
+  const recoverSubmittedUpgradePayment = async (
+    attempt: UpgradePaymentRecoveryAttempt,
+    reason: string
+  ): Promise<boolean> => {
+    if (!settings || !selectedPlan || !user?.id) return false;
+    if (attempt.userId !== user.id || attempt.planId !== selectedPlan.tsp_id) return false;
+
+    setTransaction({
+      isProcessing: true,
+      hash: null,
+      status: 'pending',
+      error: null,
+      distributionSteps: [
+        `Reserved used: ${attempt.reservedUsed} USDT`,
+        `Recovering TokenPocket payment after ${reason}`
+      ]
+    });
+
+    let recoveredHash: string | null = null;
+    for (let attemptNumber = 1; attemptNumber <= 6; attemptNumber += 1) {
+      recoveredHash = await walletService.findRecentUSDTTransfer(
+        attempt.walletAddress,
+        attempt.toAddress,
+        attempt.chainAmount,
+        attempt.startBlock
+      );
+      if (recoveredHash) break;
+      await new Promise(resolve => window.setTimeout(resolve, 3000));
+    }
+
+    if (!recoveredHash) return false;
+
+    const steps = [
+      `Reserved used: ${attempt.reservedUsed} USDT`,
+      `Transaction recovered after ${reason}`,
+      `Transaction found on-chain: ${recoveredHash}`
+    ];
+
+    setTransaction({
+      isProcessing: true,
+      hash: recoveredHash,
+      status: 'pending',
+      error: null,
+      distributionSteps: steps
+    });
+
+    const { error } = await supabase.rpc('create_upgrade_payment_with_reserved_and_chain', {
+      p_user_id: user.id,
+      p_plan_id: selectedPlan.tsp_id,
+      p_chain_amount: attempt.chainAmount,
+      p_reserved_used: attempt.reservedUsed,
+      p_currency: 'USDT',
+      p_transaction_id: recoveredHash,
+      p_gateway_response: {
+        blockchain: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+        usdt_contract: settings.usdtAddress,
+        admin_wallet: attempt.toAddress,
+        transaction_hash: recoveredHash,
+        wallet_address: attempt.walletAddress,
+        wallet_name: walletState.walletName,
+        chain_id: attempt.chainId,
+        reserved_forfeited: attempt.reservedForfeited,
+        recovered_after: reason,
+        processed_at: new Date().toISOString(),
+        status: 'success',
+        steps
+      }
+    });
+
+    if (error) throw error;
+
+    setTransaction({
+      isProcessing: false,
+      hash: recoveredHash,
+      status: 'success',
+      error: null,
+      distributionSteps: steps
+    });
+
+    sessionStorage.setItem(PAYMENT_SUCCESS_KEY, JSON.stringify({
+      success: true,
+      tx: {
+        isProcessing: false,
+        hash: recoveredHash,
+        status: 'success',
+        error: null,
+        distributionSteps: steps
+      }
+    }));
+
+    await Promise.all([fetchUserData(user.id), loadWorkingWalletReservedBalance()]);
+    void sendAccountEmail({
+      type: 'upgrade_payment',
+      planName: selectedPlan.tsp_name,
+      amount: selectedPlan.tsp_price,
+      transactionHash: recoveredHash,
+      reservedUsed: attempt.reservedUsed,
+      network: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+    });
+    notification.showSuccess('Payment Recovered', 'TokenPocket payment was found and your upgrade has been activated.');
+    goToPaymentSuccess({
+      txHash: recoveredHash,
+      amount: selectedPlan.tsp_price,
+      reservedUsed: attempt.reservedUsed,
+    });
+    return true;
+  };
+
   const payNowDisabledReason = useMemo(() => {
+    if (walletRequestLocked) return 'A wallet confirmation is already open. Please finish or reject that wallet request before trying again.';
     if (transaction.isProcessing) return 'A payment is already being processed.';
     if (useReservedBalance && canUseReservedForUpgradeUi && chainPayAmountForUpgrade === 0) {
       if (!walletState.isConnected || !walletState.address) return 'Please connect your wallet to continue.';
@@ -408,6 +583,7 @@ const Payment: React.FC = () => {
     selectedPlan?.tsp_price,
     transaction.isProcessing,
     useReservedBalance,
+    walletRequestLocked,
     walletState.address,
     walletState.isConnected,
     walletState.usdtBalance,
@@ -561,22 +737,30 @@ const Payment: React.FC = () => {
   };
 
   const handlePayment = async () => {
-    // Input validation
-    if (!selectedPlan || !user) {
-      notification.showError('Error', 'Missing plan or user information');
+    if (paymentInFlightRef.current || transaction.isProcessing) {
+      notification.showError('Please Wait', 'A payment is already being processed. Please finish or reject the open wallet request before trying again.');
       return;
     }
 
-    const planType = String(selectedPlan.tsp_type || '').toLowerCase();
-    const isUpgradePlan = planType === 'upgrade' && Boolean(user.registrationPaid || user.hasActiveSubscription);
+    paymentInFlightRef.current = true;
 
-    // FIX: Re-check active subscription before payment
-    if (user.hasActiveSubscription && !isUpgradePlan) {
-      notification.showInfo('Already Subscribed', 'You already have an active subscription.');
-      // Set local state to success to enforce the success UI path immediately
-      setTransaction(prev => ({ ...prev, status: 'success' }));
-      return;
-    }
+    try {
+      // Input validation
+      if (!selectedPlan || !user) {
+        notification.showError('Error', 'Missing plan or user information');
+        return;
+      }
+
+      const planType = String(selectedPlan.tsp_type || '').toLowerCase();
+      const isUpgradePlan = planType === 'upgrade' && Boolean(user.registrationPaid || user.hasActiveSubscription);
+
+      // FIX: Re-check active subscription before payment
+      if (user.hasActiveSubscription && !isUpgradePlan) {
+        notification.showInfo('Already Subscribed', 'You already have an active subscription.');
+        // Set local state to success to enforce the success UI path immediately
+        setTransaction(prev => ({ ...prev, status: 'success' }));
+        return;
+      }
 
     if (useReservedBalance && isUpgradePlan) {
       const reservedUsed = Math.min(workingWalletReservedBalance, selectedPlan.tsp_price);
@@ -672,7 +856,20 @@ const Payment: React.FC = () => {
           });
           return;
         } catch (error: any) {
-          const message = await extractEdgeFunctionErrorMessage(error) || error?.message || 'Upgrade payment failed';
+          const message = await getPaymentErrorMessage(error, 'Upgrade payment failed. Please try again.');
+          if (isWalletRequestAlreadyOpenMessage(message)) {
+            pauseWalletRetry();
+            setTransaction({
+              isProcessing: false,
+              hash: null,
+              status: 'pending',
+              error: message,
+              distributionSteps: ['Waiting for wallet confirmation'],
+            });
+            notification.showInfo('Wallet Confirmation Open', message);
+            return;
+          }
+
           setTransaction({
             isProcessing: false,
             hash: null,
@@ -734,6 +931,25 @@ const Payment: React.FC = () => {
       sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
 
       try {
+        let startBlock: number | null = null;
+        try {
+          startBlock = await walletService.getCurrentBlockNumber();
+        } catch (blockError) {
+          console.warn('Unable to capture upgrade payment start block:', blockError);
+        }
+
+        upgradeRecoveryAttemptRef.current = {
+          userId: user.id,
+          planId: selectedPlan.tsp_id,
+          walletAddress: walletState.address,
+          toAddress: adminReceivingWallet,
+          chainAmount,
+          reservedUsed: reservedUsedRounded,
+          reservedForfeited: reservedAmountToVanish,
+          chainId: walletState.chainId,
+          startBlock
+        };
+
         const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, chainAmount);
 
         const { error } = await supabase.rpc('create_upgrade_payment_with_reserved_and_chain', {
@@ -796,7 +1012,41 @@ const Payment: React.FC = () => {
         });
         return;
       } catch (error: any) {
-        const errorMessage = await extractEdgeFunctionErrorMessage(error) || error?.message || 'Payment processing failed';
+        const errorMessage = await getPaymentErrorMessage(error, 'Payment processing failed. Please try again.');
+        if (isWalletRequestAlreadyOpenMessage(errorMessage)) {
+          const recoveryAttempt = upgradeRecoveryAttemptRef.current;
+          if (recoveryAttempt) {
+            try {
+              const recovered = await recoverSubmittedUpgradePayment(recoveryAttempt, 'TokenPocket response issue');
+              if (recovered) return;
+            } catch (recoveryError: any) {
+              const recoveryMessage = await getPaymentErrorMessage(recoveryError, 'Payment was sent, but automatic activation failed. Please contact admin with your transaction hash.');
+              setTransaction({
+                isProcessing: false,
+                hash: transaction.hash,
+                status: 'error',
+                error: recoveryMessage,
+                distributionSteps: [`Reserved used: ${reservedUsedRounded} USDT`, `TokenPocket payment recovery failed`]
+              });
+              sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+              notification.showError('Payment Stuck', recoveryMessage);
+              return;
+            }
+          }
+
+          pauseWalletRetry();
+          setTransaction({
+            isProcessing: false,
+            hash: transaction.hash,
+            status: 'pending',
+            error: 'TokenPocket may have submitted the payment. If USDT was deducted, wait a few seconds and do not click Pay again. Share the transaction hash with admin if activation does not complete.',
+            distributionSteps: [`Reserved used: ${reservedUsedRounded} USDT`, `Waiting for TokenPocket transaction`]
+          });
+          sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+          notification.showInfo('Checking TokenPocket Payment', 'If USDT was deducted, we are checking the blockchain for your transaction.');
+          return;
+        }
+
         setTransaction({
           isProcessing: false,
           hash: transaction.hash,
@@ -956,7 +1206,20 @@ const Payment: React.FC = () => {
     } catch (error: any) {
       console.error('Payment processing failed:', error);
 
-      const errorMessage = error?.message || 'Payment processing failed';
+      const errorMessage = await getPaymentErrorMessage(error, 'Payment processing failed. Please try again.');
+      if (isWalletRequestAlreadyOpenMessage(errorMessage)) {
+        pauseWalletRetry();
+        setTransaction({
+          isProcessing: false,
+          hash: transaction.hash,
+          status: 'pending',
+          error: errorMessage,
+          distributionSteps: ['Waiting for wallet confirmation']
+        });
+        sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
+        notification.showInfo('Wallet Confirmation Open', errorMessage);
+        return;
+      }
 
       const finalErrorState = {
         isProcessing: false,
@@ -994,7 +1257,7 @@ const Payment: React.FC = () => {
                 status: 'failed',
                 error: errorMessage,
                 steps: transaction.distributionSteps,
-                error_details: error?.response?.data || error?.toString()
+                error_details: errorMessage
               }
             })
             .select()
@@ -1010,6 +1273,9 @@ const Payment: React.FC = () => {
       }
 
       notification.showError('Payment Failed', errorMessage);
+    }
+    } finally {
+      paymentInFlightRef.current = false;
     }
   };
 

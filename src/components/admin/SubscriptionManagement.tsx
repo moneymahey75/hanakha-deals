@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
 import { CreditCard, Plus, CreditCard as Edit, Trash2, Save, X, CheckCircle, AlertCircle, DollarSign, Calendar, Package, UserPlus, TrendingUp } from 'lucide-react';
@@ -20,6 +20,7 @@ interface SubscriptionPlan {
   tsp_is_active: boolean;
   tsp_type: 'registration' | 'upgrade';
   tsp_plan_phase?: 'prelaunch' | 'launch';
+  tsp_deleted_at?: string | null;
   tsp_created_at: string;
   tsp_updated_at: string;
 }
@@ -32,7 +33,9 @@ const SubscriptionManagement: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const latestPlansRequestKey = useRef('');
   const notification = useNotification();
+  const currentPlanType: 'registration' | 'upgrade' = planPhase === 'launch' ? 'upgrade' : 'registration';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,24 +51,23 @@ const SubscriptionManagement: React.FC = () => {
 
   useEffect(() => {
     loadPlans();
-  }, [activeTab, planPhase]);
+  }, [currentPlanType, planPhase]);
 
   useEffect(() => {
-    if (planPhase === 'prelaunch' && activeTab === 'upgrade') {
-      setActiveTab('registration');
-    } else if (planPhase === 'launch' && activeTab === 'registration') {
-      setActiveTab('upgrade');
+    if (activeTab !== currentPlanType) {
+      setActiveTab(currentPlanType);
     }
-  }, [planPhase, activeTab]);
+  }, [activeTab, currentPlanType]);
 
   const loadPlans = async () => {
     setLoading(true);
     try {
       const requestPayload = {
-        planType: activeTab,
+        planType: currentPlanType,
         planPhase
       };
       const requestKey = JSON.stringify(requestPayload);
+      latestPlansRequestKey.current = requestKey;
       const requestPromise =
         inFlightSubscriptionPlansRequest?.key === requestKey
           ? inFlightSubscriptionPlansRequest.promise
@@ -79,15 +81,22 @@ const SubscriptionManagement: React.FC = () => {
       }
 
       const data = await requestPromise;
-      setPlans(data || []);
+      if (latestPlansRequestKey.current !== requestKey) return;
+
+      setPlans((data || []).filter((plan) => {
+        const phase = plan.tsp_plan_phase || 'prelaunch';
+        return plan.tsp_type === currentPlanType && phase === planPhase && !plan.tsp_deleted_at;
+      }));
     } catch (error: any) {
       notification.showError('Load Failed', error.message);
     } finally {
-      const requestKey = JSON.stringify({ planType: activeTab, planPhase });
+      const requestKey = JSON.stringify({ planType: currentPlanType, planPhase });
       if (inFlightSubscriptionPlansRequest?.key === requestKey) {
         inFlightSubscriptionPlansRequest = null;
       }
-      setLoading(false);
+      if (latestPlansRequestKey.current === requestKey) {
+        setLoading(false);
+      }
     }
   };
 
@@ -100,7 +109,7 @@ const SubscriptionManagement: React.FC = () => {
         featuresObj[key] = true;
       });
 
-      const parentIncomeValue = activeTab === 'registration'
+      const parentIncomeValue = currentPlanType === 'registration'
         ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
         : 0;
 
@@ -113,12 +122,12 @@ const SubscriptionManagement: React.FC = () => {
         features: featuresObj,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
-        planType: activeTab,
+        planType: currentPlanType,
         planPhase,
         mirrorToUpgrade: formData.mirror_to_upgrade
       });
 
-      notification.showSuccess('Success', `${planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} ${activeTab === 'registration' ? 'registration' : 'upgrade'} plan created`);
+      notification.showSuccess('Success', `${planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} ${currentPlanType === 'registration' ? 'registration' : 'upgrade'} plan created`);
       setShowCreateModal(false);
       resetForm();
       loadPlans();
@@ -138,7 +147,7 @@ const SubscriptionManagement: React.FC = () => {
         featuresObj[key] = true;
       });
 
-      const parentIncomeValue = activeTab === 'registration'
+      const parentIncomeValue = currentPlanType === 'registration'
         ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
         : 0;
 
@@ -152,7 +161,7 @@ const SubscriptionManagement: React.FC = () => {
         features: featuresObj,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
-        planType: activeTab,
+        planType: currentPlanType,
         planPhase
       });
 
@@ -280,7 +289,7 @@ const SubscriptionManagement: React.FC = () => {
           <button
             onClick={() => setActiveTab('registration')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'registration'
+              currentPlanType === 'registration'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
@@ -295,7 +304,7 @@ const SubscriptionManagement: React.FC = () => {
           <button
             onClick={() => setActiveTab('upgrade')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'upgrade'
+              currentPlanType === 'upgrade'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
@@ -330,7 +339,7 @@ const SubscriptionManagement: React.FC = () => {
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Plans Found</h3>
-          <p className="text-gray-500">Create your first {activeTab} plan to get started</p>
+          <p className="text-gray-500">Create your first {currentPlanType} plan to get started</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -410,7 +419,7 @@ const SubscriptionManagement: React.FC = () => {
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-900">
-                {showEditModal ? 'Edit' : 'Create'} {planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} {activeTab === 'registration' ? 'Registration' : 'Upgrade'} Plan
+                {showEditModal ? 'Edit' : 'Create'} {planPhase === 'launch' ? 'Launch' : 'Pre-Launch'} {currentPlanType === 'registration' ? 'Registration' : 'Upgrade'} Plan
               </h3>
             </div>
 
@@ -477,7 +486,7 @@ const SubscriptionManagement: React.FC = () => {
                 </p>
               </div>
 
-              {activeTab === 'registration' && (
+              {currentPlanType === 'registration' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Parent A/C Income (USDT)</label>
                   <input
@@ -495,7 +504,7 @@ const SubscriptionManagement: React.FC = () => {
                 </div>
               )}
 
-              {!showEditModal && planPhase === 'launch' && activeTab === 'registration' && (
+              {!showEditModal && planPhase === 'launch' && currentPlanType === 'registration' && (
                 <label className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                   <input
                     type="checkbox"

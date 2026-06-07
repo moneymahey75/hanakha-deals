@@ -68,20 +68,46 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { error } = await supabase
-      .from('tbl_subscription_plans')
-      .delete()
-      .eq('tsp_id', id);
+    const { count, error: referenceError } = await supabase
+      .from('tbl_user_subscriptions')
+      .select('tus_id', { count: 'exact', head: true })
+      .eq('tus_plan_id', id);
 
-    if (error) {
-      throw error;
+    if (referenceError) {
+      throw referenceError;
     }
 
-    await logAdminAction(supabase, admin.tau_id, 'delete_subscription_plan', 'subscriptions', {
-      plan_id: id
+    const hasSubscriptionHistory = Number(count || 0) > 0;
+
+    if (hasSubscriptionHistory) {
+      const { error } = await supabase
+        .from('tbl_subscription_plans')
+        .update({
+          tsp_is_active: false,
+          tsp_deleted_at: new Date().toISOString()
+        })
+        .eq('tsp_id', id);
+
+      if (error) {
+        throw error;
+      }
+    } else {
+      const { error } = await supabase
+        .from('tbl_subscription_plans')
+        .delete()
+        .eq('tsp_id', id);
+
+      if (error) {
+        throw error;
+      }
+    }
+
+    await logAdminAction(supabase, admin.tau_id, hasSubscriptionHistory ? 'archive_subscription_plan' : 'delete_subscription_plan', 'subscriptions', {
+      plan_id: id,
+      archived: hasSubscriptionHistory
     });
 
-    return new Response(JSON.stringify({ success: true, data: { id } }), {
+    return new Response(JSON.stringify({ success: true, data: { id, archived: hasSubscriptionHistory } }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
