@@ -13,8 +13,6 @@ interface SubscriptionPlan {
   tsp_duration_days: number;
   tsp_features: any;
   tsp_is_active: boolean;
-  tsp_type?: 'registration' | 'upgrade';
-  tsp_plan_phase?: 'prelaunch' | 'launch';
   tsp_created_at: string;
 }
 
@@ -26,21 +24,16 @@ const SubscriptionPlans: React.FC = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [phaseMismatchHint, setPhaseMismatchHint] = useState<string | null>(null);
-  const userPlanType = launchPhase === 'launched'
-    ? 'upgrade'
-    : (user?.registrationPaid || user?.hasActiveSubscription ? 'upgrade' : 'registration');
 
   useEffect(() => {
     loadPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchPhase, userPlanType]);
+  }, [launchPhase]);
 
   const loadPlans = async () => {
     try {
       setLoading(true);
       setError(null);
-      setPhaseMismatchHint(null);
 
       if (launchPhase !== 'launched') {
         setPlans([]);
@@ -74,8 +67,7 @@ const SubscriptionPlans: React.FC = () => {
         .from('tbl_subscription_plans')
         .select('*')
         .eq('tsp_is_active', true)
-        .eq('tsp_type', userPlanType)
-        .eq('tsp_plan_phase', 'launch')
+        .eq('tsp_type', 'upgrade')
         .order('tsp_price', { ascending: true });
 
       if (error) {
@@ -89,25 +81,6 @@ const SubscriptionPlans: React.FC = () => {
       }));
 
       console.log('✅ Plans loaded successfully:', normalized.length, 'plans');
-
-      if (normalized.length === 0) {
-        const { data: prelaunchPlans, error: prelaunchError } = await supabase
-          .from('tbl_subscription_plans')
-          .select('tsp_id')
-          .eq('tsp_is_active', true)
-          .eq('tsp_type', userPlanType)
-          .eq('tsp_plan_phase', 'prelaunch')
-          .limit(1);
-
-        if (!prelaunchError && (prelaunchPlans || []).length > 0) {
-          setPhaseMismatchHint(
-            userPlanType === 'upgrade'
-              ? 'Pre-Launch upgrade plans exist, but no active Launch upgrade plans are available yet.'
-              : 'Pre-Launch registration plans exist, but no active Launch registration plans are available yet.'
-          );
-        }
-      }
-
       setPlans(normalized);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
@@ -201,12 +174,8 @@ const SubscriptionPlans: React.FC = () => {
             Choose Your <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">USDT Plan</span>
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-            {user
-              ? userPlanType === 'upgrade'
-                ? user?.registrationPaid || user?.hasActiveSubscription
-                  ? 'Select a Launch upgrade plan to move from Pre-Launch benefits into the Launch earning system.'
-                  : 'Select a Launch plan to register your account and start with the Launch earning system.'
-                : 'Select a Launch registration plan to activate your account and start with the Launch earning system.'
+            {user 
+              ? 'Select the perfect USDT subscription plan to unlock your referral dashboard and start earning.'
               : 'Explore our USDT subscription plans. Login to purchase and start your referral journey.'
             }
           </p>
@@ -339,8 +308,8 @@ const SubscriptionPlans: React.FC = () => {
                 >
                   <CreditCard className="h-5 w-5" />
                   <span>
-                    {user
-                      ? `${userPlanType === 'upgrade' ? 'Upgrade' : 'Pay'} ${plan.tsp_price} USDT - Select Plan`
+                    {user 
+                      ? `Pay ${plan.tsp_price} USDT - Select Plan`
                       : `Select ${plan.tsp_name} - ${plan.tsp_price} USDT`
                     }
                   </span>
@@ -365,11 +334,6 @@ const SubscriptionPlans: React.FC = () => {
             <p className="text-gray-600 mb-6">
               No active subscription plans are currently available. Please contact support.
             </p>
-            {phaseMismatchHint && (
-              <p className="mx-auto mb-6 max-w-xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                {phaseMismatchHint}
-              </p>
-            )}
             {!user && (
               <div className="mt-6">
                 <Link

@@ -59,16 +59,12 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { planType, planPhase } = await req.json();
-    const normalizedPlanPhase = ['prelaunch', 'launch'].includes(String(planPhase || '').toLowerCase())
-      ? String(planPhase).toLowerCase()
-      : 'prelaunch';
+    const { planType } = await req.json();
 
     const { data, error } = await supabase
       .from('tbl_subscription_plans')
       .select('*')
       .eq('tsp_type', planType)
-      .eq('tsp_plan_phase', normalizedPlanPhase)
       .order('tsp_created_at', { ascending: false });
 
     if (error) {

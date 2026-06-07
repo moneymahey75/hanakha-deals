@@ -1,6 +1,6 @@
 import React from 'react';
 import { TransactionState } from '../types/wallet';
-import { CreditCard, CheckCircle, XCircle, Loader, ExternalLink, Shield, Home, Wallet } from 'lucide-react';
+import { CreditCard, CheckCircle, XCircle, Loader, ExternalLink, Users, Shield, Home } from 'lucide-react';
 
 interface PaymentSectionProps {
     onPayment: () => void;
@@ -8,9 +8,10 @@ interface PaymentSectionProps {
     distributionSteps?: string[];
     planPrice: number;
     settings: {
-        paymentMode?: string | number | boolean;
-        usdtAddress?: string;
-        adminPaymentWallet?: string;
+        paymentMode: string;
+        usdtAddress: string;
+        subscriptionContractAddress: string;
+        subscriptionWalletAddress: string;
     } | null;
     onGoToDashboard: () => void;
 }
@@ -46,8 +47,12 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
         return settings?.usdtAddress || 'Not configured';
     };
 
-    const getAdminPaymentWallet = () => {
-        return settings?.adminPaymentWallet || 'Not configured';
+    const getDistributionContractAddress = () => {
+        return settings?.subscriptionContractAddress || 'Not configured';
+    };
+
+    const getSubscriptionWalletAddress = () => {
+        return settings?.subscriptionWalletAddress || 'Not configured';
     };
 
     const formatAddress = (address: string) => {
@@ -66,7 +71,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-gray-900 flex items-center">
                             <CreditCard className="w-5 h-5 mr-2 text-purple-600" />
-                            USDT Payment
+                            USDT Distribution Payment
                         </h3>
                         <div className="flex items-center px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
                             <Shield className="w-3 h-3 mr-1" />
@@ -77,21 +82,21 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                     <div className="space-y-4 mb-6">
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <h4 className="font-medium text-blue-800 mb-2 flex items-center">
-                                <Wallet className="w-4 h-4 mr-2" />
-                                Payment Details
+                                <Users className="w-4 h-4 mr-2" />
+                                Distribution Details
                             </h4>
                             <div className="text-blue-700 text-sm space-y-1">
-                                <p>Admin Wallet: {formatAddress(getAdminPaymentWallet())}</p>
+                                <p>• Subscription Wallet: {formatAddress(getSubscriptionWalletAddress())} → {planPrice} USDT</p>
                                 <p className="font-semibold mt-2 text-blue-800">Total: {planPrice} USDT</p>
                             </div>
                         </div>
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Admin Receiving Wallet
+                                Distribution Contract Address
                             </label>
                             <code className="block px-3 py-2 bg-gray-50 text-gray-900 rounded border border-gray-200 text-sm font-mono">
-                                {formatAddress(getAdminPaymentWallet())}
+                                {formatAddress(getDistributionContractAddress())}
                             </code>
                         </div>
 
@@ -117,8 +122,8 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                         )}
                         <span>
                             {transaction.isProcessing
-                                ? 'Processing Payment...'
-                                : `Pay ${planPrice} USDT`
+                                ? 'Processing Distribution...'
+                                : `Approve & Distribute ${planPrice} USDT`
                             }
                         </span>
                     </button>
@@ -128,7 +133,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
             {/* Transaction Status - Show in all states except idle */}
             {transaction.status !== 'idle' && (
                 <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-purple-200 shadow-sm">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Status</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Distribution Status</h3>
 
                     <div className="space-y-4">
                         <div className="flex items-center space-x-3">
@@ -147,17 +152,17 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                     transaction.status === 'success' ? 'text-green-700' :
                                         'text-red-700'
                             }`}>
-                                {transaction.status === 'pending' && 'Payment Processing...'}
-                                {transaction.status === 'success' && 'Payment Successful!'}
-                                {transaction.status === 'error' && 'Payment Failed'}
+                                {transaction.status === 'pending' && 'Distribution Processing...'}
+                                {transaction.status === 'success' && 'Distribution Successful!'}
+                                {transaction.status === 'error' && 'Distribution Failed'}
                             </span>
                         </div>
 
-                        {/* Payment Steps */}
+                        {/* Distribution Steps */}
                         {distributionSteps.length > 0 && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Payment Process
+                                    Distribution Process
                                 </label>
                                 <div className="bg-gray-50 rounded border border-gray-200 p-3 max-h-60 overflow-auto">
                                     {distributionSteps.map((step, index) => (
@@ -202,10 +207,10 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                         {transaction.status === 'success' && (
                             <div className="space-y-4">
                                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                                    <h4 className="font-medium text-green-800 mb-2">Payment Confirmed</h4>
+                                    <h4 className="font-medium text-green-800 mb-2">Distribution Confirmed</h4>
                                     <p className="text-green-700 text-sm">
-                                        Your payment of {planPrice} USDT has been successfully sent to the admin receiving wallet.
-                                        The transaction has been recorded on the {getNetworkName()}.
+                                        Your distribution of {planPrice} USDT has been successfully processed to the subscription wallet through the smart contract.
+                                        The transaction has been recorded on the {getNetworkName()} and the recipient has received the allocated amount.
                                     </p>
                                     <p className="text-green-600 text-xs mt-2">
                                         You can verify the transaction using the link above.

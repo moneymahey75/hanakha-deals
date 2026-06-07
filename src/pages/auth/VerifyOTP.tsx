@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAdmin } from '../../contexts/AdminContext';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import { OTPService } from '../../services/otpService';
 import { Smartphone, RefreshCw, Mail, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -25,7 +24,6 @@ interface CompletedVerifications {
 
 const VerifyOTP: React.FC = () => {
   const { user, fetchUserData, loading } = useAuth();
-  const { settings } = useAdmin();
   const notification = useNotification();
   const navigate = useNavigate();
   const location = useLocation();
@@ -105,15 +103,11 @@ const VerifyOTP: React.FC = () => {
     }
 
     if (user.isVerified || user.mobileVerified) {
-      const nextRoute = (settings.launchPhase || 'prelaunch') === 'launched'
-        ? '/subscription-plans'
-        : '/registration-payment';
-      navigate(nextRoute, { replace: true });
+      navigate('/registration-payment', { replace: true });
     }
   }, [
     loading,
     navigate,
-    settings.launchPhase,
     user?.hasActiveSubscription,
     user?.id,
     user?.isVerified,

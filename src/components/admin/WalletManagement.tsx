@@ -42,7 +42,6 @@ interface WalletData {
   user_type: 'customer' | 'company' | 'admin';
   user_is_dummy?: boolean;
   wallet_balance: number;
-  wallet_reserved_balance?: number;
   total_earned: number;
   total_spent: number;
   transaction_count: number;
@@ -104,9 +103,6 @@ const TableSkeleton: React.FC<{ rows?: number }> = ({ rows = 5 }) => {
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="h-6 bg-gray-200 rounded w-24"></div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="h-5 bg-gray-200 rounded w-24"></div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="h-4 bg-gray-200 rounded w-20"></div>
@@ -547,12 +543,11 @@ const WalletManagement: React.FC = () => {
     });
 
     const totalBalance = filtered.reduce((sum, w) => sum + w.wallet_balance, 0);
-    const totalReserved = filtered.reduce((sum, w) => sum + Number(w.wallet_reserved_balance || 0), 0);
     const totalEarned = filtered.reduce((sum, w) => sum + w.total_earned, 0);
     const totalSpent = filtered.reduce((sum, w) => sum + w.total_spent, 0);
     const activeWallets = filtered.filter(w => w.wallet_balance > 0).length;
 
-    return { totalBalance, totalReserved, totalEarned, totalSpent, activeWallets };
+    return { totalBalance, totalEarned, totalSpent, activeWallets };
   };
 
   const stats = getWalletStats();
@@ -590,14 +585,10 @@ const WalletManagement: React.FC = () => {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">{stats.totalBalance.toFixed(2)}</div>
               <div className="text-sm text-gray-600">Total Balance (USDT)</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-amber-600">{stats.totalReserved.toFixed(2)}</div>
-              <div className="text-sm text-gray-600">Reserved Balance</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">{stats.totalEarned.toFixed(2)}</div>
@@ -716,16 +707,13 @@ const WalletManagement: React.FC = () => {
                       Balance
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Reserved
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total Earned
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total Spent
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Tnx
+                      Transactions
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Last Activity
@@ -742,9 +730,19 @@ const WalletManagement: React.FC = () => {
                       <>
                         {currentWallets.map((wallet) => (
                             <tr key={wallet.user_id} className="hover:bg-gray-50">
-                              <td className="py-4 whitespace-nowrap">
+                              <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
-                                  
+                                  <div className="flex-shrink-0 h-10 w-10">
+                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                                        wallet.user_type === 'company'
+                                            ? 'bg-gradient-to-r from-blue-500 to-purple-600'
+                                            : 'bg-gradient-to-r from-green-500 to-blue-600'
+                                    }`}>
+                                    <span className="text-white font-medium text-sm">
+                                      {wallet.user_name.charAt(0)}
+                                    </span>
+                                    </div>
+                                  </div>
                                   <div className="ml-4">
                                     <div className="text-sm font-medium text-gray-900">
                                       {wallet.user_name}
@@ -770,13 +768,6 @@ const WalletManagement: React.FC = () => {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-lg font-bold text-green-600">
                                   {wallet.wallet_balance.toFixed(2)} USDT
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className={`text-sm font-semibold ${
-                                  Number(wallet.wallet_reserved_balance || 0) > 0 ? 'text-amber-600' : 'text-gray-500'
-                                }`}>
-                                  {Number(wallet.wallet_reserved_balance || 0).toFixed(2)} USDT
                                 </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">

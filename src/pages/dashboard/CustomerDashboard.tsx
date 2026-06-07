@@ -31,8 +31,6 @@ import {
   X,
   Home,
   CreditCard,
-  CheckCircle,
-  AlertCircle,
   Ticket,
   Share2,
   Wallet as WalletIcon,
@@ -103,8 +101,6 @@ const CustomerDashboard: React.FC = () => {
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [hasLaunchUpgrade, setHasLaunchUpgrade] = useState(false);
-  const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
 
@@ -131,30 +127,6 @@ const CustomerDashboard: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
-    const loadUpgradeStatus = async () => {
-      if (!user?.id) {
-        if (mounted) {
-          setHasLaunchUpgrade(false);
-          setUpgradeStatusLoading(false);
-        }
-        return;
-      }
-
-      try {
-        setUpgradeStatusLoading(true);
-        const { data, error } = await supabase.rpc('has_completed_launch_upgrade', {
-          p_user_id: user.id,
-        });
-        if (error) throw error;
-        if (mounted) setHasLaunchUpgrade(Boolean(data));
-      } catch (error) {
-        console.error('Failed to load launch upgrade status:', error);
-        if (mounted) setHasLaunchUpgrade(false);
-      } finally {
-        if (mounted) setUpgradeStatusLoading(false);
-      }
-    };
-
     const loadSpinWheelVisibility = async () => {
       if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'prelaunch') {
         if (mounted) setSpinWheelVisible(false);
@@ -174,7 +146,6 @@ const CustomerDashboard: React.FC = () => {
       }
     };
 
-    loadUpgradeStatus();
     loadSpinWheelVisibility();
 
     return () => {
@@ -555,23 +526,6 @@ const CustomerDashboard: React.FC = () => {
                   User ID:{' '}
                   <span className="font-semibold text-indigo-600">{user?.sponsorshipNumber || 'N/A'}</span>
                 </p>
-                <div className="mt-3">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold ${
-                      hasLaunchUpgrade
-                        ? 'border-green-200 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-gray-50 text-gray-600'
-                    }`}
-                    title={hasLaunchUpgrade ? 'Customer has completed Launch upgrade' : 'Customer has not completed Launch upgrade yet'}
-                  >
-                    {hasLaunchUpgrade ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
-                    {upgradeStatusLoading ? 'Checking upgrade status...' : hasLaunchUpgrade ? 'Account Upgraded' : 'Not Upgraded Yet'}
-                  </span>
-                </div>
               </div>
 
               {/* Mobile sidebar toggle (in-flow so it won't overlap content) */}
