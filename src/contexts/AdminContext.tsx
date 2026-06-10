@@ -61,6 +61,7 @@ interface GeneralSettings {
     bitget: boolean;
   };
   withdrawalMinAmount: number;
+  rewardWithdrawalMinAmount: number;
   withdrawalStepAmount: number;
   withdrawalCommissionPercent: number;
   withdrawalAutoTransfer: boolean;
@@ -208,6 +209,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...defaultPaymentWalletsEnabled
     },
     withdrawalMinAmount: 10,
+    rewardWithdrawalMinAmount: 10,
     withdrawalStepAmount: 10,
     withdrawalCommissionPercent: 0.5,
     withdrawalAutoTransfer: false,
@@ -515,6 +517,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'withdrawal_min_amount':
                 loadedSettings.withdrawalMinAmount = Number(value);
                 break;
+              case 'reward_withdrawal_min_amount':
+                loadedSettings.rewardWithdrawalMinAmount = Number(value);
+                break;
               case 'withdrawal_step_amount':
                 loadedSettings.withdrawalStepAmount = Number(value);
                 break;
@@ -673,6 +678,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           withdrawalMinAmount: Number.isFinite(loadedSettings.withdrawalMinAmount as number)
             ? (loadedSettings.withdrawalMinAmount as number)
             : defaultSettings.withdrawalMinAmount,
+          rewardWithdrawalMinAmount: Number.isFinite(loadedSettings.rewardWithdrawalMinAmount as number)
+            ? (loadedSettings.rewardWithdrawalMinAmount as number)
+            : defaultSettings.rewardWithdrawalMinAmount,
           withdrawalStepAmount: Number.isFinite(loadedSettings.withdrawalStepAmount as number)
             ? (loadedSettings.withdrawalStepAmount as number)
             : defaultSettings.withdrawalStepAmount,

@@ -44,6 +44,7 @@ const WithdrawalRequests: React.FC = () => {
   const [rejectingWithdrawal, setRejectingWithdrawal] = useState<WithdrawalRequest | null>(null);
   const [failingWithdrawal, setFailingWithdrawal] = useState<WithdrawalRequest | null>(null);
   const [rejectionNote, setRejectionNote] = useState('');
+  const [refundAttemptedAmount, setRefundAttemptedAmount] = useState<boolean | null>(null);
   const [rejectionSubmitting, setRejectionSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -154,7 +155,6 @@ const WithdrawalRequests: React.FC = () => {
 
   const handleApproveWithdrawal = async (withdrawalId: string) => {
     const adminSessionToken = getAdminSessionToken();
-    console.log('adminSessionToken', adminSessionToken);
     if (!adminSessionToken) {
       notification.showError('Error', 'Admin session not found');
       return;
@@ -200,15 +200,21 @@ const WithdrawalRequests: React.FC = () => {
     }
   };
 
-  const handleRejectWithdrawal = async (withdrawalId: string, note: string): Promise<boolean> => {
+  const handleRejectWithdrawal = async (withdrawalId: string, note: string, refundAttemptedAmount: boolean): Promise<boolean> => {
     setWithdrawalProcessing(withdrawalId);
     try {
-      await adminApi.post('admin-reject-withdrawal', {
+      const result = await adminApi.post<{ refunded?: boolean }>('admin-reject-withdrawal', {
         withdrawalId,
-        note
+        note,
+        refundAttemptedAmount
       });
 
-      notification.showSuccess('Withdrawal Rejected', 'Withdrawal request has been rejected');
+      notification.showSuccess(
+        'Withdrawal Rejected',
+        result?.refunded
+          ? 'Withdrawal was rejected and the attempted amount was refunded.'
+          : 'Withdrawal was rejected without refunding the attempted amount.'
+      );
       loadWithdrawals();
       return true;
     } catch (error: any) {
@@ -219,15 +225,21 @@ const WithdrawalRequests: React.FC = () => {
     }
   };
 
-  const handleFailWithdrawal = async (withdrawalId: string, note: string): Promise<boolean> => {
+  const handleFailWithdrawal = async (withdrawalId: string, note: string, refundAttemptedAmount: boolean): Promise<boolean> => {
     setWithdrawalProcessing(withdrawalId);
     try {
-      await adminApi.post('admin-fail-withdrawal', {
+      const result = await adminApi.post<{ refunded?: boolean }>('admin-fail-withdrawal', {
         withdrawalId,
-        note
+        note,
+        refundAttemptedAmount
       });
 
-      notification.showSuccess('Marked Failed', 'Withdrawal request has been marked as failed');
+      notification.showSuccess(
+        'Marked Failed',
+        result?.refunded
+          ? 'Withdrawal was marked failed and the attempted amount was refunded.'
+          : 'Withdrawal was marked failed without refunding the attempted amount.'
+      );
       loadWithdrawals();
       return true;
     } catch (error: any) {
@@ -496,6 +508,7 @@ const WithdrawalRequests: React.FC = () => {
                         onClick={() => {
                           setRejectingWithdrawal(withdrawal);
                           setRejectionNote('');
+                          setRefundAttemptedAmount(null);
                         }}
                         disabled={withdrawalProcessing === withdrawal.twr_id || Boolean(withdrawal.twr_blockchain_tx) || !['pending', 'failed', 'processing'].includes(withdrawal.twr_status)}
                         className="px-3 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 disabled:opacity-50"
@@ -506,6 +519,7 @@ const WithdrawalRequests: React.FC = () => {
                         onClick={() => {
                           setFailingWithdrawal(withdrawal);
                           setRejectionNote('');
+                          setRefundAttemptedAmount(null);
                         }}
                         disabled={withdrawalProcessing === withdrawal.twr_id || Boolean(withdrawal.twr_blockchain_tx) || withdrawal.twr_status !== 'processing'}
                         className="px-3 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50"
@@ -669,7 +683,10 @@ const WithdrawalRequests: React.FC = () => {
                 <p className="text-xs text-gray-500">Add a short note for the customer</p>
               </div>
               <button
-                onClick={() => setRejectingWithdrawal(null)}
+                onClick={() => {
+                  setRejectingWithdrawal(null);
+                  setRefundAttemptedAmount(null);
+                }}
                 className="p-2 text-gray-500 hover:text-gray-700"
                 aria-label="Close"
               >
@@ -687,11 +704,40 @@ const WithdrawalRequests: React.FC = () => {
                 placeholder="Explain why this withdrawal was rejected..."
               />
               <p className="mt-2 text-xs text-gray-500">This note will be emailed to the customer.</p>
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                <p className="font-medium text-gray-900">Refund attempted amount to customer?</p>
+                <div className="mt-3 flex flex-wrap gap-4">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="reject-refund"
+                      checked={refundAttemptedAmount === true}
+                      onChange={() => setRefundAttemptedAmount(true)}
+                      className="h-4 w-4 border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    <span>Yes, refund it</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="reject-refund"
+                      checked={refundAttemptedAmount === false}
+                      onChange={() => setRefundAttemptedAmount(false)}
+                      className="h-4 w-4 border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    <span>No refund</span>
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">Choose one before rejecting this withdrawal.</p>
+              </div>
             </div>
 
             <div className="border-t border-gray-200 px-5 py-4 flex justify-end space-x-2">
               <button
-                onClick={() => setRejectingWithdrawal(null)}
+                onClick={() => {
+                  setRejectingWithdrawal(null);
+                  setRefundAttemptedAmount(null);
+                }}
                 className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
               >
                 Cancel
@@ -703,9 +749,13 @@ const WithdrawalRequests: React.FC = () => {
                     notification.showError('Missing Note', 'Please add a rejection note.');
                     return;
                   }
+                  if (refundAttemptedAmount === null) {
+                    notification.showError('Refund Confirmation Required', 'Please choose whether to refund the attempted amount.');
+                    return;
+                  }
                   setRejectionSubmitting(true);
                   try {
-                    const rejected = await handleRejectWithdrawal(rejectingWithdrawal.twr_id, note);
+                    const rejected = await handleRejectWithdrawal(rejectingWithdrawal.twr_id, note, refundAttemptedAmount);
                     if (rejected) {
                       try {
                         await sendRejectionEmail(
@@ -717,6 +767,7 @@ const WithdrawalRequests: React.FC = () => {
                         notification.showError('Email Failed', emailError.message || 'Failed to send rejection email');
                       }
                       setRejectingWithdrawal(null);
+                      setRefundAttemptedAmount(null);
                     }
                   } finally {
                     setRejectionSubmitting(false);
@@ -741,7 +792,10 @@ const WithdrawalRequests: React.FC = () => {
                 <p className="text-xs text-gray-500">Use this when a request is stuck in processing</p>
               </div>
               <button
-                onClick={() => setFailingWithdrawal(null)}
+                onClick={() => {
+                  setFailingWithdrawal(null);
+                  setRefundAttemptedAmount(null);
+                }}
                 className="p-2 text-gray-500 hover:text-gray-700"
                 aria-label="Close"
               >
@@ -758,12 +812,40 @@ const WithdrawalRequests: React.FC = () => {
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                 placeholder="Explain why this was marked failed (e.g. stuck processing / RPC timeout)..."
               />
-              <p className="mt-2 text-xs text-gray-500">This will also revert any pending debit (if present) so the user can withdraw again.</p>
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                <p className="font-medium text-gray-900">Refund attempted amount to customer?</p>
+                <div className="mt-3 flex flex-wrap gap-4">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="fail-refund"
+                      checked={refundAttemptedAmount === true}
+                      onChange={() => setRefundAttemptedAmount(true)}
+                      className="h-4 w-4 border-gray-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Yes, refund it</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="fail-refund"
+                      checked={refundAttemptedAmount === false}
+                      onChange={() => setRefundAttemptedAmount(false)}
+                      className="h-4 w-4 border-gray-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>No refund</span>
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">Choose one before marking this withdrawal failed.</p>
+              </div>
             </div>
 
             <div className="border-t border-gray-200 px-5 py-4 flex justify-end space-x-2">
               <button
-                onClick={() => setFailingWithdrawal(null)}
+                onClick={() => {
+                  setFailingWithdrawal(null);
+                  setRefundAttemptedAmount(null);
+                }}
                 className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
               >
                 Cancel
@@ -775,11 +857,16 @@ const WithdrawalRequests: React.FC = () => {
                     notification.showError('Missing Note', 'Please add a failure note.');
                     return;
                   }
+                  if (refundAttemptedAmount === null) {
+                    notification.showError('Refund Confirmation Required', 'Please choose whether to refund the attempted amount.');
+                    return;
+                  }
                   setRejectionSubmitting(true);
                   try {
-                    const ok = await handleFailWithdrawal(failingWithdrawal.twr_id, note);
+                    const ok = await handleFailWithdrawal(failingWithdrawal.twr_id, note, refundAttemptedAmount);
                     if (ok) {
                       setFailingWithdrawal(null);
+                      setRefundAttemptedAmount(null);
                     }
                   } finally {
                     setRejectionSubmitting(false);

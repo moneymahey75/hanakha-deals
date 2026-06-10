@@ -34,7 +34,8 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
   const amount = Number(withdrawal?.twr_amount || 0);
   if (!Number.isFinite(amount) || amount <= 0) return { refunded: false, reason: 'invalid_amount' };
 
-  const walletType = String(withdrawal?.twr_wallet_type || 'working') === 'non_working' ? 'non_working' : 'working';
+  const walletTypeRaw = String(withdrawal?.twr_wallet_type || 'working');
+  const walletType = walletTypeRaw === 'reward' ? 'reward' : walletTypeRaw === 'non_working' ? 'non_working' : 'working';
   const { data: wallet, error: walletError } = await supabase
     .from('tbl_wallets')
     .select('tw_id, tw_balance')
@@ -43,6 +44,19 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
     .eq('tw_wallet_type', walletType)
     .maybeSingle();
   if (walletError || !wallet?.tw_id) return { refunded: false, reason: 'wallet_not_found' };
+
+  const { data: existingRefund, error: existingRefundError } = await supabase
+    .from('tbl_wallet_transactions')
+    .select('twt_id')
+    .eq('twt_reference_type', 'withdrawal')
+    .eq('twt_reference_id', withdrawal.twr_id)
+    .eq('twt_transaction_type', 'credit')
+    .in('twt_status', ['completed', 'pending'])
+    .limit(1)
+    .maybeSingle();
+
+  if (existingRefundError) return { refunded: false, reason: 'refund_lookup_failed' };
+  if (existingRefund?.twt_id) return { refunded: false, reason: 'already_refunded' };
 
   const { data: debitTx, error: txError } = await supabase
     .from('tbl_wallet_transactions')
@@ -58,10 +72,13 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
   if (!debitTx?.twt_id) return { refunded: false, reason: 'no_debit_tx' };
 
   const debitStatus = String(debitTx.twt_status || '').toLowerCase();
-  if (debitStatus !== 'pending') return { refunded: false, reason: `debit_tx_status_${debitStatus || 'unknown'}` };
+  if (!['pending', 'failed'].includes(debitStatus)) {
+    return { refunded: false, reason: `debit_tx_status_${debitStatus || 'unknown'}` };
+  }
 
   const currentBalance = Number(wallet.tw_balance || 0);
-  const newBalance = currentBalance + amount;
+  const refundAmount = Number(debitTx.twt_amount || amount);
+  const newBalance = currentBalance + refundAmount;
 
   const { error: balanceError } = await supabase
     .from('tbl_wallets')
@@ -81,7 +98,7 @@ const refundIfDebited = async (supabase: any, withdrawal: any) => {
       twt_wallet_id: wallet.tw_id,
       twt_user_id: withdrawal.twr_user_id,
       twt_transaction_type: 'credit',
-      twt_amount: amount,
+      twt_amount: refundAmount,
       twt_description: 'Withdrawal reverted by admin',
       twt_reference_type: 'withdrawal',
       twt_reference_id: withdrawal.twr_id,
@@ -123,7 +140,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { withdrawalId, note } = await req.json();
+    const { withdrawalId, note, refundAttemptedAmount } = await req.json();
     if (!withdrawalId) {
       return new Response(JSON.stringify({ success: false, error: 'Missing withdrawalId' }), {
         status: 400,
@@ -152,7 +169,13 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const refundResult = status === 'processing' ? await refundIfDebited(supabase, withdrawal) : { refunded: false, reason: 'not_processing' };
+    const shouldRefund = refundAttemptedAmount === true;
+    const refundResult = shouldRefund && ['processing', 'failed', 'pending'].includes(status)
+      ? await refundIfDebited(supabase, withdrawal)
+      : {
+          refunded: false,
+          reason: shouldRefund ? `not_refundable_status_${status || 'unknown'}` : 'admin_declined_refund'
+        };
 
     const { error } = await supabase
       .from('tbl_withdrawal_requests')
@@ -171,6 +194,7 @@ Deno.serve(async (req: Request) => {
     await logAdminAction(supabase, admin.tau_id, 'fail_withdrawal', 'withdrawals', {
       withdrawal_id: withdrawalId,
       previous_status: status,
+      refund_requested: shouldRefund,
       refunded: refundResult.refunded,
       refund_reason: refundResult.reason,
       note: note || null

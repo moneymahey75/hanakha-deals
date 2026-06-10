@@ -6,7 +6,6 @@ import { getReferralNetworkStats, supabase } from '../../lib/supabase';
 import ReferralLinkGenerator from '../../components/mlm/ReferralLinkGenerator';
 import TransactionsDashboard from '../../components/customer/TransactionsDashboard';
 import DailyTasksDashboard from '../../components/customer/DailyTasksDashboard';
-import CouponInteractionsList from '../../components/customer/CouponInteractionsList';
 import WalletList from '../../components/customer/WalletList';
 import PaymentHistory from '../../components/customer/PaymentHistory';
 import EarningsDashboard from '../../components/customer/EarningsDashboard';
@@ -23,7 +22,6 @@ import {
   Award,
   UserPlus,
   BarChart3,
-  CheckSquare,
   ExternalLink,
   Send,
   Download,
@@ -117,8 +115,7 @@ const CustomerDashboard: React.FC = () => {
     { id: 'overview', label: 'Dashboard', icon: BarChart3 },
     ...(spinWheelVisible ? [{ id: 'spin-wheel', label: 'Spin Wheel', icon: Gift }] : []),
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'interactions', label: 'My Coupons', icon: Ticket, badge: 'Upcoming' },
-    { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare, badge: 'Upcoming' },
+    { id: 'tasks', label: 'Daily Coupons', icon: Ticket },
     { id: 'network', label: 'My Network', icon: Users },
     { id: 'payments', label: 'Payment History', icon: CreditCard },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
@@ -707,12 +704,6 @@ const CustomerDashboard: React.FC = () => {
                 {activeTab === 'tasks' && (
                     <div>
                       <DailyTasksDashboard />
-                    </div>
-                )}
-
-                {activeTab === 'interactions' && (
-                    <div>
-                      <CouponInteractionsList />
                     </div>
                 )}
 

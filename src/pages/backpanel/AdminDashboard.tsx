@@ -14,7 +14,6 @@ import AdminManagement from '../../components/admin/AdminManagement';
 import SubscriptionManagement from '../../components/admin/SubscriptionManagement';
 import CompanyManagement from '../../components/admin/CompanyManagement';
 import CouponManagement from '../../components/admin/CouponManagement';
-import DailyTaskManagement from '../../components/admin/DailyTaskManagement';
 import WalletManagement from '../../components/admin/WalletManagement';
 import EarningDistributionSettings from '../../components/admin/EarningDistributionSettings';
 import AfterLaunchPlanSettings from '../../components/admin/AfterLaunchPlanSettings';
@@ -37,7 +36,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Gift,
-  Calendar,
   Wallet,
   Check,
   X,
@@ -115,7 +113,6 @@ const AdminDashboard: React.FC = () => {
       'customers',
       'companies',
       'coupons',
-      'tasks',
       'wallets',
       'subscriptions',
       'payments',
@@ -336,7 +333,6 @@ const AdminDashboard: React.FC = () => {
     { id: 'customers', label: 'Customers', icon: Users, permission: 'customers' },
     { id: 'companies', label: 'Companies', icon: Building, permission: 'companies' },
     { id: 'coupons', label: 'Coupons', icon: Gift, permission: 'coupons' },
-    { id: 'tasks', label: 'Daily Tasks', icon: Calendar, permission: 'dailytasks' },
     { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'wallets' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
@@ -488,7 +484,6 @@ const AdminDashboard: React.FC = () => {
                   {activeTab === 'customers' && 'Manage customer accounts and profiles'}
                   {activeTab === 'companies' && 'Manage company registrations and verifications'}
                   {activeTab === 'coupons' && 'Manage coupons and sharing rewards'}
-                  {activeTab === 'tasks' && 'Create and manage daily tasks for customers'}
                   {activeTab === 'wallets' && 'Monitor user wallets and transactions'}
                   {activeTab === 'subscriptions' && 'Manage subscription plans and pricing'}
                   {activeTab === 'payments' && 'View payment transactions and history'}
@@ -583,9 +578,6 @@ const AdminDashboard: React.FC = () => {
                 <CouponManagement />
             )}
 
-            {activeTab === 'tasks' && hasPermission('dailytasks', 'read') && (
-                <DailyTaskManagement />
-            )}
 
             {activeTab === 'wallets' && hasPermission('wallets', 'read') && (
                 <WalletManagement />

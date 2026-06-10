@@ -31,6 +31,18 @@ const getAdminBySession = async (supabase: ReturnType<typeof createClient>, toke
   return data.admin;
 };
 
+const getErrorStatus = (message: string) => {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes('daily launched coupon rewards') ||
+    normalized.includes('configure at least one active launch plan') ||
+    normalized.includes('missing required fields')
+  ) {
+    return 400;
+  }
+  return 500;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -75,11 +87,15 @@ Deno.serve(async (req: Request) => {
       validUntil,
       usageLimit,
       shareRewardAmount,
+      rewardPercentage,
       status,
       isActive,
       launchDate,
       launchNow,
-      websiteUrl
+      websiteUrl,
+      revealTimerSeconds,
+      feedbackEnabled,
+      feedbackSamples
     } = await req.json();
 
     if (!title) {
@@ -99,6 +115,31 @@ Deno.serve(async (req: Request) => {
     const normalizedTermsConditions = termsConditions || null;
     const normalizedDescription = description || null;
     const normalizedLaunchDate = launchDate || null;
+    const normalizedRevealTimerSeconds = Math.max(0, Math.min(86400, Number(revealTimerSeconds ?? 30) || 0));
+    const normalizedFeedbackEnabled = feedbackEnabled === true;
+    const normalizedFeedbackSamples = Array.isArray(feedbackSamples)
+      ? feedbackSamples
+          .map((sample) => String(sample || '').trim())
+          .filter(Boolean)
+          .slice(0, 5)
+      : [];
+    const parsedRewardPercentage =
+      rewardPercentage === null || rewardPercentage === undefined || rewardPercentage === ''
+        ? null
+        : Math.max(0, Math.min(1, Number(rewardPercentage) || 0));
+    const normalizedRewardPercentage =
+      parsedRewardPercentage && parsedRewardPercentage > 0 ? parsedRewardPercentage : null;
+    const normalizedShareRewardAmount = Math.max(0, Number(shareRewardAmount ?? 0) || 0);
+
+    if (launchNow && normalizedLaunchDate && !normalizedRewardPercentage && normalizedShareRewardAmount <= 0) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Set a daily reward percentage before launching this coupon'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (id) {
       const { error } = await supabase
@@ -116,12 +157,16 @@ Deno.serve(async (req: Request) => {
           tc_valid_from: validFrom,
           tc_valid_until: validUntil,
           tc_usage_limit: normalizedUsageLimit,
-          tc_share_reward_amount: shareRewardAmount,
+          tc_share_reward_amount: normalizedShareRewardAmount,
+          tc_reward_percentage: normalizedRewardPercentage,
           tc_status: status,
           tc_is_active: isActive,
           tc_launch_date: normalizedLaunchDate,
           tc_launch_now: launchNow,
-          tc_website_url: normalizedWebsiteUrl
+          tc_website_url: normalizedWebsiteUrl,
+          tc_reveal_timer_seconds: normalizedRevealTimerSeconds,
+          tc_feedback_enabled: normalizedFeedbackEnabled,
+          tc_feedback_samples: normalizedFeedbackSamples
         })
         .eq('tc_id', id);
 
@@ -145,12 +190,16 @@ Deno.serve(async (req: Request) => {
           tc_valid_from: validFrom,
           tc_valid_until: validUntil,
           tc_usage_limit: normalizedUsageLimit,
-          tc_share_reward_amount: shareRewardAmount,
+          tc_share_reward_amount: normalizedShareRewardAmount,
+          tc_reward_percentage: normalizedRewardPercentage,
           tc_status: status,
           tc_is_active: isActive,
           tc_launch_date: normalizedLaunchDate,
           tc_launch_now: launchNow,
-          tc_website_url: normalizedWebsiteUrl
+          tc_website_url: normalizedWebsiteUrl,
+          tc_reveal_timer_seconds: normalizedRevealTimerSeconds,
+          tc_feedback_enabled: normalizedFeedbackEnabled,
+          tc_feedback_samples: normalizedFeedbackSamples
         });
 
       if (error) {
@@ -171,8 +220,9 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    return new Response(JSON.stringify({ success: false, error: error?.message || 'Failed' }), {
-      status: 500,
+    const message = error?.message || 'Failed';
+    return new Response(JSON.stringify({ success: false, error: message }), {
+      status: getErrorStatus(message),
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

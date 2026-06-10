@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
 import { useNotification } from '../ui/NotificationProvider';
-import { Gift, Plus, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Calendar, DollarSign, Image, FileText, Save, X, ArrowLeft, Upload, Tag, Percent, Users, TrendingUp, Rocket, Play, ExternalLink } from 'lucide-react';
+import { Gift, Plus, Search, Filter, Eye, CreditCard as Edit, Trash2, CheckCircle, XCircle, Clock, Calendar, DollarSign, Image, FileText, Save, X, ArrowLeft, Upload, Tag, Percent, Users, TrendingUp, Rocket, Play, Pause, ExternalLink, RefreshCw } from 'lucide-react';
 import {useAdminAuth} from "../../contexts/AdminAuthContext.tsx";
 
 let inFlightCouponsRequest: Promise<any[]> | null = null;
@@ -23,6 +23,7 @@ interface Coupon {
   tc_usage_limit?: number | null;
   tc_used_count: number;
   tc_share_reward_amount: number;
+  tc_reward_percentage?: number | null;
   tc_status: 'pending' | 'approved' | 'declined' | 'cancelled' | 'expired';
   tc_is_active: boolean;
   tc_created_at: string;
@@ -30,6 +31,9 @@ interface Coupon {
   tc_launch_date?: string;
   tc_launch_now: boolean;
   tc_website_url?: string;
+  tc_reveal_timer_seconds: number;
+  tc_feedback_enabled: boolean;
+  tc_feedback_samples: string[];
   company_info?: {
     name: string;
     email: string;
@@ -43,6 +47,19 @@ interface Company {
   tc_verification_status: string;
 }
 
+interface RewardCouponReport {
+  startDate: string;
+  endDate: string;
+  summary: {
+    assignedCount: number;
+    assignedAmount: number;
+    creditedCount: number;
+    creditedAmount: number;
+    notRewardedCount: number;
+    notRewardedAmount: number;
+  };
+}
+
 const toLocalISODate = (date: Date) => date.toLocaleDateString('en-CA');
 
 const addDays = (date: Date, days: number) => {
@@ -54,9 +71,37 @@ const addDays = (date: Date, days: number) => {
 const normalizeDateToIso = (value?: string | null) => {
   if (!value) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00`).toISOString();
+    return `${value}T12:00:00.000Z`;
   }
   return new Date(value).toISOString();
+};
+
+const formatRewardRule = (coupon: Pick<Coupon, 'tc_reward_percentage' | 'tc_share_reward_amount'>) => {
+  if (Number(coupon.tc_reward_percentage || 0) > 0) {
+    return `${Number(coupon.tc_reward_percentage).toFixed(3).replace(/\.?0+$/, '')}% of plan`;
+  }
+  return `${Number(coupon.tc_share_reward_amount || 0).toFixed(2)} USDT`;
+};
+
+const formatRewardAmount = (value: number) => `${Number(value || 0).toFixed(2)} USDT`;
+const DEFAULT_FEEDBACK_SAMPLES = [
+  'The coupon worked as expected.',
+  'The offer was useful for me.',
+  'The code was easy to apply.',
+  'The discount details were clear.',
+  'I would use this offer again.',
+];
+
+const normalizeFeedbackSamples = (samples?: string[] | null) => {
+  const normalized = Array.isArray(samples)
+    ? samples.map((sample) => String(sample || '').trim()).filter(Boolean).slice(0, 5)
+    : [];
+  return normalized.length > 0 ? normalized : DEFAULT_FEEDBACK_SAMPLES;
+};
+
+const getFeedbackSampleInputs = (samples?: string[] | null) => {
+  const source = Array.isArray(samples) && samples.length > 0 ? samples : DEFAULT_FEEDBACK_SAMPLES;
+  return Array.from({ length: 5 }, (_, index) => source[index] ?? '');
 };
 
 const CouponManagement: React.FC = () => {
@@ -73,6 +118,10 @@ const CouponManagement: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [showDailyTasks, setShowDailyTasks] = useState(false);
   const [dailyTasksDate, setDailyTasksDate] = useState(new Date().toLocaleDateString('en-CA'));
+  const [rewardReportStartDate, setRewardReportStartDate] = useState(toLocalISODate(new Date()));
+  const [rewardReportEndDate, setRewardReportEndDate] = useState(toLocalISODate(new Date()));
+  const [rewardReport, setRewardReport] = useState<RewardCouponReport | null>(null);
+  const [rewardReportLoading, setRewardReportLoading] = useState(false);
   const notification = useNotification();
 
   const [newCoupon, setNewCoupon] = useState({
@@ -86,17 +135,22 @@ const CouponManagement: React.FC = () => {
     valid_from: toLocalISODate(new Date()),
     valid_until: toLocalISODate(addDays(new Date(), 30)),
     usage_limit: '',
-    share_reward_amount: 0.5,
+    share_reward_amount: 0,
+    reward_percentage: 0.5,
     company_id: '',
     is_active: true,
     launch_date: '',
     launch_now: false,
-    website_url: ''
+    website_url: '',
+    reveal_timer_seconds: 30,
+    feedback_enabled: false,
+    feedback_samples: DEFAULT_FEEDBACK_SAMPLES
   });
 
   useEffect(() => {
     loadCoupons();
     loadCompanies();
+    loadRewardCouponReport();
   }, []);
 
   const loadCompanies = async () => {
@@ -140,11 +194,15 @@ const CouponManagement: React.FC = () => {
         tc_usage_limit: row.tc_usage_limit ?? null,
         tc_used_count: row.tc_used_count ?? 0,
         tc_share_reward_amount: row.tc_share_reward_amount ?? 0,
+        tc_reward_percentage: row.tc_reward_percentage ?? null,
         tc_status: row.tc_status,
         tc_is_active: row.tc_is_active ?? false,
         tc_launch_now: row.tc_launch_now ?? false,
         tc_launch_date: row.tc_launch_date,
         tc_website_url: row.tc_website_url,
+        tc_reveal_timer_seconds: Number(row.tc_reveal_timer_seconds ?? 30),
+        tc_feedback_enabled: Boolean(row.tc_feedback_enabled ?? false),
+        tc_feedback_samples: normalizeFeedbackSamples(row.tc_feedback_samples),
         tc_created_at: row.tc_created_at,
         tc_updated_at: row.tc_updated_at,
         company_info: row.company_data ? {
@@ -159,6 +217,24 @@ const CouponManagement: React.FC = () => {
     } finally {
       inFlightCouponsRequest = null;
       setLoading(false);
+    }
+  };
+
+  const loadRewardCouponReport = async (
+    startDate = rewardReportStartDate,
+    endDate = rewardReportEndDate
+  ) => {
+    try {
+      setRewardReportLoading(true);
+      const data = await adminApi.post<RewardCouponReport>('admin-get-reward-coupon-report', {
+        startDate,
+        endDate,
+      });
+      setRewardReport(data);
+    } catch (error: any) {
+      notification.showError('Load Failed', error?.message || 'Failed to load daily coupon report');
+    } finally {
+      setRewardReportLoading(false);
     }
   };
 
@@ -191,19 +267,23 @@ const CouponManagement: React.FC = () => {
         validUntil: normalizeDateToIso(newCoupon.valid_until),
         usageLimit: newCoupon.usage_limit === '' ? null : Number(newCoupon.usage_limit),
         shareRewardAmount: newCoupon.share_reward_amount,
+        rewardPercentage: newCoupon.reward_percentage,
         status: 'approved',
         isActive: newCoupon.is_active,
         launchDate: newCoupon.launch_date ? normalizeDateToIso(newCoupon.launch_date) : null,
         launchNow: newCoupon.launch_now,
-        websiteUrl: newCoupon.website_url
+        websiteUrl: newCoupon.website_url,
+        revealTimerSeconds: newCoupon.reveal_timer_seconds,
+        feedbackEnabled: newCoupon.feedback_enabled,
+        feedbackSamples: newCoupon.feedback_samples
       });
 
       notification.showSuccess('Coupon Created', 'Coupon has been created successfully');
       setShowCreateModal(false);
       resetNewCoupon();
       loadCoupons();
-    } catch (error) {
-      notification.showError('Creation Failed', 'Failed to create coupon');
+    } catch (error: any) {
+      notification.showError('Creation Failed', error?.message || 'Failed to create coupon');
     }
   };
 
@@ -223,17 +303,21 @@ const CouponManagement: React.FC = () => {
         validUntil: updates.tc_valid_until,
         usageLimit: updates.tc_usage_limit ?? null,
         shareRewardAmount: updates.tc_share_reward_amount,
+        rewardPercentage: updates.tc_reward_percentage,
         status: updates.tc_status,
         isActive: updates.tc_is_active,
         launchDate: updates.tc_launch_date,
         launchNow: updates.tc_launch_now,
-        websiteUrl: updates.tc_website_url
+        websiteUrl: updates.tc_website_url,
+        revealTimerSeconds: updates.tc_reveal_timer_seconds,
+        feedbackEnabled: updates.tc_feedback_enabled,
+        feedbackSamples: updates.tc_feedback_samples
       });
 
       notification.showSuccess('Coupon Updated', 'Coupon has been updated successfully');
       return true;
-    } catch (error) {
-      notification.showError('Update Failed', 'Failed to update coupon');
+    } catch (error: any) {
+      notification.showError('Update Failed', error?.message || 'Failed to update coupon');
       return false;
     }
   };
@@ -287,7 +371,43 @@ const CouponManagement: React.FC = () => {
       await adminApi.post('admin-launch-coupon', { couponId });
       notification.showSuccess('Coupon Launched', 'Coupon has been launched immediately');
       loadCoupons();
-    } catch { notification.showError('Launch Failed', 'Failed to launch coupon'); }
+    } catch (error: any) {
+      notification.showError('Launch Failed', error?.message || 'Failed to launch coupon');
+    }
+  };
+
+  const handleUnlaunch = async (coupon: Coupon) => {
+    try {
+      await adminApi.post('admin-save-coupon', {
+        id: coupon.tc_id,
+        companyId: coupon.tc_company_id || null,
+        title: coupon.tc_title,
+        description: coupon.tc_description,
+        couponCode: coupon.tc_coupon_code || null,
+        discountType: coupon.tc_discount_type || null,
+        discountValue: coupon.tc_discount_value ?? null,
+        imageUrl: coupon.tc_image_url,
+        termsConditions: coupon.tc_terms_conditions,
+        validFrom: coupon.tc_valid_from,
+        validUntil: coupon.tc_valid_until,
+        usageLimit: coupon.tc_usage_limit ?? null,
+        shareRewardAmount: coupon.tc_share_reward_amount,
+        rewardPercentage: coupon.tc_reward_percentage,
+        status: coupon.tc_status,
+        isActive: coupon.tc_is_active,
+        launchDate: null,
+        launchNow: false,
+        websiteUrl: coupon.tc_website_url,
+        revealTimerSeconds: coupon.tc_reveal_timer_seconds,
+        feedbackEnabled: coupon.tc_feedback_enabled,
+        feedbackSamples: coupon.tc_feedback_samples
+      });
+
+      notification.showSuccess('Coupon Unlaunched', 'Coupon has been removed from launched coupons');
+      loadCoupons();
+    } catch (error: any) {
+      notification.showError('Unlaunch Failed', error?.message || 'Failed to unlaunch coupon');
+    }
   };
 
   const resetNewCoupon = () => {
@@ -297,9 +417,10 @@ const CouponManagement: React.FC = () => {
       image_url: '', terms_conditions: '',
       valid_from: toLocalISODate(new Date()),
       valid_until: toLocalISODate(addDays(new Date(), 30)),
-      usage_limit: '', share_reward_amount: 0.5,
+      usage_limit: '', share_reward_amount: 0, reward_percentage: 0.5,
       company_id: '', is_active: true,
-      launch_date: '', launch_now: false, website_url: ''
+      launch_date: '', launch_now: false, website_url: '', reveal_timer_seconds: 30,
+      feedback_enabled: false, feedback_samples: DEFAULT_FEEDBACK_SAMPLES
     });
   };
 
@@ -386,7 +507,7 @@ const CouponManagement: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Coupon Management</h3>
-                <p className="text-gray-600">Manage coupons and sharing rewards</p>
+                <p className="text-gray-600">Manage daily coupons and ROI credits</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -407,11 +528,69 @@ const CouponManagement: React.FC = () => {
             <div className="text-center"><div className="text-2xl font-bold text-yellow-600">{stats.pending}</div><div className="text-sm text-gray-600">Pending</div></div>
             <div className="text-center"><div className="text-2xl font-bold text-green-600">{stats.approved}</div><div className="text-sm text-gray-600">Approved</div></div>
             <div className="text-center"><div className="text-2xl font-bold text-blue-600">{stats.active}</div><div className="text-sm text-gray-600">Active</div></div>
-            <div className="text-center"><div className="text-2xl font-bold text-indigo-600">{stats.scheduled}</div><div className="text-sm text-gray-600">Scheduled</div></div>
-            <div className="text-center"><div className="text-2xl font-bold text-teal-600">{stats.launched}</div><div className="text-sm text-gray-600">Launched</div></div>
-          </div>
+	            <div className="text-center"><div className="text-2xl font-bold text-indigo-600">{stats.scheduled}</div><div className="text-sm text-gray-600">Scheduled</div></div>
+	            <div className="text-center"><div className="text-2xl font-bold text-teal-600">{stats.launched}</div><div className="text-sm text-gray-600">Launched</div></div>
+	          </div>
 
-          {/* Daily Tasks Toggle */}
+		          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+		            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+		              <div>
+		                <h4 className="text-base font-semibold text-gray-900">Daily Coupon Amount Report</h4>
+		                <p className="text-sm text-gray-600">View credited and not credited coupon amounts for a day, date range, or month.</p>
+		              </div>
+		              <div className="flex flex-wrap gap-2">
+		                <input
+		                  type="date"
+		                  value={rewardReportStartDate}
+		                  onChange={(e) => {
+		                    const nextStartDate = e.target.value;
+		                    setRewardReportStartDate(nextStartDate);
+		                    loadRewardCouponReport(nextStartDate, rewardReportEndDate);
+		                  }}
+		                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-orange-500"
+		                />
+		                <input
+		                  type="date"
+		                  value={rewardReportEndDate}
+		                  onChange={(e) => {
+		                    const nextEndDate = e.target.value;
+		                    setRewardReportEndDate(nextEndDate);
+		                    loadRewardCouponReport(rewardReportStartDate, nextEndDate);
+		                  }}
+		                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-orange-500"
+		                />
+		                <button
+		                  type="button"
+	                  onClick={() => loadRewardCouponReport()}
+	                  disabled={rewardReportLoading}
+	                  className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 disabled:opacity-60"
+	                >
+	                  <RefreshCw className={`h-4 w-4 ${rewardReportLoading ? 'animate-spin' : ''}`} />
+	                  Refresh
+	                </button>
+	              </div>
+	            </div>
+
+	            <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+	              <div className="rounded-lg bg-white p-4 ring-1 ring-gray-200">
+		                <div className="text-xs font-semibold uppercase text-gray-500">Assigned</div>
+		                <div className="mt-1 text-xl font-bold text-gray-900">{formatRewardAmount(rewardReport?.summary.assignedAmount || 0)}</div>
+		                <div className="text-sm text-gray-500">{rewardReport?.summary.assignedCount || 0} assignments</div>
+	              </div>
+	              <div className="rounded-lg bg-green-50 p-4 ring-1 ring-green-100">
+	                <div className="text-xs font-semibold uppercase text-green-700">Credited</div>
+	                <div className="mt-1 text-xl font-bold text-green-950">{formatRewardAmount(rewardReport?.summary.creditedAmount || 0)}</div>
+	                <div className="text-sm text-green-700">{rewardReport?.summary.creditedCount || 0} customers credited</div>
+	              </div>
+	              <div className="rounded-lg bg-amber-50 p-4 ring-1 ring-amber-100">
+	                <div className="text-xs font-semibold uppercase text-amber-700">Not Credited</div>
+		                <div className="mt-1 text-xl font-bold text-amber-950">{formatRewardAmount(rewardReport?.summary.notRewardedAmount || 0)}</div>
+		                <div className="text-sm text-amber-700">{rewardReport?.summary.notRewardedCount || 0} waiting/not opened</div>
+		              </div>
+		            </div>
+		          </div>
+
+	          {/* Launch calendar toggle */}
           <div className="flex items-center mb-4 p-4 bg-gray-50 rounded-lg">
             <label className="flex items-center cursor-pointer">
               <div className="relative">
@@ -421,7 +600,7 @@ const CouponManagement: React.FC = () => {
               </div>
               <div className="ml-3 text-gray-700 font-medium flex items-center">
                 <Rocket className="h-5 w-5 mr-2" />
-                Show Daily Tasks
+                Launch Calendar
               </div>
             </label>
             {showDailyTasks && (
@@ -477,16 +656,13 @@ const CouponManagement: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coupon</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reward</th>
-              {showDailyTasks && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>}
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              {!showDailyTasks && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Launch Date</th>}
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valid From</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valid Until</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+	              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coupon</th>
+	              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+	              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ROI</th>
+	              {showDailyTasks && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>}
+	              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+	              {!showDailyTasks && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Launch Date</th>}
+	              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -529,18 +705,9 @@ const CouponManagement: React.FC = () => {
                           : 'Not specified'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{coupon.tc_used_count} / {coupon.tc_usage_limit ?? 'Unlimited'}</div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                      <div
-                          className="bg-orange-600 h-2 rounded-full"
-                          style={{ width: `${(coupon.tc_usage_limit != null && coupon.tc_usage_limit > 0) ? Math.min((coupon.tc_used_count / coupon.tc_usage_limit) * 100, 100) : 0}%` }}
-                      ></div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{coupon.tc_share_reward_amount} USDT</div>
-                    <div className="text-sm text-gray-500">per share</div>
+	                  <td className="px-6 py-4 whitespace-nowrap">
+	                    <div className="text-sm font-medium text-gray-900">{formatRewardRule(coupon)}</div>
+	                    <div className="text-sm text-gray-500">daily coupon ROI</div>
                   </td>
                   {showDailyTasks && (
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -575,17 +742,7 @@ const CouponManagement: React.FC = () => {
                         ) : <span className="text-gray-400">Not scheduled</span>}
                       </td>
                   )}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {coupon.tc_valid_from ? (
-                        <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_valid_from).toLocaleDateString()}</div>
-                    ) : <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {coupon.tc_valid_until ? (
-                        <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_valid_until).toLocaleDateString()}</div>
-                    ) : <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+	                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
                       <button onClick={() => { setSelectedCoupon(coupon); setShowCouponDetails(true); }} className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50" title="View Details"><Eye className="h-4 w-4" /></button>
                       <button onClick={() => { setSelectedCoupon(coupon); setShowCouponDetails(true); setEditMode(true); }} className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50" title="Edit"><Edit className="h-4 w-4" /></button>
@@ -595,9 +752,12 @@ const CouponManagement: React.FC = () => {
                             <button onClick={() => handleDeclineCoupon(coupon.tc_id)} className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50" title="Decline"><XCircle className="h-4 w-4" /></button>
                           </>
                       )}
-                      {coupon.tc_status === 'approved' && !coupon.tc_launch_now && (
-                          <button onClick={() => handleLaunchNow(coupon.tc_id)} className="text-teal-600 hover:text-teal-800 p-1 rounded hover:bg-teal-50" title="Launch Now"><Play className="h-4 w-4" /></button>
-                      )}
+	                      {coupon.tc_status === 'approved' && !coupon.tc_launch_now && (
+	                          <button onClick={() => handleLaunchNow(coupon.tc_id)} className="text-teal-600 hover:text-teal-800 p-1 rounded hover:bg-teal-50" title="Mark Launched"><Play className="h-4 w-4" /></button>
+	                      )}
+	                      {coupon.tc_status === 'approved' && coupon.tc_launch_now && (
+	                          <button onClick={() => handleUnlaunch(coupon)} className="text-slate-600 hover:text-slate-800 p-1 rounded hover:bg-slate-50" title="Mark Unlaunched"><Pause className="h-4 w-4" /></button>
+	                      )}
                       {coupon.tc_status === 'approved' && (
                           <button onClick={() => handleCancelCoupon(coupon.tc_id)} className="text-yellow-600 hover:text-yellow-800 p-1 rounded hover:bg-yellow-50" title="Cancel"><X className="h-4 w-4" /></button>
                       )}
@@ -614,7 +774,7 @@ const CouponManagement: React.FC = () => {
             <div className="text-center py-12">
               <Gift className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {showDailyTasks ? 'No coupons scheduled for this date' : 'No coupons found'}
+              {showDailyTasks ? 'No launched coupons scheduled for this date' : 'No coupons found'}
               </h3>
               <p className="text-gray-600 mb-4">
                 {!showDailyTasks && (searchTerm || statusFilter !== 'all') ? 'Try adjusting your search criteria' : 'No coupons have been created yet'}
@@ -665,9 +825,50 @@ const CouponManagement: React.FC = () => {
                       <input type="number" min="0" step="0.01" value={newCoupon.discount_value} onChange={(e) => setNewCoupon(prev => ({ ...prev, discount_value: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent" placeholder="Optional value" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Share Reward (USDT) *</label>
-                      <input type="number" required min="0" step="0.01" value={newCoupon.share_reward_amount} onChange={(e) => setNewCoupon(prev => ({ ...prev, share_reward_amount: parseFloat(e.target.value) || 0 }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent" placeholder="0.50" />
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Daily ROI Percentage *</label>
+                      <input type="number" required min="0.000001" max="1" step="any" value={newCoupon.reward_percentage} onChange={(e) => setNewCoupon(prev => ({ ...prev, reward_percentage: parseFloat(e.target.value) || 0 }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent" placeholder="0.5" />
+                      <p className="text-xs text-gray-500 mt-1">Example: 0.5 means 0.5% of each user&apos;s plan amount.</p>
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Like/Dislike Timer (seconds)</label>
+                      <input type="number" min="0" max="86400" step="1" value={newCoupon.reveal_timer_seconds} onChange={(e) => setNewCoupon(prev => ({ ...prev, reveal_timer_seconds: Math.max(0, Number(e.target.value) || 0) }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent" placeholder="30" />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="feedback_enabled"
+                        checked={newCoupon.feedback_enabled}
+                        onChange={(e) => setNewCoupon(prev => ({ ...prev, feedback_enabled: e.target.checked }))}
+                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="feedback_enabled" className="ml-2 block text-sm font-medium text-gray-700">
+                        Require written feedback before credit
+                      </label>
+                    </div>
+                    {newCoupon.feedback_enabled && (
+                      <div className="mt-4 grid grid-cols-1 gap-3">
+                        {getFeedbackSampleInputs(newCoupon.feedback_samples).map((sample, index) => (
+                          <input
+                            key={`feedback-sample-${index}`}
+                            type="text"
+                            maxLength={140}
+                            value={sample}
+                            onChange={(e) =>
+                              setNewCoupon(prev => {
+                                const feedback_samples = [...prev.feedback_samples];
+                                feedback_samples[index] = e.target.value;
+                                return { ...prev, feedback_samples };
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                            placeholder={`Sample feedback ${index + 1}`}
+                          />
+                        ))}
+                        <p className="text-xs text-gray-500">Customers can read these samples, but they must write a different message.</p>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -764,14 +965,18 @@ const CouponDetails: React.FC<{
         tc_discount_value: editedCoupon.tc_discount_value,
         tc_image_url: editedCoupon.tc_image_url,
         tc_terms_conditions: editedCoupon.tc_terms_conditions,
-        tc_valid_from: normalizeDateToIso(editedCoupon.tc_valid_from),
-        tc_valid_until: normalizeDateToIso(editedCoupon.tc_valid_until),
+        tc_valid_from: normalizeDateToIso(formatDateForInput(editedCoupon.tc_valid_from)),
+        tc_valid_until: normalizeDateToIso(formatDateForInput(editedCoupon.tc_valid_until)),
         tc_usage_limit: editedCoupon.tc_usage_limit,
         tc_share_reward_amount: editedCoupon.tc_share_reward_amount,
+        tc_reward_percentage: editedCoupon.tc_reward_percentage,
         tc_is_active: editedCoupon.tc_is_active,
-        tc_launch_date: normalizeDateToIso(editedCoupon.tc_launch_date),
+        tc_launch_date: normalizeDateToIso(formatDateForInput(editedCoupon.tc_launch_date || '')),
         tc_launch_now: editedCoupon.tc_launch_now,
         tc_website_url: editedCoupon.tc_website_url,
+        tc_reveal_timer_seconds: editedCoupon.tc_reveal_timer_seconds,
+        tc_feedback_enabled: editedCoupon.tc_feedback_enabled,
+        tc_feedback_samples: editedCoupon.tc_feedback_samples,
         tc_company_id: editedCoupon.tc_company_id,
         tc_status: editedCoupon.tc_status
       };
@@ -1011,8 +1216,16 @@ const CouponDetails: React.FC<{
                           <span className="font-medium text-gray-900">{coupon.company_info?.name || 'Admin Created'}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-gray-600">Reward</span>
-                          <span className="font-medium text-gray-900">{displayCoupon.tc_share_reward_amount} USDT</span>
+                          <span className="text-gray-600">Daily ROI</span>
+                          <span className="font-medium text-gray-900">{formatRewardRule(displayCoupon)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Like/Dislike Timer</span>
+                          <span className="font-medium text-gray-900">{displayCoupon.tc_reveal_timer_seconds ?? 30}s</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Written Feedback</span>
+                          <span className="font-medium text-gray-900">{displayCoupon.tc_feedback_enabled ? 'Required' : 'No'}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-600">Discount</span>
@@ -1166,17 +1379,69 @@ const CouponDetails: React.FC<{
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Share Reward (USDT)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Daily ROI Percentage</label>
+                      <input
+                        type="number"
+                        min="0.000001"
+                        max="1"
+                        step="any"
+                        value={editedCoupon.tc_reward_percentage ?? ''}
+                        onChange={(e) =>
+                          setEditedCoupon({ ...editedCoupon, tc_reward_percentage: e.target.value === '' ? null : parseFloat(e.target.value) || 0 })
+                        }
+                        className={inputClass}
+                        placeholder="0.5"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Example: 0.5 means 0.5% of each user&apos;s plan amount.</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Like/Dislike Timer (seconds)</label>
                       <input
                         type="number"
                         min="0"
-                        step="0.01"
-                        value={editedCoupon.tc_share_reward_amount}
+                        max="86400"
+                        step="1"
+                        value={editedCoupon.tc_reveal_timer_seconds ?? 30}
                         onChange={(e) =>
-                          setEditedCoupon({ ...editedCoupon, tc_share_reward_amount: parseFloat(e.target.value) || 0 })
+                          setEditedCoupon({ ...editedCoupon, tc_reveal_timer_seconds: Math.max(0, Number(e.target.value) || 0) })
                         }
                         className={inputClass}
                       />
+                    </div>
+
+                    <div className="md:col-span-2 rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="edit_feedback_enabled"
+                          checked={editedCoupon.tc_feedback_enabled}
+                          onChange={(e) => setEditedCoupon({ ...editedCoupon, tc_feedback_enabled: e.target.checked })}
+                          className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="edit_feedback_enabled" className="ml-2 block text-sm font-medium text-gray-700">
+                          Require written feedback before credit
+                        </label>
+                      </div>
+                      {editedCoupon.tc_feedback_enabled && (
+                        <div className="mt-4 grid grid-cols-1 gap-3">
+                          {getFeedbackSampleInputs(editedCoupon.tc_feedback_samples).map((sample, index) => (
+                            <input
+                              key={`edit-feedback-sample-${index}`}
+                              type="text"
+                              maxLength={140}
+                              value={sample}
+                              onChange={(e) => {
+                                const tc_feedback_samples = getFeedbackSampleInputs(editedCoupon.tc_feedback_samples);
+                                tc_feedback_samples[index] = e.target.value;
+                                setEditedCoupon({ ...editedCoupon, tc_feedback_samples });
+                              }}
+                              className={inputClass}
+                              placeholder={`Sample feedback ${index + 1}`}
+                            />
+                          ))}
+                          <p className="text-xs text-gray-500">Customers can read these samples, but they must write a different message.</p>
+                        </div>
+                      )}
                     </div>
 
                     <div>

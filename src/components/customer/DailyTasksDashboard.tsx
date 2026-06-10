@@ -1,691 +1,614 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase.ts';
-import { useAuth } from '../../contexts/AuthContext.tsx';
+import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
-import { processingIndicator } from '../../lib/processingIndicator';
-import {
-    Calendar,
-    Gift,
-    Share2,
-    Video,
-    Target,
-    Clock,
-    CheckCircle,
-    X,
-    ExternalLink,
-    DollarSign,
-    ThumbsUp,
-    ThumbsDown,
-    RefreshCw,
-    Eye,
-    Lock
-} from 'lucide-react';
+import { Calendar, Clock, ExternalLink, Gift, RefreshCw, Send, ThumbsDown, ThumbsUp, Wallet } from 'lucide-react';
 
-interface CouponTask {
-    tc_id: string;
-    tc_title: string;
-    tc_description?: string;
-    tc_coupon_code?: string | null;
-    tc_image_url?: string;
-    tc_website_url?: string;
-    tc_valid_from: string;
-    tc_valid_until: string;
-    tc_share_reward_amount: number;
-    tc_launch_date: string;
-    tc_launch_now: boolean;
+type RewardCouponStatus = 'available' | 'opened' | 'liked' | 'disliked' | 'expired';
+
+interface RewardCoupon {
+  assignment_id: string;
+  coupon_id: string;
+  title: string;
+  description?: string | null;
+  coupon_code?: string | null;
+  image_url?: string | null;
+  website_url?: string | null;
+  reward_amount: number;
+  reward_date: string;
+  day_number: number;
+  daily_target_amount: number;
+  assigned_total_amount: number;
+  status: RewardCouponStatus;
+  opened_at?: string | null;
+  reaction_available_at?: string | null;
+  reacted_at?: string | null;
+  reaction?: 'liked' | 'disliked' | null;
+  timer_seconds: number;
+  feedback_enabled: boolean;
+  feedback_samples: string[];
+  coupon_valid_until?: string | null;
+  is_expired: boolean;
+  expires_at: string;
 }
 
-interface SocialTask {
-    tdt_id: string;
-    tdt_task_type: 'social_share' | 'video_share' | 'custom';
-    tdt_title: string;
-    tdt_description?: string;
-    tdt_content_url?: string;
-    tdt_reward_amount: number;
-    tdt_expires_at: string;
-    tdt_is_active: boolean;
-}
+const filterOptions = [
+  { id: 'today', label: 'Today' },
+  { id: 'liked', label: 'Liked' },
+  { id: 'disliked', label: 'Disliked' },
+] as const;
 
-type DailyTask = CouponTask | SocialTask;
+const formatAmount = (value: number) => `${Number(value || 0).toFixed(2)} USDT`;
+const FEEDBACK_POPUP_DELAY_SECONDS = 3;
+const HISTORY_PAGE_SIZE = 10;
+type CouponFilter = (typeof filterOptions)[number]['id'];
 
-const renderDescriptionWithBullets = (description?: string | null) => {
-    if (!description) return null;
+const normalizeFeedbackSamples = (samples?: string[] | null) =>
+  Array.isArray(samples)
+    ? samples.map((sample) => String(sample || '').trim()).filter(Boolean).slice(0, 5)
+    : [];
 
-    const items = description
-        .split(/\r?\n+/)
-        .map((item) => item.replace(/^[\s\-*•\d.]+/, '').trim())
-        .filter(Boolean);
-
-    if (items.length <= 1) {
-        return <p className="text-gray-600 text-sm mb-4">{description}</p>;
-    }
-
-    return (
-        <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-gray-600">
-            {items.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-            ))}
-        </ul>
-    );
+const secondsUntil = (value?: string | null) => {
+  if (!value) return 0;
+  return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 1000));
 };
 
-interface TaskViewState {
-    [key: string]: {
-        isCodeVisible: boolean;
-        isCountdownActive: boolean;
-        countdownSeconds: number;
-    };
-}
+const addSeconds = (value: string, seconds: number) => new Date(new Date(value).getTime() + seconds * 1000).toISOString();
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '';
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+const getExpiryLabel = (coupon: RewardCoupon) => {
+  if (coupon.is_expired || coupon.status === 'expired') {
+    return 'Coupon expired';
+  }
+
+  if (coupon.opened_at) {
+    return `Expiry Date ${formatDate(coupon.coupon_valid_until || coupon.expires_at)}`;
+  }
+
+  return `Expires ${new Date(coupon.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+const renderDescription = (description?: string | null) => {
+  if (!description) return null;
+  const lines = description
+    .split(/\r?\n+/)
+    .map((item) => item.replace(/^[\s\-*•\d.]+/, '').trim())
+    .filter(Boolean);
+
+  if (lines.length <= 1) {
+    return <p className="mt-2 text-sm text-gray-600">{description}</p>;
+  }
+
+  return (
+    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600">
+      {lines.map((line, index) => (
+        <li key={`${line}-${index}`}>{line}</li>
+      ))}
+    </ul>
+  );
+};
 
 const DailyTasksDashboard: React.FC = () => {
-    const { user } = useAuth();
-    const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
-    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-    const [showConfirmationModal, setShowConfirmationModal] = useState(false);
-    const [userFeedback, setUserFeedback] = useState({
-        feedback: '' as 'liked' | 'disliked' | '',
-        note: ''
-    });
-    const [taskViewStates, setTaskViewStates] = useState<TaskViewState>({});
-    const [activeCountdownId, setActiveCountdownId] = useState<string | null>(null);
-    const notification = useNotification();
+  const { user } = useAuth();
+  const notification = useNotification();
+  const [coupons, setCoupons] = useState<RewardCoupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<CouponFilter>('today');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const [feedbackCoupon, setFeedbackCoupon] = useState<RewardCoupon | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [selectedReaction, setSelectedReaction] = useState<'liked' | 'disliked' | null>(null);
+  const [promptedCouponIds, setPromptedCouponIds] = useState<Record<string, boolean>>({});
+  const [revealRefreshIds, setRevealRefreshIds] = useState<Record<string, boolean>>({});
+  const [historyPages, setHistoryPages] = useState<Record<'liked' | 'disliked', number>>({
+    liked: 1,
+    disliked: 1,
+  });
 
-    useEffect(() => {
-        if (user?.id) {
-            loadDailyTasks();
-        }
-    }, [user?.id]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-    const loadDailyTasks = async () => {
-        if (!user?.id) return;
+  useEffect(() => {
+    if (user?.id) {
+      loadCoupons();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-        try {
-            setLoading(true);
-            console.log('Loading daily tasks for user:', user.id);
+  useEffect(() => {
+    setFeedbackText('');
+    setSelectedReaction(null);
+  }, [feedbackCoupon?.assignment_id]);
 
-            // First, try to load just the basic data to debug
-            const today = new Date().toISOString().split('T')[0];
+  useEffect(() => {
+    if (feedbackCoupon) return;
 
-            // Load today's launched coupons
-            const { data: couponsData, error: couponsError } = await supabase
-                .from('tbl_coupons')
-                .select('*')
-                .eq('tc_status', 'approved')
-                .eq('tc_is_active', true)
-                .lte('tc_valid_from', today)
-                .gte('tc_valid_until', today)
-                .order('tc_created_at', { ascending: false });
+    const codeReadyCoupon = coupons.find(
+      (coupon) =>
+        coupon.status === 'opened' &&
+        coupon.opened_at &&
+        coupon.reaction_available_at &&
+        secondsUntil(coupon.reaction_available_at) <= 0 &&
+        !revealRefreshIds[coupon.assignment_id]
+    );
 
-            if (couponsError) {
-                console.error('Coupons query error:', couponsError);
-                // Continue even if coupons fail
-            }
-
-            console.log('Coupons loaded:', couponsData?.length || 0);
-
-            // Load regular tasks
-            const { data: tasksData, error: tasksError } = await supabase
-                .from('tbl_daily_tasks')
-                .select('*')
-                .eq('tdt_is_active', true)
-                .gte('tdt_expires_at', new Date().toISOString())
-                .order('tdt_created_at', { ascending: false });
-
-            if (tasksError) {
-                console.error('Tasks query error:', tasksError);
-                // Continue even if tasks fail
-            }
-
-            console.log('Tasks loaded:', tasksData?.length || 0);
-
-            // Combine both types of tasks
-            const combinedTasks: DailyTask[] = [];
-
-            // Add coupon tasks
-            if (couponsData) {
-                couponsData.forEach(coupon => {
-                    combinedTasks.push({
-                        tc_id: coupon.tc_id,
-                        tc_title: coupon.tc_title,
-                        tc_description: coupon.tc_description,
-                        tc_coupon_code: coupon.tc_coupon_code,
-                        tc_image_url: coupon.tc_image_url,
-                        tc_website_url: coupon.tc_website_url,
-                        tc_valid_from: coupon.tc_valid_from,
-                        tc_valid_until: coupon.tc_valid_until,
-                        tc_share_reward_amount: coupon.tc_share_reward_amount,
-                        tc_launch_date: coupon.tc_launch_date,
-                        tc_launch_now: coupon.tc_launch_now,
-                    });
-
-                    // Initialize view state
-                    if (!taskViewStates[coupon.tc_id]) {
-                        setTaskViewStates(prev => ({
-                            ...prev,
-                            [coupon.tc_id]: {
-                                isCodeVisible: false,
-                                isCountdownActive: false,
-                                countdownSeconds: 30
-                            }
-                        }));
-                    }
-                });
-            }
-
-            // Add regular tasks
-            if (tasksData) {
-                tasksData.forEach(task => {
-                    combinedTasks.push({
-                        tdt_id: task.tdt_id,
-                        tdt_task_type: task.tdt_task_type,
-                        tdt_title: task.tdt_title,
-                        tdt_description: task.tdt_description,
-                        tdt_content_url: task.tdt_content_url,
-                        tdt_reward_amount: task.tdt_reward_amount,
-                        tdt_expires_at: task.tdt_expires_at,
-                        tdt_is_active: task.tdt_is_active,
-                    });
-                });
-            }
-
-            setDailyTasks(combinedTasks);
-            console.log('Total tasks loaded:', combinedTasks.length);
-
-        } catch (error: any) {
-            console.error('Failed to load daily tasks:', error);
-            notification.showError('Error', 'Failed to load daily tasks. Please check console for details.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleViewCouponCode = (taskId: string) => {
-        if (activeCountdownId && activeCountdownId !== taskId) {
-            notification.showError('Please wait', 'Please finish viewing the current coupon first');
-            return;
-        }
-
-        setActiveCountdownId(taskId);
-        setTaskViewStates(prev => ({
-            ...prev,
-            [taskId]: {
-                ...prev[taskId],
-                isCountdownActive: true,
-                countdownSeconds: 30
-            }
-        }));
-
-        // Start countdown timer
-        const timer = setInterval(() => {
-            setTaskViewStates(prev => {
-                const currentState = prev[taskId];
-                if (!currentState || !currentState.isCountdownActive) {
-                    clearInterval(timer);
-                    setActiveCountdownId(null);
-                    return prev;
-                }
-
-                if (currentState.countdownSeconds > 1) {
-                    return {
-                        ...prev,
-                        [taskId]: {
-                            ...currentState,
-                            countdownSeconds: currentState.countdownSeconds - 1
-                        }
-                    };
-                } else {
-                    clearInterval(timer);
-                    setActiveCountdownId(null);
-                    return {
-                        ...prev,
-                        [taskId]: {
-                            isCodeVisible: true,
-                            isCountdownActive: false,
-                            countdownSeconds: 0
-                        }
-                    };
-                }
-            });
-        }, 1000);
-    };
-
-    const saveCouponInteraction = async (couponId: string, interactionType: 'liked' | 'disliked' | 'used' | 'unused', feedbackText: string = '') => {
-        if (!user?.id) return;
-
-        try {
-            // First check if the table exists
-            const { error } = await supabase
-                .from('tbl_coupon_interactions')
-                .insert({
-                    tci_user_id: user.id,
-                    tci_coupon_id: couponId,
-                    tci_interaction_type: interactionType,
-                    tci_feedback_text: feedbackText,
-                });
-
-            if (error) {
-                console.warn('Could not save interaction (table might not exist):', error);
-            }
-        } catch (error) {
-            console.warn('Error saving coupon interaction:', error);
-        }
-    };
-
-    const handleCouponFeedback = async (feedback: 'liked' | 'disliked', note: string = '') => {
-        if (!selectedTask || !user?.id || !('tc_id' in selectedTask)) return;
-
-        try {
-            await saveCouponInteraction(selectedTask.tc_id, feedback, note);
-
-            notification.showSuccess(
-                'Feedback Submitted!',
-                `Thank you for your feedback on "${selectedTask.tc_title}"`
-            );
-
-            setShowFeedbackModal(false);
-            setSelectedTask(null);
-            setUserFeedback({ feedback: '', note: '' });
-
-        } catch (error: any) {
-            console.error('Failed to submit feedback:', error);
-            notification.showError('Submission Failed', 'Failed to submit feedback');
-        }
-    };
-
-    const handleUseCoupon = async (task = selectedTask) => {
-        if (!task || !user?.id || !('tc_id' in task)) return;
-
-        setSelectedTask(task);
-
-        if (task.tc_website_url) {
-            window.open(task.tc_website_url, '_blank', 'noopener,noreferrer');
-        }
-
-        setShowConfirmationModal(true);
-    };
-
-    const confirmCouponUsage = async () => {
-        if (!selectedTask || !user?.id || !('tc_id' in selectedTask)) return;
-
-        try {
-            await processingIndicator.track(
-                () => saveCouponInteraction(selectedTask.tc_id, 'used'),
-                'Saving coupon usage...'
-            );
-
-            notification.showSuccess(
-                'Coupon Used!',
-                `Thank you for using "${selectedTask.tc_title}"`
-            );
-
-            setShowConfirmationModal(false);
-            setSelectedTask(null);
-            loadDailyTasks();
-
-        } catch (error: any) {
-            console.error('Failed to complete task:', error);
-            notification.showError('Task Failed', 'Failed to complete task');
-        }
-    };
-
-    const handleCouponNotUsed = async () => {
-        if (!selectedTask || !user?.id || !('tc_id' in selectedTask)) return;
-
-        try {
-            await processingIndicator.track(
-                () => saveCouponInteraction(selectedTask.tc_id, 'unused'),
-                'Updating coupon status...'
-            );
-
-            notification.showInfo('Noted', `We marked "${selectedTask.tc_title}" as not used.`);
-            setShowConfirmationModal(false);
-            setSelectedTask(null);
-        } catch (error: any) {
-            console.error('Failed to save coupon interaction:', error);
-            notification.showError('Update Failed', 'Failed to update coupon usage');
-        }
-    };
-
-    const handleSocialTaskCompletion = async (task: SocialTask) => {
-        if (!user?.id) return;
-
-        try {
-            notification.showSuccess(
-                'Task Completed!',
-                `You earned ${task.tdt_reward_amount} USDT for completing the task!`
-            );
-        } catch (error: any) {
-            console.error('Failed to complete task:', error);
-            notification.showError('Task Failed', 'Failed to complete task');
-        }
-    };
-
-    const getTaskIcon = (task: DailyTask) => {
-        if ('tc_id' in task) return Gift;
-        return Share2;
-    };
-
-    const getTaskType = (task: DailyTask): string => {
-        if ('tc_id' in task) return 'coupon_share';
-        return 'social_share';
-    };
-
-    const isCouponTask = (task: DailyTask): task is CouponTask => {
-        return 'tc_id' in task;
-    };
-
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                <div className="bg-white rounded-xl shadow-sm p-6">
-                    <div className="animate-pulse">
-                        <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-                        <div className="h-8 bg-gray-200 rounded w-1/2"></div>
-                    </div>
-                </div>
-            </div>
-        );
+    if (codeReadyCoupon) {
+      setRevealRefreshIds((prev) => ({ ...prev, [codeReadyCoupon.assignment_id]: true }));
+      loadCoupons(true);
+      return;
     }
 
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Today's Tasks</h3>
-                    <button
-                        onClick={loadDailyTasks}
-                        className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
-                        title="Refresh tasks"
-                    >
-                        <RefreshCw className="h-4 w-4" />
-                    </button>
-                </div>
-                <div className="text-sm text-gray-500">
-                    {dailyTasks.length} tasks available
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {dailyTasks.map((task) => {
-                    const TaskIcon = getTaskIcon(task);
-                    const taskType = getTaskType(task);
-                    const taskId = isCouponTask(task) ? task.tc_id : task.tdt_id;
-                    const viewState = taskViewStates[taskId] || {
-                        isCodeVisible: false,
-                        isCountdownActive: false,
-                        countdownSeconds: 30
-                    };
-
-                    const isCountdownActive = activeCountdownId !== null;
-                    const isThisCouponActive = activeCountdownId === taskId;
-                    const canViewCode = !isCountdownActive || isThisCouponActive;
-
-                    return (
-                        <div key={taskId} className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center space-x-3">
-                                    <div className={`p-2 rounded-lg ${
-                                        taskType === 'coupon_share' ? 'bg-orange-100' : 'bg-blue-100'
-                                    }`}>
-                                        <TaskIcon className={`h-5 w-5 ${
-                                            taskType === 'coupon_share' ? 'text-orange-600' : 'text-blue-600'
-                                        }`} />
-                                    </div>
-                                    <div>
-                                        <h5 className="font-semibold text-gray-900">
-                                            {isCouponTask(task) ? task.tc_title : task.tdt_title}
-                                        </h5>
-                                        <p className="text-sm text-gray-500 capitalize">{taskType.replace('_', ' ')}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {renderDescriptionWithBullets(isCouponTask(task) ? task.tc_description : task.tdt_description)}
-
-                            {isCouponTask(task) && (
-                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
-                                    <div className="flex items-center space-x-2">
-                                        <Gift className="h-4 w-4 text-orange-600" />
-                                        <span className="text-sm font-medium text-orange-800">
-                                            {task.tc_title}
-                                        </span>
-                                    </div>
-
-                                    {viewState.isCodeVisible ? (
-                                        <>
-                                            <p className="text-xs text-orange-600 font-mono mt-1">
-                                                Code: {task.tc_coupon_code || 'No code required'}
-                                            </p>
-                                            {task.tc_website_url && (
-                                                <div className="mt-2">
-                                                    <a
-                                                        href={task.tc_website_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
-                                                    >
-                                                        <ExternalLink className="h-3 w-3 mr-1" />
-                                                        Visit Website
-                                                    </a>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <div className="mt-2 flex items-center justify-between">
-                                            <div className="flex items-center text-orange-600">
-                                                <Lock className="h-3 w-3 mr-1" />
-                                                <span className="text-xs">Code hidden</span>
-                                            </div>
-                                            {!viewState.isCountdownActive ? (
-                                                <button
-                                                    onClick={() => handleViewCouponCode(taskId)}
-                                                    disabled={!canViewCode}
-                                                    className={`flex items-center text-xs ${
-                                                        canViewCode
-                                                            ? 'text-blue-600 hover:text-blue-800'
-                                                            : 'text-gray-400 cursor-not-allowed'
-                                                    }`}
-                                                >
-                                                    <Eye className="h-3 w-3 mr-1" />
-                                                    View Code
-                                                </button>
-                                            ) : (
-                                                <div className="text-xs text-orange-600">
-                                                    Unlocking in {viewState.countdownSeconds}s...
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    <div className="mt-2 text-xs text-orange-700">
-                                        <div>Valid: {new Date(task.tc_valid_from).toLocaleDateString()} - {new Date(task.tc_valid_until).toLocaleDateString()}</div>
-                                        <div>Share Reward: {task.tc_share_reward_amount} USDT</div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center space-x-2">
-                                    <DollarSign className="h-4 w-4 text-green-600" />
-                                    <span className="font-medium text-green-600">
-                                        {isCouponTask(task) ? task.tc_share_reward_amount : (task as SocialTask).tdt_reward_amount} USDT
-                                    </span>
-                                </div>
-                            </div>
-
-                            {isCouponTask(task) && viewState.isCodeVisible ? (
-                                <>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedTask(task);
-                                                setUserFeedback({ feedback: 'liked', note: '' });
-                                                setShowFeedbackModal(true);
-                                            }}
-                                            className="flex items-center justify-center space-x-2 bg-green-100 text-green-700 py-2 px-4 rounded-lg font-medium hover:bg-green-200 transition-colors"
-                                        >
-                                            <ThumbsUp className="h-4 w-4" />
-                                            <span>Like</span>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedTask(task);
-                                                setUserFeedback({ feedback: 'disliked', note: '' });
-                                                setShowFeedbackModal(true);
-                                            }}
-                                            className="flex items-center justify-center space-x-2 bg-red-100 text-red-700 py-2 px-4 rounded-lg font-medium hover:bg-red-200 transition-colors"
-                                        >
-                                            <ThumbsDown className="h-4 w-4" />
-                                            <span>Dislike</span>
-                                        </button>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            setSelectedTask(task);
-                                            handleUseCoupon(task);
-                                        }}
-                                        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors mt-2"
-                                    >
-                                        Use Coupon
-                                    </button>
-                                </>
-                            ) : isCouponTask(task) ? (
-                                <div className="text-center py-4 text-gray-500">
-                                    {viewState.isCountdownActive ? (
-                                        <div className="flex items-center justify-center">
-                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-600 mr-2"></div>
-                                            <span>Unlocking coupon code... {viewState.countdownSeconds}s</span>
-                                        </div>
-                                    ) : (
-                                        <span>Click "View Code" to reveal coupon</span>
-                                    )}
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={() => handleSocialTaskCompletion(task as SocialTask)}
-                                    className="w-full bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors"
-                                >
-                                    Complete Task
-                                </button>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {dailyTasks.length === 0 && !loading && (
-                <div className="text-center py-12">
-                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No tasks available</h3>
-                    <p className="text-gray-600">Check back later for new daily tasks!</p>
-                </div>
-            )}
-
-            {/* Feedback Modal */}
-            {showFeedbackModal && selectedTask && isCouponTask(selectedTask) && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl p-6 w-full max-w-md">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-lg font-semibold text-gray-900">Share Your Feedback</h3>
-                            <button
-                                onClick={() => {
-                                    setShowFeedbackModal(false);
-                                    setSelectedTask(null);
-                                }}
-                                className="text-gray-400 hover:text-gray-600"
-                            >
-                                <X className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                            <h4 className="font-medium text-blue-900">{selectedTask.tc_title}</h4>
-                            <p className="text-sm text-blue-700 mt-1">Coupon Code: {selectedTask.tc_coupon_code || 'No code required'}</p>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Why did you {userFeedback.feedback} this coupon?
-                                </label>
-                                <textarea
-                                    value={userFeedback.note}
-                                    onChange={(e) => setUserFeedback(prev => ({ ...prev, note: e.target.value }))}
-                                    rows={3}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    placeholder="Share your thoughts about this coupon..."
-                                />
-                            </div>
-
-                            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowFeedbackModal(false);
-                                        setSelectedTask(null);
-                                    }}
-                                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => handleCouponFeedback(userFeedback.feedback as 'liked' | 'disliked', userFeedback.note)}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                >
-                                    Submit Feedback
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirmation Modal */}
-            {showConfirmationModal && selectedTask && isCouponTask(selectedTask) && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl p-6 w-full max-w-md">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-lg font-semibold text-gray-900">Confirm Coupon Usage</h3>
-                            <button
-                                onClick={() => {
-                                    setShowConfirmationModal(false);
-                                    setSelectedTask(null);
-                                }}
-                                className="text-gray-400 hover:text-gray-600"
-                            >
-                                <X className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        <div className="mb-6 p-4 bg-green-50 rounded-lg">
-                            <h4 className="font-medium text-green-900">Did you use the coupon?</h4>
-                            <p className="text-sm text-green-700 mt-1">
-                                Please confirm if you successfully used the coupon "{selectedTask.tc_title}" on the merchant's website.
-                            </p>
-                        </div>
-
-                        <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-                            <button
-                                type="button"
-                                onClick={handleCouponNotUsed}
-                                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
-                            >
-                                No, I didn't use it
-                            </button>
-                            <button
-                                onClick={confirmCouponUsage}
-                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                            >
-                                Yes, I used the coupon
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+    const readyCoupon = coupons.find(
+      (coupon) =>
+        coupon.status === 'opened' &&
+        coupon.opened_at &&
+        coupon.reaction_available_at &&
+        secondsUntil(addSeconds(coupon.reaction_available_at, FEEDBACK_POPUP_DELAY_SECONDS)) <= 0 &&
+        revealRefreshIds[coupon.assignment_id] &&
+        !promptedCouponIds[coupon.assignment_id]
     );
+
+    if (readyCoupon) {
+      setFeedbackCoupon(readyCoupon);
+      setPromptedCouponIds((prev) => ({ ...prev, [readyCoupon.assignment_id]: true }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coupons, feedbackCoupon, promptedCouponIds, revealRefreshIds, tick]);
+
+  const loadCoupons = async (silent = false) => {
+    if (!user?.id) return;
+    if (!silent) {
+      setLoading(true);
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_user_reward_coupons');
+      if (error) throw error;
+
+      setCoupons(
+        (data || []).map((row: any) => ({
+          ...row,
+          reward_amount: Number(row.reward_amount || 0),
+          daily_target_amount: Number(row.daily_target_amount || 0),
+          assigned_total_amount: Number(row.assigned_total_amount || 0),
+          day_number: Number(row.day_number || 0),
+          timer_seconds: Number(row.timer_seconds ?? 30),
+          feedback_enabled: Boolean(row.feedback_enabled ?? false),
+          feedback_samples: normalizeFeedbackSamples(row.feedback_samples),
+          coupon_valid_until: row.coupon_valid_until ?? null,
+          is_expired: Boolean(row.is_expired ?? row.status === 'expired'),
+        }))
+      );
+    } catch (error: any) {
+      notification.showError('Load Failed', error.message || 'Failed to load daily coupons');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openCoupon = async (coupon: RewardCoupon) => {
+    const openedCoupon = coupons.find((item) => item.status === 'opened');
+    if (openedCoupon && openedCoupon.assignment_id !== coupon.assignment_id) {
+      notification.showError('Coupon Already Opened', 'Finish the opened coupon first, then open the next one.');
+      return;
+    }
+
+    setBusyId(coupon.assignment_id);
+    try {
+      const { error } = await supabase.rpc('open_reward_coupon', {
+        p_assignment_id: coupon.assignment_id,
+      });
+      if (error) throw error;
+
+      notification.showSuccess('Opening Coupon', 'The coupon code will appear after the timer completes.');
+      await loadCoupons();
+    } catch (error: any) {
+      notification.showError('Open Failed', error.message || 'Unable to open this coupon');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reactCoupon = async (coupon: RewardCoupon, reaction: 'liked' | 'disliked', writtenFeedback?: string) => {
+    setBusyId(coupon.assignment_id);
+    try {
+      const { data, error } = await supabase.rpc('react_reward_coupon', {
+        p_assignment_id: coupon.assignment_id,
+        p_reaction: reaction,
+        p_feedback_text: writtenFeedback?.trim() || null,
+      });
+      if (error) throw error;
+
+      const creditedAmount = Number(data?.reward_amount ?? coupon.reward_amount ?? 0);
+      notification.showSuccess(
+        reaction === 'liked' ? 'Coupon Liked' : 'Coupon Disliked',
+        data?.reward_credited === false
+          ? 'Saved to My Coupons.'
+          : `${formatAmount(creditedAmount)} credited to your ROI Wallet.`
+      );
+      setFeedbackCoupon(null);
+      setFeedbackText('');
+      setSelectedReaction(null);
+      await loadCoupons();
+    } catch (error: any) {
+      notification.showError('Action Failed', error.message || 'Unable to save your choice');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const filteredCoupons = useMemo(() => {
+    if (filter === 'today') {
+      return coupons.filter((coupon) => coupon.status === 'available' || coupon.status === 'opened');
+    }
+    return coupons.filter((coupon) => coupon.status === filter);
+  }, [coupons, filter]);
+
+  const todayCoupons = coupons.filter((coupon) => coupon.status === 'available' || coupon.status === 'opened');
+  const openedCoupon = coupons.find((coupon) => coupon.status === 'opened');
+  const creditedRewards = coupons
+    .filter((coupon) => coupon.status === 'liked' || coupon.status === 'disliked')
+    .reduce((sum, coupon) => sum + coupon.reward_amount, 0);
+  const dailyTarget = todayCoupons[0]?.daily_target_amount || coupons[0]?.daily_target_amount || 0;
+  const assignedTotal = todayCoupons[0]?.assigned_total_amount || 0;
+  const isHistoryFilter = filter === 'liked' || filter === 'disliked';
+  const historyPage = isHistoryFilter ? historyPages[filter] : 1;
+  const totalHistoryPages = isHistoryFilter ? Math.max(1, Math.ceil(filteredCoupons.length / HISTORY_PAGE_SIZE)) : 1;
+  const visibleCoupons = isHistoryFilter
+    ? filteredCoupons.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE)
+    : filteredCoupons;
+
+  const changeHistoryPage = (page: number) => {
+    if (!isHistoryFilter) return;
+    setHistoryPages((prev) => ({
+      ...prev,
+      [filter]: Math.min(Math.max(page, 1), totalHistoryPages),
+    }));
+  };
+
+  const submitFeedbackForm = () => {
+    if (!feedbackCoupon) return;
+    if (!selectedReaction) {
+      notification.showError('Select Like or Dislike', 'Choose your coupon reaction first.');
+      return;
+    }
+
+    const trimmedFeedback = feedbackText.trim();
+    if (!trimmedFeedback) {
+      notification.showError('Feedback Required', 'Write your feedback before submitting.');
+      return;
+    }
+
+    const matchesSample = feedbackCoupon.feedback_samples.some(
+      (sample) => sample.trim().toLowerCase() === trimmedFeedback.toLowerCase()
+    );
+    if (matchesSample) {
+      notification.showError('Write Your Own Feedback', 'Please write a different message instead of using a sample exactly.');
+      return;
+    }
+
+    reactCoupon(feedbackCoupon, selectedReaction, trimmedFeedback);
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-lg bg-white p-6 shadow-sm">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 w-48 rounded bg-gray-200" />
+          <div className="h-28 rounded bg-gray-200" />
+          <div className="h-28 rounded bg-gray-200" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-indigo-100 p-3">
+            <Gift className="h-6 w-6 text-indigo-700" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Daily Coupons</h3>
+            <p className="text-sm text-gray-600">Open today&apos;s coupons before midnight, then like or dislike after the timer to claim.</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={loadCoupons}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+          <p className="text-xs font-semibold uppercase text-indigo-700">Daily Target</p>
+          <p className="mt-1 text-2xl font-bold text-indigo-950">{formatAmount(dailyTarget)}</p>
+          <p className="text-xs text-indigo-700">1% of the full plan price</p>
+        </div>
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+          <p className="text-xs font-semibold uppercase text-emerald-700">Assigned Today</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-950">{formatAmount(assignedTotal)}</p>
+          <p className="text-xs text-emerald-700">Single or split coupons</p>
+        </div>
+        <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
+          <p className="text-xs font-semibold uppercase text-amber-700">ROI Wallet Credits</p>
+          <p className="mt-1 text-2xl font-bold text-amber-950">{formatAmount(creditedRewards)}</p>
+          <p className="text-xs text-amber-700">Credited after like/dislike</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {filterOptions.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setFilter(option.id)}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+              filter === option.id ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {filteredCoupons.length === 0 ? (
+        <div className="rounded-lg bg-white p-8 text-center shadow-sm">
+          <Gift className="mx-auto h-10 w-10 text-gray-300" />
+          <h4 className="mt-3 font-semibold text-gray-900">No coupons here</h4>
+          <p className="mt-1 text-sm text-gray-600">
+            {filter === 'today'
+              ? 'No launched daily coupons are available for you today.'
+              : `No ${filter} coupons yet.`}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4">
+	          {visibleCoupons.map((coupon) => {
+            const waitSeconds = secondsUntil(coupon.reaction_available_at) + tick * 0;
+            const isOpened = Boolean(coupon.opened_at);
+	            const isCodeVisible = isOpened && waitSeconds <= 0 && !coupon.is_expired;
+	            const isBusy = busyId === coupon.assignment_id;
+            const isBlockedByOpenedCoupon =
+              coupon.status === 'available' &&
+              Boolean(openedCoupon) &&
+              openedCoupon?.assignment_id !== coupon.assignment_id;
+
+	            return (
+              <div key={coupon.assignment_id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                {coupon.image_url && (
+                  <img src={coupon.image_url} alt={coupon.title} className="h-44 w-full object-cover" />
+                )}
+                <div className="p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-lg font-semibold text-gray-900">{coupon.title}</h4>
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold capitalize text-gray-700">
+                          {coupon.is_expired ? 'expired' : coupon.status}
+                        </span>
+                      </div>
+                      {renderDescription(coupon.description)}
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 px-4 py-3 text-right">
+                      <p className="text-xs font-semibold uppercase text-emerald-700">ROI</p>
+                      <p className="text-xl font-bold text-emerald-950">{formatAmount(coupon.reward_amount)}</p>
+                    </div>
+                  </div>
+
+	                  <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Calendar className="h-4 w-4" />
+                      Day {coupon.day_number} of 200
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Clock className="h-4 w-4" />
+                      {getExpiryLabel(coupon)}
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Wallet className="h-4 w-4" />
+                      ROI Wallet
+	                    </div>
+	                  </div>
+
+                  {coupon.status === 'opened' && waitSeconds > 0 && (
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-amber-800">Opening the coupon in {waitSeconds}s</p>
+                    </div>
+                  )}
+
+		                  {isCodeVisible && coupon.coupon_code && (
+                    <div className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase text-indigo-700">Coupon Code</p>
+                      <p className="mt-1 font-mono text-lg font-bold text-indigo-950">{coupon.coupon_code}</p>
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap gap-2">
+	                      {!isOpened && (
+	                        <button
+	                          type="button"
+	                          onClick={() => openCoupon(coupon)}
+	                          disabled={isBusy || isBlockedByOpenedCoupon}
+	                          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                            title={isBlockedByOpenedCoupon ? 'Finish the opened coupon first' : 'Open coupon'}
+	                        >
+	                          {isBlockedByOpenedCoupon ? 'Finish Opened Coupon First' : 'Open Coupon'}
+	                        </button>
+	                      )}
+                      {isCodeVisible && coupon.website_url && (
+                        <a
+                          href={coupon.website_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          Visit
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+	              </div>
+	            );
+	          })}
+          </div>
+
+          {isHistoryFilter && totalHistoryPages > 1 && (
+            <div className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">
+                Page {historyPage} of {totalHistoryPages}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeHistoryPage(historyPage - 1)}
+                  disabled={historyPage <= 1}
+                  className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeHistoryPage(historyPage + 1)}
+                  disabled={historyPage >= totalHistoryPages}
+                  className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {feedbackCoupon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+	            <div className="flex items-start justify-between gap-4">
+	              <div>
+	                <h4 className="text-lg font-semibold text-gray-900">How is this coupon code?</h4>
+	                <p className="mt-1 text-sm text-gray-600">{feedbackCoupon.title}</p>
+	              </div>
+	            </div>
+
+            {feedbackCoupon.coupon_code && (
+              <div className="mt-5 rounded-lg border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase text-indigo-700">Coupon Code</p>
+                <p className="mt-1 font-mono text-lg font-bold text-indigo-950">{feedbackCoupon.coupon_code}</p>
+              </div>
+            )}
+
+            {feedbackCoupon.feedback_enabled ? (
+              <div className="mt-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReaction('liked')}
+                    disabled={busyId === feedbackCoupon.assignment_id}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-60 ${
+                      selectedReaction === 'liked'
+                        ? 'bg-emerald-600 text-white'
+                        : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <ThumbsUp className="h-4 w-4" />
+                    Like
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReaction('disliked')}
+                    disabled={busyId === feedbackCoupon.assignment_id}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-60 ${
+                      selectedReaction === 'disliked'
+                        ? 'bg-rose-600 text-white'
+                        : 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                    }`}
+                  >
+                    <ThumbsDown className="h-4 w-4" />
+                    Dislike
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800">Feedback</label>
+                  <textarea
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    rows={4}
+                    maxLength={500}
+                    disabled={busyId === feedbackCoupon.assignment_id}
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
+                    placeholder="Write your feedback about this coupon"
+                  />
+                </div>
+
+                {feedbackCoupon.feedback_samples.length > 0 && (
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-xs font-semibold uppercase text-gray-500">Sample feedback</p>
+                    <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                      {feedbackCoupon.feedback_samples.map((sample, index) => (
+                        <li key={`${sample}-${index}`}>{sample}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={submitFeedbackForm}
+                  disabled={busyId === feedbackCoupon.assignment_id}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  <Send className="h-4 w-4" />
+                  Submit Feedback
+                </button>
+              </div>
+            ) : (
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => reactCoupon(feedbackCoupon, 'liked')}
+                  disabled={busyId === feedbackCoupon.assignment_id}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <ThumbsUp className="h-4 w-4" />
+                  Like
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reactCoupon(feedbackCoupon, 'disliked')}
+                  disabled={busyId === feedbackCoupon.assignment_id}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-3 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                >
+                  <ThumbsDown className="h-4 w-4" />
+                  Dislike
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default DailyTasksDashboard;

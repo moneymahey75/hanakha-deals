@@ -68,6 +68,29 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const { data: coupon, error: couponError } = await supabase
+      .from('tbl_coupons')
+      .select('tc_reward_percentage, tc_share_reward_amount')
+      .eq('tc_id', couponId)
+      .maybeSingle();
+
+    if (couponError) {
+      throw couponError;
+    }
+
+    const rewardPercentage = Number(coupon?.tc_reward_percentage || 0);
+    const fixedRewardAmount = Number(coupon?.tc_share_reward_amount || 0);
+
+    if (rewardPercentage <= 0 && fixedRewardAmount <= 0) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Set a daily reward percentage before launching this coupon'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { error } = await supabase
       .from('tbl_coupons')
       .update({ tc_launch_now: true, tc_launch_date: new Date().toISOString() })

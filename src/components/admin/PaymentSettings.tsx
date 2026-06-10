@@ -29,6 +29,7 @@ const PaymentSettings: React.FC = () => {
         adminPaymentWalletTestnet: settings.adminPaymentWalletTestnet || settings.adminPaymentWallet || '',
         adminPaymentWalletMainnet: settings.adminPaymentWalletMainnet || settings.adminPaymentWallet || '',
         withdrawalMinAmount: settings.withdrawalMinAmount,
+        rewardWithdrawalMinAmount: settings.rewardWithdrawalMinAmount,
         withdrawalStepAmount: settings.withdrawalStepAmount,
         withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
         withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
@@ -55,6 +56,7 @@ const PaymentSettings: React.FC = () => {
             adminPaymentWalletTestnet: settings.adminPaymentWalletTestnet || settings.adminPaymentWallet || '',
             adminPaymentWalletMainnet: settings.adminPaymentWalletMainnet || settings.adminPaymentWallet || '',
             withdrawalMinAmount: settings.withdrawalMinAmount,
+            rewardWithdrawalMinAmount: settings.rewardWithdrawalMinAmount,
             withdrawalStepAmount: settings.withdrawalStepAmount,
             withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
             withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
@@ -98,6 +100,7 @@ const PaymentSettings: React.FC = () => {
                 { key: 'admin_payment_wallet_mainnet', value: JSON.stringify(formData.adminPaymentWalletMainnet || '') },
                 { key: 'payment_wallets_enabled', value: JSON.stringify(formData.paymentWalletsEnabled) },
                 { key: 'withdrawal_min_amount', value: JSON.stringify(formData.withdrawalMinAmount) },
+                { key: 'reward_withdrawal_min_amount', value: JSON.stringify(formData.rewardWithdrawalMinAmount) },
                 { key: 'withdrawal_step_amount', value: JSON.stringify(formData.withdrawalStepAmount) },
                 { key: 'withdrawal_commission_percent', value: JSON.stringify(formData.withdrawalCommissionPercent) },
                 { key: 'withdrawal_auto_transfer', value: JSON.stringify(formData.withdrawalAutoTransfer) },
@@ -129,6 +132,7 @@ const PaymentSettings: React.FC = () => {
                 subscriptionWalletAddress: formData.subscriptionWalletAddress,
                 investmentWalletAddress: formData.investmentWalletAddress,
                 withdrawalMinAmount: formData.withdrawalMinAmount,
+                rewardWithdrawalMinAmount: formData.rewardWithdrawalMinAmount,
                 withdrawalStepAmount: formData.withdrawalStepAmount,
                 withdrawalCommissionPercent: formData.withdrawalCommissionPercent,
                 withdrawalAutoTransfer: formData.withdrawalAutoTransfer,
@@ -427,6 +431,25 @@ const PaymentSettings: React.FC = () => {
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 placeholder="10"
                             />
+                        </div>
+                        <div>
+                            <label htmlFor="rewardWithdrawalMinAmount" className="block text-sm font-medium text-gray-700 mb-2">
+                                Minimum Reward Withdrawal Amount (USDT)
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                id="rewardWithdrawalMinAmount"
+                                name="rewardWithdrawalMinAmount"
+                                value={formData.rewardWithdrawalMinAmount}
+                                onChange={handleNumberChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="10"
+                            />
+                            <p className="text-xs text-gray-500 mt-2">
+                                Applies only to the reward wallet balance from daily coupons.
+                            </p>
                         </div>
                         <div>
                             <label htmlFor="withdrawalCommissionPercent" className="block text-sm font-medium text-gray-700 mb-2">

@@ -22,10 +22,17 @@ interface WithdrawalRequest {
 
 interface WithdrawalSettings {
   minAmount: number;
+  rewardMinAmount: number;
   stepAmount: number;
   commissionPercent: number;
   autoTransfer: boolean;
   processingDays: number;
+}
+
+interface RewardWithdrawalStatus {
+  balance: number;
+  minimum_amount: number;
+  can_withdraw: boolean;
 }
 
 interface DefaultWalletConnection {
@@ -43,11 +50,15 @@ const WithdrawalsDashboard: React.FC = () => {
 
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletReservedBalance, setWalletReservedBalance] = useState(0);
+  const [rewardWalletBalance, setRewardWalletBalance] = useState(0);
+  const [rewardWithdrawalStatus, setRewardWithdrawalStatus] = useState<RewardWithdrawalStatus | null>(null);
+  const [walletType, setWalletType] = useState<'working' | 'reward'>('working');
   const [reservedBalance, setReservedBalance] = useState(0);
   const [defaultWallet, setDefaultWallet] = useState<DefaultWalletConnection | null>(null);
 
   const [withdrawalSettings, setWithdrawalSettings] = useState<WithdrawalSettings>({
     minAmount: 10,
+    rewardMinAmount: 10,
     stepAmount: 10,
     commissionPercent: 0.5,
     autoTransfer: false,
@@ -72,17 +83,22 @@ const WithdrawalsDashboard: React.FC = () => {
     loadDefaultWallet();
     loadWalletBalance();
     loadReservedBalance();
-  }, [user?.id]);
+    loadRewardWithdrawalStatus();
+  }, [user?.id, walletType]);
 
   useEffect(() => {
     if (!user?.id) return;
     loadWithdrawalHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, currentPage, pageSize]);
+  }, [user?.id, currentPage, pageSize, walletType]);
 
   const withdrawableBalance = useMemo(() => {
+    if (walletType === 'reward') return Math.max(0, Number(rewardWalletBalance || 0) - Number(reservedBalance || 0));
     return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(reservedBalance || 0));
-  }, [walletBalance, walletReservedBalance, reservedBalance]);
+  }, [rewardWalletBalance, reservedBalance, walletBalance, walletReservedBalance, walletType]);
+
+  const activeMinAmount = walletType === 'reward' ? withdrawalSettings.rewardMinAmount : withdrawalSettings.minAmount;
+  const activeStepAmount = withdrawalSettings.stepAmount;
 
   const isStepValid = (amount: number, step: number) => {
     if (step <= 0) return true;
@@ -95,19 +111,19 @@ const WithdrawalsDashboard: React.FC = () => {
   const normalizeWithdrawalAmount = (amount: number) => {
     if (!Number.isFinite(amount) || amount <= 0) return 0;
     let normalized = amount;
-    if (normalized < withdrawalSettings.minAmount) {
-      normalized = withdrawalSettings.minAmount;
+    if (normalized < activeMinAmount) {
+      normalized = activeMinAmount;
     }
-    if (withdrawalSettings.stepAmount > 0) {
-      const stepsFromZero = Math.round(normalized / withdrawalSettings.stepAmount);
-      normalized = stepsFromZero * withdrawalSettings.stepAmount;
+    if (activeStepAmount > 0) {
+      const stepsFromZero = Math.round(normalized / activeStepAmount);
+      normalized = stepsFromZero * activeStepAmount;
     }
-    if (normalized < withdrawalSettings.minAmount) {
-      if (withdrawalSettings.stepAmount > 0) {
-        const minSteps = Math.ceil(withdrawalSettings.minAmount / withdrawalSettings.stepAmount);
-        normalized = minSteps * withdrawalSettings.stepAmount;
+    if (normalized < activeMinAmount) {
+      if (activeStepAmount > 0) {
+        const minSteps = Math.ceil(activeMinAmount / activeStepAmount);
+        normalized = minSteps * activeStepAmount;
       } else {
-        normalized = withdrawalSettings.minAmount;
+        normalized = activeMinAmount;
       }
     }
     return Number(normalized.toFixed(2));
@@ -122,8 +138,8 @@ const WithdrawalsDashboard: React.FC = () => {
   const estimatedCommission = parsedWithdrawalAmount * (withdrawalSettings.commissionPercent / 100);
   const estimatedNet = Math.max(0, parsedWithdrawalAmount - estimatedCommission);
   const isWithdrawalAmountValid =
-    parsedWithdrawalAmount >= withdrawalSettings.minAmount &&
-    isStepValid(parsedWithdrawalAmount, withdrawalSettings.stepAmount);
+    parsedWithdrawalAmount >= activeMinAmount &&
+    isStepValid(parsedWithdrawalAmount, activeStepAmount);
 
   const loadWalletBalance = async () => {
     if (!user?.id) return;
@@ -133,12 +149,17 @@ const WithdrawalsDashboard: React.FC = () => {
         .select('tw_balance, tw_reserved_balance')
         .eq('tw_user_id', user.id)
         .eq('tw_currency', 'USDT')
-        .eq('tw_wallet_type', 'working')
+        .eq('tw_wallet_type', walletType)
         .maybeSingle();
 
       if (error) throw error;
-      setWalletBalance(Number(data?.tw_balance ?? 0));
-      setWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
+      if (walletType === 'reward') {
+        setRewardWalletBalance(Number(data?.tw_balance ?? 0));
+        setWalletReservedBalance(0);
+      } else {
+        setWalletBalance(Number(data?.tw_balance ?? 0));
+        setWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
+      }
     } catch (error) {
       console.error('Failed to load wallet balance:', error);
     }
@@ -151,7 +172,7 @@ const WithdrawalsDashboard: React.FC = () => {
         .from('tbl_withdrawal_requests')
         .select('twr_amount, twr_status')
         .eq('twr_user_id', user.id)
-        .eq('twr_wallet_type', 'working')
+        .eq('twr_wallet_type', walletType)
         .in('twr_status', pendingWithdrawalStatuses);
 
       if (error) throw error;
@@ -169,6 +190,7 @@ const WithdrawalsDashboard: React.FC = () => {
         .select('tss_setting_key, tss_setting_value')
         .in('tss_setting_key', [
           'withdrawal_min_amount',
+          'reward_withdrawal_min_amount',
           'withdrawal_step_amount',
           'withdrawal_commission_percent',
           'withdrawal_auto_transfer',
@@ -188,6 +210,7 @@ const WithdrawalsDashboard: React.FC = () => {
 
       setWithdrawalSettings({
         minAmount: Number(settingsMap.withdrawal_min_amount ?? 10),
+        rewardMinAmount: Number(settingsMap.reward_withdrawal_min_amount ?? settingsMap.withdrawal_min_amount ?? 10),
         stepAmount: Number(settingsMap.withdrawal_step_amount ?? 10),
         commissionPercent: Number(settingsMap.withdrawal_commission_percent ?? 0.5),
         autoTransfer: Boolean(settingsMap.withdrawal_auto_transfer ?? false),
@@ -195,6 +218,18 @@ const WithdrawalsDashboard: React.FC = () => {
       });
     } catch (error) {
       console.error('Failed to load withdrawal settings:', error);
+    }
+  };
+
+  const loadRewardWithdrawalStatus = async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase.rpc('get_reward_wallet_withdrawal_status');
+      if (error) throw error;
+      setRewardWithdrawalStatus(data as RewardWithdrawalStatus);
+      setRewardWalletBalance(Number((data as RewardWithdrawalStatus)?.balance ?? 0));
+    } catch (error) {
+      console.error('Failed to load reward withdrawal status:', error);
     }
   };
 
@@ -230,7 +265,7 @@ const WithdrawalsDashboard: React.FC = () => {
           { count: 'exact' }
         )
         .eq('twr_user_id', user.id)
-        .eq('twr_wallet_type', 'working')
+        .eq('twr_wallet_type', walletType)
         .order('twr_requested_at', { ascending: false })
         .range(from, to);
 
@@ -259,15 +294,15 @@ const WithdrawalsDashboard: React.FC = () => {
       return;
     }
 
-    if (parsedWithdrawalAmount < withdrawalSettings.minAmount) {
-      notification.showError('Minimum Withdrawal', `Minimum withdrawal amount is ${withdrawalSettings.minAmount} USDT.`);
+    if (parsedWithdrawalAmount < activeMinAmount) {
+      notification.showError('Minimum Withdrawal', `Minimum withdrawal amount is ${activeMinAmount} USDT.`);
       return;
     }
 
-    if (!isStepValid(parsedWithdrawalAmount, withdrawalSettings.stepAmount)) {
+    if (!isStepValid(parsedWithdrawalAmount, activeStepAmount)) {
       notification.showError(
         'Invalid Step',
-        `Withdrawal amount must be in multiples of ${withdrawalSettings.stepAmount} USDT.`
+        `Withdrawal amount must be in multiples of ${activeStepAmount} USDT.`
       );
       return;
     }
@@ -300,7 +335,7 @@ const WithdrawalsDashboard: React.FC = () => {
           },
           body: JSON.stringify({
             amount: parsedWithdrawalAmount,
-            walletType: 'working',
+            walletType,
           }),
         });
 
@@ -320,7 +355,7 @@ const WithdrawalsDashboard: React.FC = () => {
 
       setWithdrawalInput('');
       setCurrentPage(1);
-      await Promise.all([loadWithdrawalHistory(), loadWalletBalance(), loadReservedBalance()]);
+      await Promise.all([loadWithdrawalHistory(), loadWalletBalance(), loadReservedBalance(), loadRewardWithdrawalStatus()]);
     } catch (error: any) {
       notification.showError('Withdrawal Failed', error.message || 'Unable to submit withdrawal');
     } finally {
@@ -357,7 +392,7 @@ const WithdrawalsDashboard: React.FC = () => {
       }
 
       notification.showSuccess('Withdrawal Cancelled', 'Your withdrawal request has been cancelled.');
-      await Promise.all([loadWithdrawalHistory(), loadReservedBalance(), loadWalletBalance()]);
+      await Promise.all([loadWithdrawalHistory(), loadReservedBalance(), loadWalletBalance(), loadRewardWithdrawalStatus()]);
     } catch (error: any) {
       notification.showError('Cancellation Failed', error.message || 'Unable to cancel withdrawal');
     } finally {
@@ -367,16 +402,16 @@ const WithdrawalsDashboard: React.FC = () => {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const quickAmounts = useMemo(() => {
-    const base = withdrawalSettings.stepAmount > 0 ? withdrawalSettings.stepAmount : withdrawalSettings.minAmount;
+    const base = activeStepAmount > 0 ? activeStepAmount : activeMinAmount;
     const values = [
-      withdrawalSettings.minAmount,
-      withdrawalSettings.minAmount + base,
+      activeMinAmount,
+      activeMinAmount + base,
       withdrawableBalance
     ]
       .map((value) => normalizeWithdrawalAmount(value))
       .filter((value) => value > 0 && value <= withdrawableBalance);
     return Array.from(new Set(values)).slice(0, 3);
-  }, [withdrawalSettings.minAmount, withdrawalSettings.stepAmount, withdrawableBalance]);
+  }, [activeMinAmount, activeStepAmount, withdrawableBalance]);
 
   const formatAddress = (address?: string | null) => {
     if (!address) return 'No default wallet selected';
@@ -418,6 +453,28 @@ const WithdrawalsDashboard: React.FC = () => {
           </span> */}
         </div>
 
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-gray-100 bg-gray-50 p-1">
+          {[
+            { id: 'working' as const, label: 'Working Wallet' },
+            { id: 'reward' as const, label: 'ROI Wallet' },
+          ].map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => {
+                setWalletType(option.id);
+                setWithdrawalInput('');
+                setCurrentPage(1);
+              }}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                walletType === option.id ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -427,12 +484,14 @@ const WithdrawalsDashboard: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-medium text-gray-600">Total Balance</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">{walletBalance.toFixed(2)} USDT</p>
+              <p className="mt-1 text-lg font-semibold text-gray-900">
+                {(walletType === 'reward' ? rewardWalletBalance : walletBalance).toFixed(2)} USDT
+              </p>
             </div>
             <div>
               <p className="text-xs font-medium text-gray-600">Reserved</p>
               <p className="mt-1 text-lg font-semibold text-gray-900">
-                {(walletReservedBalance + reservedBalance).toFixed(2)} USDT
+                {((walletType === 'reward' ? 0 : walletReservedBalance) + reservedBalance).toFixed(2)} USDT
               </p>
             </div>
           </div>
@@ -457,8 +516,8 @@ const WithdrawalsDashboard: React.FC = () => {
           <div className="relative">
             <input
               type="number"
-              min={withdrawalSettings.minAmount}
-              step={withdrawalSettings.stepAmount || 1}
+              min={activeMinAmount}
+              step={activeStepAmount || 1}
               value={withdrawalInput}
               onChange={(event) => {
                 const rawValue = event.target.value;
@@ -474,7 +533,7 @@ const WithdrawalsDashboard: React.FC = () => {
                 }
               }}
               className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-16 text-lg font-semibold text-gray-900 placeholder:text-sm placeholder:font-normal focus:border-transparent focus:ring-2 focus:ring-indigo-500"
-              placeholder={`Minimum ${withdrawalSettings.minAmount} USDT`}
+              placeholder={`Minimum ${activeMinAmount} USDT`}
             />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400">USDT</span>
           </div>
@@ -497,11 +556,11 @@ const WithdrawalsDashboard: React.FC = () => {
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div className="rounded-lg bg-gray-50 p-3">
             <p className="text-xs text-gray-500">Minimum</p>
-            <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.minAmount} USDT</p>
+            <p className="mt-1 font-semibold text-gray-900">{activeMinAmount} USDT</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-3">
             <p className="text-xs text-gray-500">Step</p>
-            <p className="mt-1 font-semibold text-gray-900">{withdrawalSettings.stepAmount} USDT</p>
+            <p className="mt-1 font-semibold text-gray-900">{activeStepAmount} USDT</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-3">
             <p className="text-xs text-gray-500">Admin Charges</p>

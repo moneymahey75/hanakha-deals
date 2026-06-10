@@ -71,7 +71,7 @@ const processTransfer = async (params: {
   amount: number;
   netAmount: number;
   destinationAddress: string;
-  walletType: 'working' | 'non_working';
+  walletType: 'working' | 'non_working' | 'reward';
   adminPaymentWallet: string;
   usdtAddress: string;
   paymentMode: any;
@@ -107,43 +107,78 @@ const processTransfer = async (params: {
     throw new Error('Wallet not found for withdrawal');
   }
 
-  const currentBalance = Number(wallet.tw_balance || 0);
-  if (currentBalance < amount) {
-    throw new Error('Insufficient wallet balance');
-  }
-
-  const newBalance = currentBalance - amount;
-
-  const { error: balanceError } = await supabase
-    .from('tbl_wallets')
-    .update({
-      tw_balance: newBalance,
-      tw_updated_at: new Date().toISOString()
-    })
-    .eq('tw_id', wallet.tw_id);
-
-  if (balanceError) {
-    throw new Error('Failed to update wallet balance');
-  }
-
-  const { data: walletTx, error: txError } = await supabase
+  const { data: existingDebit, error: existingDebitError } = await supabase
     .from('tbl_wallet_transactions')
-    .insert({
-      twt_wallet_id: wallet.tw_id,
-      twt_user_id: userId,
-      twt_transaction_type: 'debit',
-      twt_amount: amount,
-      twt_description: 'Withdrawal approved',
-      twt_reference_type: 'withdrawal',
-      twt_reference_id: requestId,
-      twt_status: 'pending',
-      twt_created_at: new Date().toISOString()
-    })
-    .select()
-    .single();
+    .select('twt_id, twt_status, twt_amount')
+    .eq('twt_reference_type', 'withdrawal')
+    .eq('twt_reference_id', requestId)
+    .eq('twt_transaction_type', 'debit')
+    .order('twt_created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (txError) {
-    throw new Error('Failed to record withdrawal transaction');
+  if (existingDebitError) {
+    throw new Error('Failed to check existing withdrawal debit');
+  }
+
+  let walletTx = existingDebit;
+  const existingDebitStatus = String(existingDebit?.twt_status || '').toLowerCase();
+  const canReuseDebit = Boolean(existingDebit?.twt_id) && ['pending', 'failed'].includes(existingDebitStatus);
+
+  if (canReuseDebit) {
+    const { error: reuseError } = await supabase
+      .from('tbl_wallet_transactions')
+      .update({ twt_status: 'pending' })
+      .eq('twt_id', existingDebit.twt_id);
+
+    if (reuseError) {
+      throw new Error('Failed to reopen existing withdrawal debit');
+    }
+  } else {
+    const currentBalance = Number(wallet.tw_balance || 0);
+    if (currentBalance < amount) {
+      throw new Error('Insufficient wallet balance');
+    }
+
+    const newBalance = currentBalance - amount;
+
+    const { error: balanceError } = await supabase
+      .from('tbl_wallets')
+      .update({
+        tw_balance: newBalance,
+        tw_updated_at: new Date().toISOString()
+      })
+      .eq('tw_id', wallet.tw_id);
+
+    if (balanceError) {
+      throw new Error('Failed to update wallet balance');
+    }
+
+    const { data: insertedWalletTx, error: txError } = await supabase
+      .from('tbl_wallet_transactions')
+      .insert({
+        twt_wallet_id: wallet.tw_id,
+        twt_user_id: userId,
+        twt_transaction_type: 'debit',
+        twt_amount: amount,
+        twt_description: 'Withdrawal approved',
+        twt_reference_type: 'withdrawal',
+        twt_reference_id: requestId,
+        twt_status: 'pending',
+        twt_created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (txError) {
+      throw new Error('Failed to record withdrawal transaction');
+    }
+
+    walletTx = insertedWalletTx;
+  }
+
+  if (!walletTx?.twt_id) {
+    throw new Error('Withdrawal debit transaction not found');
   }
 
   let submittedTxHash: string | null = null;
@@ -231,11 +266,6 @@ const processTransfer = async (params: {
       .from('tbl_wallet_transactions')
       .update({ twt_status: 'failed' })
       .eq('twt_id', walletTx.twt_id);
-
-    await supabase
-      .from('tbl_wallets')
-      .update({ tw_balance: currentBalance, tw_updated_at: new Date().toISOString() })
-      .eq('tw_id', wallet.tw_id);
 
     await supabase
       .from('tbl_withdrawal_requests')
@@ -553,8 +583,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const walletType: 'working' | 'non_working' =
-      String((withdrawal as any).twr_wallet_type || 'working') === 'non_working' ? 'non_working' : 'working';
+    const walletTypeRaw = String((withdrawal as any).twr_wallet_type || 'working');
+    const walletType: 'working' | 'non_working' | 'reward' =
+      walletTypeRaw === 'reward' ? 'reward' : walletTypeRaw === 'non_working' ? 'non_working' : 'working';
 
     const txHash = await processTransfer({
       supabase,

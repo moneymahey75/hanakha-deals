@@ -94,7 +94,7 @@ const processTransfer = async (params: {
   amount: number;
   netAmount: number;
   destinationAddress: string;
-  walletType: 'working' | 'non_working';
+  walletType: 'working' | 'non_working' | 'reward';
   adminPaymentWallet: string;
   usdtAddress: string;
   paymentMode: any;
@@ -265,11 +265,6 @@ const processTransfer = async (params: {
       .eq('twt_id', walletTx.twt_id);
 
     await supabase
-      .from('tbl_wallets')
-      .update({ tw_balance: currentBalance, tw_updated_at: new Date().toISOString() })
-      .eq('tw_id', wallet.tw_id);
-
-    await supabase
       .from('tbl_withdrawal_requests')
       .update({
         twr_status: 'failed',
@@ -319,7 +314,8 @@ Deno.serve(async (req: Request) => {
     const amountUnits = toUnits6(body?.amount);
     const withdrawalAmount = Number(body?.amount);
     const walletTypeRaw = String(body?.walletType || body?.wallet_type || 'working').trim().toLowerCase();
-    const walletType: 'working' | 'non_working' = walletTypeRaw === 'non_working' ? 'non_working' : 'working';
+    const walletType: 'working' | 'non_working' | 'reward' =
+      walletTypeRaw === 'reward' ? 'reward' : walletTypeRaw === 'non_working' ? 'non_working' : 'working';
 
     if (amountUnits === null || !Number.isFinite(withdrawalAmount) || withdrawalAmount <= 0) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid withdrawal amount' }), {
@@ -346,6 +342,7 @@ Deno.serve(async (req: Request) => {
         'withdrawal_enabled',
         'withdrawal_disabled_message',
         'withdrawal_min_amount',
+        'reward_withdrawal_min_amount',
         'withdrawal_step_amount',
         'withdrawal_commission_percent',
         'withdrawal_auto_transfer',
@@ -379,7 +376,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const minAmountRaw = settingsMap.withdrawal_min_amount ?? 10;
+    const minAmountRaw = walletType === 'reward'
+      ? (settingsMap.reward_withdrawal_min_amount ?? settingsMap.withdrawal_min_amount ?? 10)
+      : (settingsMap.withdrawal_min_amount ?? 10);
     const stepAmountRaw = settingsMap.withdrawal_step_amount ?? 10;
     const minUnits = toUnits6(minAmountRaw);
     const stepUnits = toUnits6(stepAmountRaw);

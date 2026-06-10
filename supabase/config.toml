@@ -33,6 +33,10 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+[functions.cleanup-expired-reward-coupons]
+enabled = true
+verify_jwt = false
+
 [functions.admin-get-admin-users]
 enabled = true
 verify_jwt = false
