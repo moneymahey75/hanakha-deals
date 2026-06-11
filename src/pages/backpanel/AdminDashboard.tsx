@@ -29,6 +29,8 @@ import {
   BarChart3,
   FileText,
   DollarSign,
+  Clock,
+  AlertTriangle,
   RefreshCw,
   Globe,
   UserCheck,
@@ -116,6 +118,8 @@ const AdminDashboard: React.FC = () => {
       'wallets',
       'subscriptions',
       'payments',
+      'pending_payments',
+      'stuck_payments',
       'level_counts',
       'withdrawals',
       'admins',
@@ -336,6 +340,8 @@ const AdminDashboard: React.FC = () => {
     { id: 'wallets', label: 'Wallets', icon: Wallet, permission: 'wallets' },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, permission: 'subscriptions' },
     { id: 'payments', label: 'Payments', icon: DollarSign, permission: 'payments' },
+    { id: 'pending_payments', label: 'Pending Payments', icon: Clock, permission: 'payments' },
+    { id: 'stuck_payments', label: 'Stuck Payments', icon: AlertTriangle, permission: 'payments' },
     { id: 'level_counts', label: 'Level Counts', icon: BarChart3, permission: 'mlm' },
     { id: 'withdrawals', label: 'Withdrawals', icon: RefreshCw, permission: 'withdrawals' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
@@ -486,7 +492,9 @@ const AdminDashboard: React.FC = () => {
                   {activeTab === 'coupons' && 'Manage coupons and sharing rewards'}
                   {activeTab === 'wallets' && 'Monitor user wallets and transactions'}
                   {activeTab === 'subscriptions' && 'Manage subscription plans and pricing'}
-                  {activeTab === 'payments' && 'View payment transactions and history'}
+                  {activeTab === 'payments' && 'View completed payment transactions and admin earnings'}
+                  {activeTab === 'pending_payments' && 'Review customer payments awaiting approval'}
+                  {activeTab === 'stuck_payments' && 'Resolve wallet payments that need manual verification'}
                   {activeTab === 'withdrawals' && 'Review and manage withdrawal requests'}
                   {activeTab === 'admins' && 'Manage sub-administrators and permissions'}
                   {activeTab === 'settings' && 'Configure system settings and preferences'}
@@ -588,7 +596,15 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {activeTab === 'payments' && hasPermission('payments', 'read') && (
-                <PendingPayments />
+                <PendingPayments view="history" />
+            )}
+
+            {activeTab === 'pending_payments' && hasPermission('payments', 'read') && (
+                <PendingPayments view="pending" />
+            )}
+
+            {activeTab === 'stuck_payments' && hasPermission('payments', 'read') && (
+                <PendingPayments view="stuck" />
             )}
 
             {activeTab === 'level_counts' && hasPermission('mlm' as any, 'read') && (

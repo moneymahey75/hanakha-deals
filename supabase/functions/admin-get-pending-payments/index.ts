@@ -94,7 +94,8 @@ Deno.serve(async (req: Request) => {
       user:tp_user_id(tu_email, tu_is_dummy),
       subscription:tp_subscription_id(
         tus_id,
-        plan:tus_plan_id(tsp_name, tsp_type)
+        tus_plan_phase,
+        plan:tus_plan_id(tsp_name, tsp_type, tsp_price, tsp_plan_phase)
       )
     `;
 
@@ -115,8 +116,33 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await query;
     if (error) throw error;
 
+    const rows = data || [];
+    const userIds = Array.from(new Set(rows.map((row: any) => row.tp_user_id).filter(Boolean)));
+    if (userIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_user_id, tup_sponsorship_number')
+        .in('tup_user_id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      const sponsorshipByUserId = new Map(
+        (profiles || []).map((profile: any) => [
+          String(profile.tup_user_id),
+          profile.tup_sponsorship_number || null,
+        ])
+      );
+
+      rows.forEach((row: any) => {
+        row.user = {
+          ...(row.user || {}),
+          tup_sponsorship_number: sponsorshipByUserId.get(String(row.tp_user_id)) || null,
+        };
+      });
+    }
+
     // Split into stuck vs normal pending — returned under data so adminApi.post unwraps correctly
-    const all = data || [];
+    const all = rows;
     const stuck = all.filter((p: any) => p.tp_is_stuck === true);
     const pending = all.filter((p: any) => p.tp_is_stuck !== true);
 

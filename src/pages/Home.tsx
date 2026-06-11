@@ -183,10 +183,19 @@ const Home: React.FC = () => {
 
       if (user.userType !== 'customer') return;
 
+      const emailRequired = settings.emailVerificationRequired === true;
+      const mobileRequired = settings.mobileVerificationRequired === true;
+      const eitherRequired = settings.eitherVerificationRequired === true;
+      const verificationComplete = eitherRequired
+        ? user.emailVerified || user.mobileVerified
+        : (!emailRequired || user.emailVerified) && (!mobileRequired || user.mobileVerified);
+      const paymentRoute = (settings.launchPhase || 'prelaunch') === 'launched'
+        ? '/subscription-plans'
+        : '/registration-payment';
       const target = user.hasActiveSubscription || user.registrationPaid
         ? '/customer/dashboard'
-        : user.mobileVerified
-          ? '/registration-payment'
+        : verificationComplete
+          ? paymentRoute
           : '/verify-otp';
 
       navigate(target, {
@@ -195,7 +204,7 @@ const Home: React.FC = () => {
     } catch {
       // ignore malformed route restore data
     }
-  }, [loading, navigate, user]);
+  }, [loading, navigate, settings, user]);
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % slides.length);

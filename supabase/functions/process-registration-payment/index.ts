@@ -11,6 +11,32 @@ const sponsorMeetsVerificationRules = (
   sponsorUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
 ) => sponsorUser.tu_email_verified === true || sponsorUser.tu_mobile_verified === true;
 
+const parseSetting = (raw: any) => {
+  if (raw === null || raw === undefined) return raw;
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+const customerMeetsVerificationRules = (
+  settingsMap: Record<string, any>,
+  customerUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
+) => {
+  const emailRequired = settingsMap.email_verification_required === true;
+  const mobileRequired = settingsMap.mobile_verification_required === true;
+  const eitherRequired = settingsMap.either_verification_required === true;
+  const emailVerified = customerUser.tu_email_verified === true;
+  const mobileVerified = customerUser.tu_mobile_verified === true;
+
+  if (eitherRequired) return emailVerified || mobileVerified;
+  if (emailRequired && !emailVerified) return false;
+  if (mobileRequired && !mobileVerified) return false;
+  return true;
+};
+
 const isSponsorLaunchEligible = async (
   supabase: ReturnType<typeof createClient>,
   userId: string
@@ -97,7 +123,7 @@ Deno.serve(async (req: Request) => {
       .from('tbl_payments')
       .select(`
         *,
-        user:tp_user_id(tu_id, tu_email),
+        user:tp_user_id(tu_id, tu_email, tu_email_verified, tu_mobile_verified),
         subscription:tp_subscription_id(
           tus_id,
           plan:tus_plan_id(tsp_price, tsp_type, tsp_parent_income)
@@ -114,6 +140,32 @@ Deno.serve(async (req: Request) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
+    }
+
+    const { data: settingsRows, error: settingsError } = await supabase
+      .from('tbl_system_settings')
+      .select('tss_setting_key, tss_setting_value')
+      .in('tss_setting_key', [
+        'email_verification_required',
+        'mobile_verification_required',
+        'either_verification_required'
+      ]);
+
+    if (settingsError) throw settingsError;
+
+    const settingsMap: Record<string, any> = {};
+    for (const row of settingsRows || []) {
+      settingsMap[row.tss_setting_key] = parseSetting(row.tss_setting_value);
+    }
+
+    if (!payment.user || !customerMeetsVerificationRules(settingsMap, payment.user)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Customer must verify account before payment can be approved.'
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (payment.tp_payment_status !== 'pending') {

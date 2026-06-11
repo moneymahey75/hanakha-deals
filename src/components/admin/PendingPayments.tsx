@@ -46,12 +46,16 @@ interface Payment {
   user?: {
     tu_email: string;
     tu_is_dummy?: boolean;
+    tup_sponsorship_number?: string | null;
   };
   subscription?: {
     tus_id: string;
+    tus_plan_phase?: string | null;
     plan?: {
       tsp_name: string;
       tsp_type: string;
+      tsp_price?: number | null;
+      tsp_plan_phase?: string | null;
     };
   };
 }
@@ -65,6 +69,7 @@ interface AdminUser {
 
 interface AdminEarning {
   tp_id: string;
+  tp_user_id?: string | null;
   tp_transaction_id: string | null;
   tp_amount: number | null;
   tp_currency: string | null;
@@ -78,6 +83,17 @@ interface AdminEarning {
   user?: {
     tu_email: string;
     tu_is_dummy?: boolean;
+    tup_sponsorship_number?: string | null;
+  };
+  subscription?: {
+    tus_id: string;
+    tus_plan_phase?: string | null;
+    plan?: {
+      tsp_name: string;
+      tsp_type: string;
+      tsp_price?: number | null;
+      tsp_plan_phase?: string | null;
+    };
   };
 }
 
@@ -99,7 +115,13 @@ type AdminWalletStats = {
   todayWithdrawalsCountDummy?: number;
 };
 
-const PendingPayments: React.FC = () => {
+type PaymentView = 'history' | 'pending' | 'stuck';
+
+interface PendingPaymentsProps {
+  view?: PaymentView;
+}
+
+const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stuckPayments, setStuckPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,6 +137,9 @@ const PendingPayments: React.FC = () => {
   const [walletStats, setWalletStats] = useState<AdminWalletStats | null>(null);
   const [walletStatsLoading, setWalletStatsLoading] = useState(false);
   const notification = useNotification();
+  const showPaymentHistory = view === 'history';
+  const showPendingPayments = view === 'pending';
+  const showStuckPayments = view === 'stuck';
 
   useEffect(() => {
     loadPayments();
@@ -267,7 +292,9 @@ const PendingPayments: React.FC = () => {
   };
 
   const handleApprovePayment = async (paymentId: string) => {
-    const payment = payments.find((item) => item.tp_id === paymentId);
+    const payment =
+      payments.find((item) => item.tp_id === paymentId) ||
+      stuckPayments.find((item) => item.tp_id === paymentId);
     const hasTxHash = Boolean(payment?.tp_transaction_id);
     const manualVerified = hasTxHash
       ? confirm(
@@ -342,6 +369,10 @@ const PendingPayments: React.FC = () => {
     const headers = [
       'Verified Date',
       'Customer Email',
+      'Referral Number',
+      'Plan',
+      'Plan Type',
+      'Plan Phase',
       'Amount',
       'Currency',
       'Admin Income',
@@ -362,6 +393,10 @@ const PendingPayments: React.FC = () => {
       return [
         verifiedAt,
         earning.user?.tu_email || '',
+        earning.user?.tup_sponsorship_number || '',
+        earning.subscription?.plan?.tsp_name || '',
+        earning.subscription?.plan?.tsp_type || '',
+        earning.subscription?.tus_plan_phase || earning.subscription?.plan?.tsp_plan_phase || '',
         earning.tp_amount ?? '',
         earning.tp_currency ?? '',
         adminIncome,
@@ -455,7 +490,7 @@ const PendingPayments: React.FC = () => {
     };
   })();
 
-  if (loading) {
+  if (loading && (showPendingPayments || showStuckPayments)) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="text-center py-8">
@@ -469,8 +504,16 @@ const PendingPayments: React.FC = () => {
     <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Pending Registration Payments</h2>
-            <p className="text-gray-600 mt-1">Review and approve customer registration payments</p>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {showPendingPayments ? 'Pending Payments' : showStuckPayments ? 'Stuck Payments' : 'Payments'}
+            </h2>
+            <p className="text-gray-600 mt-1">
+              {showPendingPayments
+                ? 'Review and approve customer registration payments'
+                : showStuckPayments
+                  ? 'Resolve wallet payments that need manual verification'
+                  : 'Track completed payments, admin income, and commissions'}
+            </p>
           </div>
           <div className="flex items-center space-x-3">
             <select
@@ -496,6 +539,7 @@ const PendingPayments: React.FC = () => {
           </div>
       </div>
 
+      {showPaymentHistory && (
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -548,8 +592,10 @@ const PendingPayments: React.FC = () => {
           <div className="text-sm text-gray-500">Wallet stats unavailable.</div>
         )}
       </div>
+      )}
 
-      {payments.length === 0 ? (
+      {showPendingPayments && (
+      payments.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
           <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Payments</h3>
@@ -603,13 +649,21 @@ const PendingPayments: React.FC = () => {
                               </span>
                             </div>
                           ) : null}
-                          <div className="text-sm text-gray-500">User Payment</div>
+                          <div className="text-sm text-gray-500">
+                            Referral: {payment.user?.tup_sponsorship_number || 'N/A'}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{payment.subscription?.plan?.tsp_name || 'N/A'}</div>
-                      <div className="text-sm text-gray-500 capitalize">{payment.subscription?.plan?.tsp_type || 'N/A'}</div>
+                      <div className="text-sm text-gray-500 capitalize">
+                        {payment.subscription?.plan?.tsp_type || 'N/A'}
+                        {payment.subscription?.plan?.tsp_price != null ? ` • ${payment.subscription.plan.tsp_price} USDT` : ''}
+                      </div>
+                      <div className="text-xs text-gray-400 capitalize">
+                        {payment.subscription?.tus_plan_phase || payment.subscription?.plan?.tsp_plan_phase || 'N/A'} phase
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -697,9 +751,10 @@ const PendingPayments: React.FC = () => {
             </table>
           </div>
         </div>
-      )}
+      ))}
 
       {/* ── Stuck Payments Section ── */}
+      {showStuckPayments && (
       <div className="bg-white rounded-lg shadow-md overflow-hidden border-l-4 border-amber-400">
         <div className="p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
@@ -778,9 +833,16 @@ const PendingPayments: React.FC = () => {
                               </span>
                             )}
                           </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            Referral: {payment.user?.tup_sponsorship_number || 'N/A'}
+                          </div>
                           <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
                             Stuck: {stuckDate ? new Date(stuckDate).toLocaleString() : 'N/A'}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            Plan: {payment.subscription?.plan?.tsp_name || 'N/A'}
+                            {payment.subscription?.plan?.tsp_type ? ` (${payment.subscription.plan.tsp_type})` : ''}
                           </div>
                         </div>
                       </div>
@@ -914,7 +976,9 @@ const PendingPayments: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
+      {showPaymentHistory && (
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
           <div>
@@ -1006,6 +1070,9 @@ const PendingPayments: React.FC = () => {
                   Customer
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Plan
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Amount
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1025,13 +1092,13 @@ const PendingPayments: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {earningsLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
                     Loading earnings...
                   </td>
                 </tr>
               ) : adminEarnings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
                     No earnings found for the selected filters.
                   </td>
                 </tr>
@@ -1042,18 +1109,45 @@ const PendingPayments: React.FC = () => {
                   const commissionPaid = Number(gateway.parent_income ?? 0);
                   const commissionTo = gateway.parent_account || gateway.parent_user_id || 'N/A';
                   const displayDate = earning.tp_verified_at || earning.tp_created_at;
+                  const plan = earning.subscription?.plan;
+                  const planType = String(plan?.tsp_type || '').toLowerCase();
+                  const planPhase = earning.subscription?.tus_plan_phase || plan?.tsp_plan_phase || '';
                   return (
                     <tr key={earning.tp_id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {displayDate ? new Date(displayDate).toLocaleDateString() : 'N/A'}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        <div className="flex items-center gap-2">
-                          <span>{earning.user?.tu_email || 'N/A'}</span>
-                          {earning.user?.tu_is_dummy ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
-                              Dummy
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span>{earning.user?.tu_email || 'N/A'}</span>
+                            {earning.user?.tu_is_dummy ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                                Dummy
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Referral: {earning.user?.tup_sponsorship_number || 'N/A'}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="space-y-1">
+                          <div className="font-medium text-gray-900">{plan?.tsp_name || 'N/A'}</div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="capitalize text-xs text-gray-500">
+                              {planType || 'N/A'}
+                              {plan?.tsp_price != null ? ` • ${plan.tsp_price} USDT` : ''}
                             </span>
+                            {planType === 'upgrade' ? (
+                              <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 border border-green-100">
+                                Upgraded
+                              </span>
+                            ) : null}
+                          </div>
+                          {planPhase ? (
+                            <div className="text-xs text-gray-400 capitalize">{planPhase} phase</div>
                           ) : null}
                         </div>
                       </td>
@@ -1080,6 +1174,7 @@ const PendingPayments: React.FC = () => {
           </table>
         </div>
       </div>
+      )}
 
     </div>
   );

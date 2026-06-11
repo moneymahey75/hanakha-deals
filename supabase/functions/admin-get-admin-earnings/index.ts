@@ -68,6 +68,7 @@ Deno.serve(async (req: Request) => {
       .select(
         `
         tp_id,
+        tp_user_id,
         tp_transaction_id,
         tp_amount,
         tp_currency,
@@ -78,7 +79,12 @@ Deno.serve(async (req: Request) => {
         tp_processed_by_admin_id,
         tp_processed_by_admin_email,
         tp_processed_by_admin_name,
-        user:tp_user_id(tu_email, tu_is_dummy)
+        user:tp_user_id(tu_email, tu_is_dummy),
+        subscription:tp_subscription_id(
+          tus_id,
+          tus_plan_phase,
+          plan:tus_plan_id(tsp_name, tsp_type, tsp_price, tsp_plan_phase)
+        )
       `
       )
       .eq('tp_payment_status', 'completed')
@@ -104,7 +110,32 @@ Deno.serve(async (req: Request) => {
       throw error;
     }
 
-    return new Response(JSON.stringify({ success: true, data }), {
+    const rows = data || [];
+    const userIds = Array.from(new Set(rows.map((row: any) => row.tp_user_id).filter(Boolean)));
+    if (userIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from('tbl_user_profiles')
+        .select('tup_user_id, tup_sponsorship_number')
+        .in('tup_user_id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      const sponsorshipByUserId = new Map(
+        (profiles || []).map((profile: any) => [
+          String(profile.tup_user_id),
+          profile.tup_sponsorship_number || null,
+        ])
+      );
+
+      rows.forEach((row: any) => {
+        row.user = {
+          ...(row.user || {}),
+          tup_sponsorship_number: sponsorshipByUserId.get(String(row.tp_user_id)) || null,
+        };
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true, data: rows }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

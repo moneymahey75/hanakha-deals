@@ -26,6 +26,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const [hasValidSession, setHasValidSession] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<{
     needsVerification: boolean;
+    emailVerified?: boolean;
+    mobileVerified?: boolean;
     settings: any;
   } | null>(null);
 
@@ -80,14 +82,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         }
 
         // Only check verification status when required AND user exists.
-        // Skip for pages that are always accessible without subscription (e.g. /registration-payment)
-        // to avoid blocking payment flows with an extra network call.
+        // Do not skip plan/payment pages: customers must verify before any paid activation.
         const skipVerificationPages = [
-          '/registration-payment',
-          '/registration-payment-success',
-          '/payment',
-          '/payment-success',
-          '/subscription-plans',
           '/verify-otp',
         ];
         const isSkipPage = skipVerificationPages.some(
@@ -191,6 +187,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
               emailRequired: verificationStatus.settings?.emailVerificationRequired || false,
               mobileRequired: verificationStatus.settings?.mobileVerificationRequired || false,
               eitherRequired: verificationStatus.settings?.eitherVerificationRequired || false
+            },
+            completedVerifications: {
+              email: verificationStatus.emailVerified === true,
+              mobile: verificationStatus.mobileVerified === true
             },
             from: location
           },

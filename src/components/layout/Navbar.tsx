@@ -61,7 +61,15 @@ const Navbar: React.FC<NavbarProps> = ({
   };
 
   const getLogoLink = () => {
-    if (user?.userType === 'customer' && !user.mobileVerified) return '/verify-otp';
+    if (user?.userType === 'customer') {
+      const emailRequired = settings.emailVerificationRequired === true;
+      const mobileRequired = settings.mobileVerificationRequired === true;
+      const eitherRequired = settings.eitherVerificationRequired === true;
+      const verificationComplete = eitherRequired
+        ? user.emailVerified || user.mobileVerified
+        : (!emailRequired || user.emailVerified) && (!mobileRequired || user.mobileVerified);
+      if (!verificationComplete) return '/verify-otp';
+    }
     return '/';
   };
 

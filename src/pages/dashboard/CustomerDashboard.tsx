@@ -139,7 +139,12 @@ const CustomerDashboard: React.FC = () => {
 
       try {
         setUpgradeStatusLoading(true);
-        const { data, error } = await supabase.rpc('has_completed_launch_upgrade', {
+        if (user.currentPlanPhase === 'launch') {
+          if (mounted) setHasLaunchUpgrade(true);
+          return;
+        }
+
+        const { data, error } = await supabase.rpc('is_user_on_launch_plan', {
           p_user_id: user.id,
         });
         if (error) throw error;
@@ -177,7 +182,7 @@ const CustomerDashboard: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [user?.id, settings?.launchPhase]);
+  }, [user?.id, user?.currentPlanPhase, settings?.launchPhase]);
 
   // FIXED: Load dashboard data with proper error handling
   useEffect(() => {
@@ -559,7 +564,7 @@ const CustomerDashboard: React.FC = () => {
                         ? 'border-green-200 bg-green-50 text-green-700'
                         : 'border-gray-200 bg-gray-50 text-gray-600'
                     }`}
-                    title={hasLaunchUpgrade ? 'Customer has completed Launch upgrade' : 'Customer has not completed Launch upgrade yet'}
+                    title={hasLaunchUpgrade ? 'Customer has an active Launch account' : 'Customer has not activated a Launch account yet'}
                   >
                     {hasLaunchUpgrade ? (
                       <CheckCircle className="h-4 w-4" />

@@ -37,6 +37,22 @@ const sponsorMeetsVerificationRules = (
   sponsorUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
 ) => sponsorUser.tu_email_verified === true || sponsorUser.tu_mobile_verified === true;
 
+const customerMeetsVerificationRules = (
+  settingsMap: Record<string, any>,
+  customerUser: { tu_email_verified?: boolean | null; tu_mobile_verified?: boolean | null }
+) => {
+  const emailRequired = settingsMap.email_verification_required === true;
+  const mobileRequired = settingsMap.mobile_verification_required === true;
+  const eitherRequired = settingsMap.either_verification_required === true;
+  const emailVerified = customerUser.tu_email_verified === true;
+  const mobileVerified = customerUser.tu_mobile_verified === true;
+
+  if (eitherRequired) return emailVerified || mobileVerified;
+  if (emailRequired && !emailVerified) return false;
+  if (mobileRequired && !mobileVerified) return false;
+  return true;
+};
+
 const isSponsorLaunchEligible = async (
   supabase: ReturnType<typeof createClient>,
   userId: string
@@ -188,6 +204,24 @@ Deno.serve(async (req: Request) => {
     const usdtAddress = String(settingsMap.usdt_address || '').trim();
     const paymentMode = settingsMap.payment_mode;
     const walletUniqueSetting = settingsMap.wallet_unique_per_customer;
+
+    const { data: customerUser, error: customerUserError } = await supabase
+      .from('tbl_users')
+      .select('tu_email_verified, tu_mobile_verified')
+      .eq('tu_id', userId)
+      .maybeSingle();
+
+    if (customerUserError) throw customerUserError;
+
+    if (!customerUser || !customerMeetsVerificationRules(settingsMap, customerUser)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Please verify your account before making payment.'
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!ethers.isAddress(adminWallet)) {
       return new Response(JSON.stringify({ success: false, error: 'Admin payment wallet not configured' }), {

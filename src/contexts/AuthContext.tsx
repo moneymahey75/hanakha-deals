@@ -17,6 +17,7 @@ interface User {
   hasActiveSubscription: boolean;
   registrationPaid?: boolean;
   currentPlanPhase?: 'prelaunch' | 'launch';
+  emailVerified: boolean;
   mobileVerified: boolean;
   profileLoaded?: boolean;
 }
@@ -31,7 +32,12 @@ interface AuthContextType {
   verifyOTP: (otp: string) => Promise<void>;
   sendOTPToUser: (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => Promise<any>;
   fetchUserData: (userId: string) => Promise<void>;
-  checkVerificationStatus: (userId: string) => Promise<{ needsVerification: boolean; settings: any }>;
+  checkVerificationStatus: (userId: string) => Promise<{
+    needsVerification: boolean;
+    emailVerified?: boolean;
+    mobileVerified?: boolean;
+    settings: any;
+  }>;
   loading: boolean;
   userDataLoading: boolean;
 }
@@ -149,7 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .select('*, plan:tus_plan_id(tsp_plan_phase, tsp_type)')
               .eq('tus_user_id', userId)
               .eq('tus_status', 'active')
-              .gte('tus_end_date', new Date().toISOString());
+              .or(`tus_end_date.is.null,tus_end_date.gt.${new Date().toISOString()}`);
           console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
           subscriptionData = subscriptionDataArray?.[0];
           const launchSubscription = subscriptionDataArray?.find((row: any) =>
@@ -193,6 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasActiveSubscription: !!subscriptionData,
         registrationPaid,
         currentPlanPhase: (userData?.tu_current_plan_phase === 'launch' || activePlanPhase === 'launch') ? 'launch' : 'prelaunch',
+        emailVerified: userData?.tu_email_verified || false,
         mobileVerified: userData?.tu_mobile_verified || false,
         profileLoaded: true
       };
@@ -569,6 +576,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasActiveSubscription: false,
         registrationPaid: false,
         currentPlanPhase: 'prelaunch',
+        emailVerified: false,
         mobileVerified: false,
         profileLoaded: false
       };
@@ -877,11 +885,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const emailRequired = settings.email_verification_required || false;
       const mobileRequired = settings.mobile_verification_required || false;
       const eitherRequired = settings.either_verification_required || false;
-      const needsVerification = !userData.tu_email_verified && !userData.tu_mobile_verified;
+      const emailVerified = userData.tu_email_verified === true;
+      const mobileVerified = userData.tu_mobile_verified === true;
+      const needsVerification = eitherRequired
+        ? !emailVerified && !mobileVerified
+        : (emailRequired && !emailVerified) || (mobileRequired && !mobileVerified);
 
       console.log('📋 Verification check result:', {
-        emailVerified: userData.tu_email_verified,
-        mobileVerified: userData.tu_mobile_verified,
+        emailVerified,
+        mobileVerified,
         isVerified: userData.tu_is_verified,
         emailRequired,
         mobileRequired,
@@ -891,6 +903,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return {
         needsVerification,
+        emailVerified,
+        mobileVerified,
         settings: {
           emailVerificationRequired: emailRequired,
           mobileVerificationRequired: mobileRequired,

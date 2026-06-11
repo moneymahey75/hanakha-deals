@@ -96,39 +96,15 @@ const VerifyOTP: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (loading || !user) return;
-
-    if (user.hasActiveSubscription || user.registrationPaid) {
-      navigate('/customer/dashboard', { replace: true });
-      return;
-    }
-
-    if (user.isVerified || user.mobileVerified) {
-      const nextRoute = (settings.launchPhase || 'prelaunch') === 'launched'
-        ? '/subscription-plans'
-        : '/registration-payment';
-      navigate(nextRoute, { replace: true });
-    }
-  }, [
-    loading,
-    navigate,
-    settings.launchPhase,
-    user?.hasActiveSubscription,
-    user?.id,
-    user?.isVerified,
-    user?.mobileVerified,
-    user?.registrationPaid
-  ]);
-
   // Initialize component data - SINGLE INITIALIZATION
   useEffect(() => {
+    if (loading) return;
+    const state = location.state as any;
+    if (!state && !user) return;
     if (componentInitialized.current) return;
     componentInitialized.current = true;
 
     const initializeComponent = () => {
-      const state = location.state as any;
-
       if (state) {
         // Coming from some flow with state
         setCurrentUserId(state.userId || user?.id || '');
@@ -137,37 +113,47 @@ const VerifyOTP: React.FC = () => {
           mobile: state.mobile || ''
         });
 
-        const settings = state.verificationSettings || {
+        const requiredSettings = state.verificationSettings || {
           emailRequired: false,
           mobileRequired: false,
           eitherRequired: false
         };
-        setVerificationSettings(settings);
+        setVerificationSettings(requiredSettings);
+
+        const existingCompleted = {
+          email: state.completedVerifications?.email === true || user?.emailVerified === true,
+          mobile: state.completedVerifications?.mobile === true || user?.mobileVerified === true
+        };
+        setCompletedVerifications(existingCompleted);
 
         // Determine initial OTP type based on settings and available contact info
         let initialType: 'email' | 'mobile' = 'email';
 
-        if (settings.eitherRequired) {
+        if (requiredSettings.emailRequired && !existingCompleted.email) {
+          initialType = 'email';
+        } else if (requiredSettings.mobileRequired && !existingCompleted.mobile) {
+          initialType = 'mobile';
+        } else if (requiredSettings.eitherRequired) {
           // For either required, prefer mobile if available, otherwise email
           initialType = (state.mobile && String(state.mobile).trim()) ? 'mobile' : 'email';
-        } else if (settings.mobileRequired && !settings.emailRequired) {
+        } else if (requiredSettings.mobileRequired && !requiredSettings.emailRequired) {
           // Mobile-only should never default to email (even if mobile missing)
           initialType = 'mobile';
-        } else if (settings.emailRequired && !settings.mobileRequired) {
+        } else if (requiredSettings.emailRequired && !requiredSettings.mobileRequired) {
           initialType = 'email';
-        } else if (settings.mobileRequired && state.mobile) {
+        } else if (requiredSettings.mobileRequired && state.mobile) {
           initialType = 'mobile';
-        } else if (settings.emailRequired && (state.email || user?.email)) {
+        } else if (requiredSettings.emailRequired && (state.email || user?.email)) {
           initialType = 'email';
         }
 
         setOtpType(initialType);
 
         // Update progress
-        updateVerificationProgress(settings, completedVerifications);
+        updateVerificationProgress(requiredSettings, existingCompleted);
 
         // If mobile-only is configured but mobile is unavailable, surface the issue immediately.
-        if (!settings.eitherRequired && settings.mobileRequired && !settings.emailRequired) {
+        if (!requiredSettings.eitherRequired && requiredSettings.mobileRequired && !requiredSettings.emailRequired) {
           const mobileValue = String(state.mobile || '').trim();
           if (!mobileValue) {
             setError('Mobile verification is required, but no mobile number is available for this account.');
@@ -180,18 +166,37 @@ const VerifyOTP: React.FC = () => {
 
       } else if (user) {
         // Regular user session
+        const requiredSettings = {
+          emailRequired: settings.emailVerificationRequired,
+          mobileRequired: settings.mobileVerificationRequired,
+          eitherRequired: settings.eitherVerificationRequired
+        };
+        const existingCompleted = {
+          email: user.emailVerified === true,
+          mobile: user.mobileVerified === true
+        };
         setCurrentUserId(user.id);
         setContactInfo({
           email: user.email || '',
           mobile: ''
         });
-        setOtpType('email');
+        setVerificationSettings(requiredSettings);
+        setCompletedVerifications(existingCompleted);
+        setOtpType(requiredSettings.mobileRequired && !requiredSettings.emailRequired ? 'mobile' : 'email');
+        updateVerificationProgress(requiredSettings, existingCompleted);
         console.log('Initialized for existing user with email verification');
       }
     };
 
     initializeComponent();
-  }, [location.state, user]);
+  }, [
+    location.state,
+    settings.emailVerificationRequired,
+    settings.mobileVerificationRequired,
+    settings.eitherVerificationRequired,
+    loading,
+    user
+  ]);
 
   // Monitor for logout - redirect if user gets logged out while on verify page
   useEffect(() => {

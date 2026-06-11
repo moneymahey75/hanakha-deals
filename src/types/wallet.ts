@@ -54,7 +54,8 @@ export interface WalletTransaction {
       | 'registration_payment'
       | 'upgrade_from_reserved'
       | 'mlm_level_reward'
-      | 'mlm_level_reward_reserved';
+      | 'mlm_level_reward_reserved'
+      | 'joining_commission';
     referenceId?: string;
     blockchainHash?: string;
     status: 'pending' | 'completed' | 'failed' | 'cancelled';
