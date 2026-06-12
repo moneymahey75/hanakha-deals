@@ -3,19 +3,9 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdmin } from '../../contexts/AdminContext';
 import { Menu, X, User, LogOut, Settings, Home, ChevronDown, Building, CreditCard, Rocket } from 'lucide-react';
-import { getMaintenanceNoticeState, MaintenanceNoticeState } from '../../utils/maintenanceWindow';
+import { getMaintenanceNoticeState } from '../../utils/maintenanceWindow';
 
-interface NavbarProps {
-  maintenanceNotice?: MaintenanceNoticeState;
-  showMaintenanceNotice?: boolean;
-  onDismissMaintenanceNotice?: () => void;
-}
-
-const Navbar: React.FC<NavbarProps> = ({
-  maintenanceNotice,
-  showMaintenanceNotice,
-  onDismissMaintenanceNotice
-}) => {
+const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
   const { settings } = useAdmin();
   const navigate = useNavigate();
@@ -73,12 +63,11 @@ const Navbar: React.FC<NavbarProps> = ({
     return '/';
   };
 
-  const notice = maintenanceNotice || getMaintenanceNoticeState(settings as any);
-  const shouldShowNotice = showMaintenanceNotice ?? notice.showBanner;
+  const notice = getMaintenanceNoticeState(settings as any);
 
   return (
     <nav className="bg-white/95 backdrop-blur-md shadow-lg fixed w-full top-0 z-50 border-b border-gray-100">
-      {shouldShowNotice && (
+      {notice.showBanner && (
         <div
           className={
             notice.urgent
@@ -99,16 +88,6 @@ const Navbar: React.FC<NavbarProps> = ({
             <div className={notice.urgent ? 'text-white font-semibold whitespace-nowrap' : 'text-indigo-700 whitespace-nowrap'}>
               {notice.urgent ? 'Starting in few minutes' : 'Upcoming'}
             </div>
-            {onDismissMaintenanceNotice && (
-              <button
-                type="button"
-                onClick={onDismissMaintenanceNotice}
-                className={notice.urgent ? 'text-white/90 hover:text-white' : 'text-indigo-700 hover:text-indigo-900'}
-                aria-label="Dismiss maintenance notice"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
           </div>
         </div>
       )}

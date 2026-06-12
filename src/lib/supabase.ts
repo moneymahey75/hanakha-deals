@@ -625,9 +625,6 @@ export interface SponsorStatus {
   is_registration_paid: boolean;
   email_verified: boolean;
   mobile_verified: boolean;
-  is_launch_eligible?: boolean;
-  current_plan_phase?: 'prelaunch' | 'launch';
-  launch_phase_active?: boolean;
 }
 
 export const getSponsorStatusBySponsorshipNumber = async (sponsorshipNumber: string): Promise<SponsorStatus | null> => {

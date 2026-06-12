@@ -26,7 +26,6 @@ import AuthCallback from './pages/auth/AuthCallback';
 import VerifyOTP from './pages/auth/VerifyOTP';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Payment from './pages/Payment';
-import PaymentSuccess from './pages/PaymentSuccess';
 import ContactUs from './pages/ContactUs';
 import AboutUs from './pages/AboutUs';
 import SitePolicies from './pages/SitePolicies';
@@ -116,31 +115,16 @@ function App() {
 
 const MainSite: React.FC = () => {
   const { settings } = useAdmin();
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  const [noticeDismissedKey, setNoticeDismissedKey] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('maintenance_notice_dismissed_key');
-  });
-  const maintenanceActive = useMemo(() => isMaintenanceActiveNow(settings as any), [settings, nowTick]);
+  const maintenanceActive = isMaintenanceActiveNow(settings as any);
   const allowedIps = Array.isArray((settings as any)?.maintenanceAllowedIps) ? ((settings as any).maintenanceAllowedIps as string[]) : [];
-  const notice = useMemo(() => getMaintenanceNoticeState(settings as any), [settings, nowTick]);
-  const noticeKey = [
-    (settings as any)?.maintenanceNoticeShowFromAt || '',
-    (settings as any)?.maintenanceWindowStartAt || '',
-    (settings as any)?.maintenanceWindowEndAt || ''
-  ].join('|');
+  const notice = useMemo(() => getMaintenanceNoticeState(settings as any), [settings]);
   const [clientIp, setClientIp] = useState<string | null>(null);
   const [ipChecked, setIpChecked] = useState(false);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setNowTick(Date.now()), 30000);
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  useEffect(() => {
     let mounted = true;
     const loadIp = async () => {
-      if ((!maintenanceActive && !notice.showBanner) || allowedIps.length === 0) {
+      if (!maintenanceActive || allowedIps.length === 0) {
         if (mounted) setIpChecked(true);
         return;
       }
@@ -170,41 +154,25 @@ const MainSite: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [maintenanceActive, notice.showBanner, allowedIps.length]);
+  }, [maintenanceActive, allowedIps.length]);
 
   const isAllowedByIp = useMemo(() => {
+    if (!maintenanceActive) return true;
     if (allowedIps.length === 0) return false;
     if (!clientIp) return false;
     return allowedIps.includes(clientIp);
-  }, [allowedIps, clientIp]);
-
-  const showMaintenanceNotice =
-    notice.showBanner &&
-    noticeDismissedKey !== noticeKey &&
-    !(allowedIps.length > 0 && !ipChecked) &&
-    !(allowedIps.length > 0 && isAllowedByIp);
-
-  const dismissMaintenanceNotice = () => {
-    localStorage.setItem('maintenance_notice_dismissed_key', noticeKey);
-    setNoticeDismissedKey(noticeKey);
-  };
+  }, [maintenanceActive, allowedIps, clientIp]);
 
   if (maintenanceActive) {
     if (allowedIps.length === 0) return <Maintenance />;
-    if (!ipChecked) {
-      return <div className="min-h-screen bg-gray-50" />;
-    }
+    if (!ipChecked) return <Maintenance />;
     if (!isAllowedByIp) return <Maintenance />;
   }
 
   return (
     <>
-      <Navbar
-        maintenanceNotice={notice}
-        showMaintenanceNotice={showMaintenanceNotice}
-        onDismissMaintenanceNotice={dismissMaintenanceNotice}
-      />
-      <main className={showMaintenanceNotice ? 'pt-24' : 'pt-16'}>
+      <Navbar />
+      <main className={notice.showBanner ? 'pt-24' : 'pt-16'}>
         <Routes>
           <Route path="/" element={<RootRoute />} />
 
@@ -271,11 +239,6 @@ const MainSite: React.FC = () => {
           <Route path="/payment" element={
             <ProtectedRoute userType="customer">
               <Payment />
-            </ProtectedRoute>
-          } />
-          <Route path="/payment-success" element={
-            <ProtectedRoute userType="customer" requiresSubscription={false}>
-              <PaymentSuccess />
             </ProtectedRoute>
           } />
 
