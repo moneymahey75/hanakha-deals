@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
-import { Calendar, Clock, ExternalLink, Gift, RefreshCw, Send, ThumbsDown, ThumbsUp, Wallet } from 'lucide-react';
+import { Calendar, Clock, ExternalLink, Gift, RefreshCw, Star, ThumbsDown, ThumbsUp, Wallet } from 'lucide-react';
 
 type RewardCouponStatus = 'available' | 'opened' | 'liked' | 'disliked' | 'expired';
 
@@ -30,6 +30,8 @@ interface RewardCoupon {
   coupon_valid_until?: string | null;
   is_expired: boolean;
   expires_at: string;
+  site_visited_at?: string | null;
+  rating?: number | null;
 }
 
 const filterOptions = [
@@ -40,6 +42,7 @@ const filterOptions = [
 
 const formatAmount = (value: number) => `${Number(value || 0).toFixed(2)} USDT`;
 const FEEDBACK_POPUP_DELAY_SECONDS = 3;
+const VISIT_RATING_DELAY_SECONDS = 5;
 const HISTORY_PAGE_SIZE = 10;
 type CouponFilter = (typeof filterOptions)[number]['id'];
 
@@ -105,14 +108,15 @@ const DailyTasksDashboard: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [feedbackCoupon, setFeedbackCoupon] = useState<RewardCoupon | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
   const [selectedReaction, setSelectedReaction] = useState<'liked' | 'disliked' | null>(null);
+  const [selectedRating, setSelectedRating] = useState(0);
   const [promptedCouponIds, setPromptedCouponIds] = useState<Record<string, boolean>>({});
   const [revealRefreshIds, setRevealRefreshIds] = useState<Record<string, boolean>>({});
   const [historyPages, setHistoryPages] = useState<Record<'liked' | 'disliked', number>>({
     liked: 1,
     disliked: 1,
   });
+  const couponOrderRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     const timer = window.setInterval(() => setTick((value) => value + 1), 1000);
@@ -127,8 +131,8 @@ const DailyTasksDashboard: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => {
-    setFeedbackText('');
-    setSelectedReaction(null);
+    setSelectedReaction(feedbackCoupon?.reaction || null);
+    setSelectedRating(Number(feedbackCoupon?.rating || 0));
   }, [feedbackCoupon?.assignment_id]);
 
   useEffect(() => {
@@ -175,19 +179,34 @@ const DailyTasksDashboard: React.FC = () => {
       const { data, error } = await supabase.rpc('get_user_reward_coupons');
       if (error) throw error;
 
-      setCoupons(
-        (data || []).map((row: any) => ({
-          ...row,
-          reward_amount: Number(row.reward_amount || 0),
-          daily_target_amount: Number(row.daily_target_amount || 0),
+      const normalizedCoupons: RewardCoupon[] = (data || []).map((row: any) => ({
+        ...row,
+        reward_amount: Number(row.reward_amount || 0),
+        daily_target_amount: Number(row.daily_target_amount || 0),
           assigned_total_amount: Number(row.assigned_total_amount || 0),
           day_number: Number(row.day_number || 0),
           timer_seconds: Number(row.timer_seconds ?? 30),
           feedback_enabled: Boolean(row.feedback_enabled ?? false),
           feedback_samples: normalizeFeedbackSamples(row.feedback_samples),
           coupon_valid_until: row.coupon_valid_until ?? null,
-          is_expired: Boolean(row.is_expired ?? row.status === 'expired'),
-        }))
+        is_expired: Boolean(row.is_expired ?? row.status === 'expired'),
+        site_visited_at: row.site_visited_at ?? null,
+        rating: row.rating == null ? null : Number(row.rating),
+      }));
+
+      const nextOrder = Object.keys(couponOrderRef.current).length;
+      normalizedCoupons.forEach((coupon: RewardCoupon, index: number) => {
+        if (couponOrderRef.current[coupon.assignment_id] == null) {
+          couponOrderRef.current[coupon.assignment_id] = nextOrder + index;
+        }
+      });
+
+      setCoupons(
+        [...normalizedCoupons].sort(
+          (a: RewardCoupon, b: RewardCoupon) =>
+            (couponOrderRef.current[a.assignment_id] ?? 0) -
+            (couponOrderRef.current[b.assignment_id] ?? 0)
+        )
       );
     } catch (error: any) {
       notification.showError('Load Failed', error.message || 'Failed to load daily coupons');
@@ -219,29 +238,123 @@ const DailyTasksDashboard: React.FC = () => {
     }
   };
 
-  const reactCoupon = async (coupon: RewardCoupon, reaction: 'liked' | 'disliked', writtenFeedback?: string) => {
+  const saveReaction = async (coupon: RewardCoupon, reaction: 'liked' | 'disliked') => {
     setBusyId(coupon.assignment_id);
     try {
       const { data, error } = await supabase.rpc('react_reward_coupon', {
         p_assignment_id: coupon.assignment_id,
         p_reaction: reaction,
-        p_feedback_text: writtenFeedback?.trim() || null,
+        p_feedback_text: null,
       });
       if (error) throw error;
 
-      const creditedAmount = Number(data?.reward_amount ?? coupon.reward_amount ?? 0);
+      setSelectedReaction(reaction);
+      setSelectedRating(0);
+      setFeedbackCoupon((current) =>
+        current?.assignment_id === coupon.assignment_id
+          ? {
+              ...current,
+              reaction,
+              site_visited_at: data?.site_visited_at ?? null,
+              rating: null,
+            }
+          : current
+      );
       notification.showSuccess(
         reaction === 'liked' ? 'Coupon Liked' : 'Coupon Disliked',
-        data?.reward_credited === false
-          ? 'Saved to My Coupons.'
-          : `${formatAmount(creditedAmount)} credited to your ROI Wallet.`
+        'Now visit the coupon site, then submit a star rating to claim ROI credits.'
       );
-      setFeedbackCoupon(null);
-      setFeedbackText('');
-      setSelectedReaction(null);
       await loadCoupons();
     } catch (error: any) {
       notification.showError('Action Failed', error.message || 'Unable to save your choice');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const visitCouponSite = async (coupon: RewardCoupon) => {
+    if (!selectedReaction && !coupon.reaction) {
+      notification.showError('Select Like or Dislike', 'Choose your coupon reaction first.');
+      return;
+    }
+
+    const openedWindow = window.open('', '_blank');
+    if (openedWindow) {
+      openedWindow.opener = null;
+    }
+
+    setBusyId(coupon.assignment_id);
+    try {
+      const { data, error } = await supabase.rpc('visit_reward_coupon_site', {
+        p_assignment_id: coupon.assignment_id,
+      });
+      if (error) throw error;
+
+      const url = data?.website_url || coupon.website_url;
+      if (!url) {
+        openedWindow?.close();
+        throw new Error('Website URL is not available for this coupon');
+      }
+
+      if (openedWindow) {
+        openedWindow.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+
+      setFeedbackCoupon((current) =>
+        current?.assignment_id === coupon.assignment_id
+          ? {
+              ...current,
+              site_visited_at: data?.site_visited_at ?? new Date().toISOString(),
+            }
+          : current
+      );
+      notification.showSuccess('Site Opened', 'Rating stars will appear after 5 seconds.');
+      await loadCoupons(true);
+    } catch (error: any) {
+      openedWindow?.close();
+      notification.showError('Visit Failed', error.message || 'Unable to open this coupon site');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const submitRatingForm = async () => {
+    if (!feedbackCoupon) return;
+    if (!selectedReaction && !feedbackCoupon.reaction) {
+      notification.showError('Select Like or Dislike', 'Choose your coupon reaction first.');
+      return;
+    }
+    if (!feedbackCoupon.site_visited_at) {
+      notification.showError('Visit Required', 'Visit the coupon site before submitting your rating.');
+      return;
+    }
+    if (secondsUntil(addSeconds(feedbackCoupon.site_visited_at, VISIT_RATING_DELAY_SECONDS)) > 0) {
+      notification.showError('Please Wait', 'Rating can be submitted 5 seconds after visiting the site.');
+      return;
+    }
+    if (selectedRating < 1 || selectedRating > 5) {
+      notification.showError('Rating Required', 'Select a star rating before submitting.');
+      return;
+    }
+
+    setBusyId(feedbackCoupon.assignment_id);
+    try {
+      const { data, error } = await supabase.rpc('rate_reward_coupon', {
+        p_assignment_id: feedbackCoupon.assignment_id,
+        p_rating: selectedRating,
+      });
+      if (error) throw error;
+
+      const creditedAmount = Number(data?.reward_amount ?? feedbackCoupon.reward_amount ?? 0);
+      notification.showSuccess('Rating Submitted', `${formatAmount(creditedAmount)} credited to your ROI Wallet.`);
+      setFeedbackCoupon(null);
+      setSelectedReaction(null);
+      setSelectedRating(0);
+      await loadCoupons();
+    } catch (error: any) {
+      notification.showError('Submit Failed', error.message || 'Unable to submit your rating');
     } finally {
       setBusyId(null);
     }
@@ -275,30 +388,11 @@ const DailyTasksDashboard: React.FC = () => {
       [filter]: Math.min(Math.max(page, 1), totalHistoryPages),
     }));
   };
-
-  const submitFeedbackForm = () => {
-    if (!feedbackCoupon) return;
-    if (!selectedReaction) {
-      notification.showError('Select Like or Dislike', 'Choose your coupon reaction first.');
-      return;
-    }
-
-    const trimmedFeedback = feedbackText.trim();
-    if (!trimmedFeedback) {
-      notification.showError('Feedback Required', 'Write your feedback before submitting.');
-      return;
-    }
-
-    const matchesSample = feedbackCoupon.feedback_samples.some(
-      (sample) => sample.trim().toLowerCase() === trimmedFeedback.toLowerCase()
-    );
-    if (matchesSample) {
-      notification.showError('Write Your Own Feedback', 'Please write a different message instead of using a sample exactly.');
-      return;
-    }
-
-    reactCoupon(feedbackCoupon, selectedReaction, trimmedFeedback);
-  };
+  const activeReaction = selectedReaction || feedbackCoupon?.reaction || null;
+  const ratingWaitSeconds = feedbackCoupon?.site_visited_at
+    ? secondsUntil(addSeconds(feedbackCoupon.site_visited_at, VISIT_RATING_DELAY_SECONDS)) + tick * 0
+    : 0;
+  const showRatingStars = Boolean(feedbackCoupon?.site_visited_at) && ratingWaitSeconds <= 0;
 
   if (loading) {
     return (
@@ -321,7 +415,7 @@ const DailyTasksDashboard: React.FC = () => {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Daily Coupons</h3>
-            <p className="text-sm text-gray-600">Open today&apos;s coupons before midnight, then like or dislike after the timer to claim.</p>
+            <p className="text-sm text-gray-600">Open today&apos;s coupons before midnight, then visit and rate after the timer to claim.</p>
           </div>
         </div>
         <button
@@ -348,7 +442,7 @@ const DailyTasksDashboard: React.FC = () => {
         <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
           <p className="text-xs font-semibold uppercase text-amber-700">ROI Wallet Credits</p>
           <p className="mt-1 text-2xl font-bold text-amber-950">{formatAmount(creditedRewards)}</p>
-          <p className="text-xs text-amber-700">Credited after like/dislike</p>
+          <p className="text-xs text-amber-700">Credited after site visit and rating</p>
         </div>
       </div>
 
@@ -380,17 +474,17 @@ const DailyTasksDashboard: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4">
-	          {visibleCoupons.map((coupon) => {
+            {visibleCoupons.map((coupon) => {
             const waitSeconds = secondsUntil(coupon.reaction_available_at) + tick * 0;
             const isOpened = Boolean(coupon.opened_at);
-	            const isCodeVisible = isOpened && waitSeconds <= 0 && !coupon.is_expired;
-	            const isBusy = busyId === coupon.assignment_id;
+            const isCodeVisible = isOpened && waitSeconds <= 0 && !coupon.is_expired;
+            const isBusy = busyId === coupon.assignment_id;
             const isBlockedByOpenedCoupon =
               coupon.status === 'available' &&
               Boolean(openedCoupon) &&
               openedCoupon?.assignment_id !== coupon.assignment_id;
 
-	            return (
+            return (
               <div key={coupon.assignment_id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
                 {coupon.image_url && (
                   <img src={coupon.image_url} alt={coupon.title} className="h-44 w-full object-cover" />
@@ -412,7 +506,7 @@ const DailyTasksDashboard: React.FC = () => {
                     </div>
                   </div>
 
-	                  <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                  <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
                     <div className="flex items-center gap-2 text-gray-600">
                       <Calendar className="h-4 w-4" />
                       Day {coupon.day_number} of 200
@@ -424,16 +518,16 @@ const DailyTasksDashboard: React.FC = () => {
                     <div className="flex items-center gap-2 text-gray-600">
                       <Wallet className="h-4 w-4" />
                       ROI Wallet
-	                    </div>
-	                  </div>
+                    </div>
+                  </div>
 
                   {coupon.status === 'opened' && waitSeconds > 0 && (
                     <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                      <p className="text-sm font-semibold text-amber-800">Opening the coupon in {waitSeconds}s</p>
+                      <p className="text-sm font-semibold text-amber-800">Fetching the coupon for you in {waitSeconds}s</p>
                     </div>
                   )}
 
-		                  {isCodeVisible && coupon.coupon_code && (
+                  {isCodeVisible && coupon.coupon_code && (
                     <div className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3">
                       <p className="text-xs font-semibold uppercase text-indigo-700">Coupon Code</p>
                       <p className="mt-1 font-mono text-lg font-bold text-indigo-950">{coupon.coupon_code}</p>
@@ -442,18 +536,18 @@ const DailyTasksDashboard: React.FC = () => {
 
                   <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap gap-2">
-	                      {!isOpened && (
-	                        <button
-	                          type="button"
-	                          onClick={() => openCoupon(coupon)}
-	                          disabled={isBusy || isBlockedByOpenedCoupon}
-	                          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                            title={isBlockedByOpenedCoupon ? 'Finish the opened coupon first' : 'Open coupon'}
-	                        >
-	                          {isBlockedByOpenedCoupon ? 'Finish Opened Coupon First' : 'Open Coupon'}
-	                        </button>
-	                      )}
-                      {isCodeVisible && coupon.website_url && (
+                      {!isOpened && (
+                        <button
+                          type="button"
+                          onClick={() => openCoupon(coupon)}
+                          disabled={isBusy || isBlockedByOpenedCoupon}
+                          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                          title={isBlockedByOpenedCoupon ? 'Finish the opened coupon first' : 'Open coupon'}
+                        >
+                          {isBlockedByOpenedCoupon ? 'Finish Opened Coupon First' : 'Open Coupon'}
+                        </button>
+                      )}
+                      {(coupon.status === 'liked' || coupon.status === 'disliked') && coupon.website_url && (
                         <a
                           href={coupon.website_url}
                           target="_blank"
@@ -461,15 +555,15 @@ const DailyTasksDashboard: React.FC = () => {
                           className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
                         >
                           <ExternalLink className="h-4 w-4" />
-                          Visit
+                          {coupon.status === 'liked' ? 'Visit Site' : 'Visit Site Once'}
                         </a>
                       )}
                     </div>
                   </div>
                 </div>
-	              </div>
-	            );
-	          })}
+              </div>
+            );
+          })}
           </div>
 
           {isHistoryFilter && totalHistoryPages > 1 && (
@@ -517,93 +611,86 @@ const DailyTasksDashboard: React.FC = () => {
               </div>
             )}
 
-            {feedbackCoupon.feedback_enabled ? (
-              <div className="mt-6 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedReaction('liked')}
-                    disabled={busyId === feedbackCoupon.assignment_id}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-60 ${
-                      selectedReaction === 'liked'
-                        ? 'bg-emerald-600 text-white'
-                        : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    }`}
-                  >
-                    <ThumbsUp className="h-4 w-4" />
-                    Like
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedReaction('disliked')}
-                    disabled={busyId === feedbackCoupon.assignment_id}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-60 ${
-                      selectedReaction === 'disliked'
-                        ? 'bg-rose-600 text-white'
-                        : 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                    }`}
-                  >
-                    <ThumbsDown className="h-4 w-4" />
-                    Dislike
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-800">Feedback</label>
-                  <textarea
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    rows={4}
-                    maxLength={500}
-                    disabled={busyId === feedbackCoupon.assignment_id}
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
-                    placeholder="Write your feedback about this coupon"
-                  />
-                </div>
-
-                {feedbackCoupon.feedback_samples.length > 0 && (
-                  <div className="rounded-lg bg-gray-50 p-3">
-                    <p className="text-xs font-semibold uppercase text-gray-500">Sample feedback</p>
-                    <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                      {feedbackCoupon.feedback_samples.map((sample, index) => (
-                        <li key={`${sample}-${index}`}>{sample}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
+            <div className="mt-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={submitFeedbackForm}
+                  onClick={() => saveReaction(feedbackCoupon, 'liked')}
                   disabled={busyId === feedbackCoupon.assignment_id}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                >
-                  <Send className="h-4 w-4" />
-                  Submit Feedback
-                </button>
-              </div>
-            ) : (
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => reactCoupon(feedbackCoupon, 'liked')}
-                  disabled={busyId === feedbackCoupon.assignment_id}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-60 ${
+                    activeReaction === 'liked'
+                      ? 'bg-emerald-600 text-white'
+                      : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  }`}
                 >
                   <ThumbsUp className="h-4 w-4" />
                   Like
                 </button>
                 <button
                   type="button"
-                  onClick={() => reactCoupon(feedbackCoupon, 'disliked')}
+                  onClick={() => saveReaction(feedbackCoupon, 'disliked')}
                   disabled={busyId === feedbackCoupon.assignment_id}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-3 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-60 ${
+                    activeReaction === 'disliked'
+                      ? 'bg-rose-600 text-white'
+                      : 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  }`}
                 >
                   <ThumbsDown className="h-4 w-4" />
                   Dislike
                 </button>
               </div>
-            )}
+
+              {activeReaction && (
+                <button
+                  type="button"
+                  onClick={() => visitCouponSite(feedbackCoupon)}
+                  disabled={busyId === feedbackCoupon.assignment_id || !feedbackCoupon.website_url}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {activeReaction === 'liked' ? 'Visit Site' : 'Visit Site Once'}
+                </button>
+              )}
+
+              {feedbackCoupon.site_visited_at && ratingWaitSeconds > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-800">Rating stars will appear in {ratingWaitSeconds}s</p>
+                </div>
+              )}
+
+              {showRatingStars && (
+                <div className="space-y-3 rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+                  <p className="text-sm font-semibold text-indigo-950">Rate this coupon</p>
+                  <div className="flex justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => setSelectedRating(rating)}
+                        disabled={busyId === feedbackCoupon.assignment_id}
+                        className="rounded-full p-1 disabled:opacity-60"
+                        aria-label={`Rate ${rating} star${rating === 1 ? '' : 's'}`}
+                      >
+                        <Star
+                          className={`h-8 w-8 ${
+                            selectedRating >= rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={submitRatingForm}
+                    disabled={busyId === feedbackCoupon.assignment_id || selectedRating < 1}
+                    className="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    Submit Rating
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
