@@ -99,6 +99,26 @@ const renderDescription = (description?: string | null) => {
   );
 };
 
+const renderRatingStars = (rating?: number | null) => {
+  const value = Math.max(0, Math.min(5, Math.trunc(Number(rating || 0))));
+  if (!value) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm" aria-label={`Rating ${value} out of 5`}>
+      <span className="text-xs font-semibold uppercase text-amber-700">Rating</span>
+      <div className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={`h-4 w-4 ${star <= value ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
+          />
+        ))}
+      </div>
+      <span className="font-semibold text-gray-700">{value}/5</span>
+    </div>
+  );
+};
+
 const DailyTasksDashboard: React.FC = () => {
   const { user } = useAuth();
   const notification = useNotification();
@@ -475,95 +495,97 @@ const DailyTasksDashboard: React.FC = () => {
         <>
           <div className="grid grid-cols-1 gap-4">
             {visibleCoupons.map((coupon) => {
-            const waitSeconds = secondsUntil(coupon.reaction_available_at) + tick * 0;
-            const isOpened = Boolean(coupon.opened_at);
-            const isCodeVisible = isOpened && waitSeconds <= 0 && !coupon.is_expired;
-            const isBusy = busyId === coupon.assignment_id;
-            const isBlockedByOpenedCoupon =
-              coupon.status === 'available' &&
-              Boolean(openedCoupon) &&
-              openedCoupon?.assignment_id !== coupon.assignment_id;
+              const waitSeconds = secondsUntil(coupon.reaction_available_at) + tick * 0;
+              const isOpened = Boolean(coupon.opened_at);
+              const isCodeVisible = isOpened && waitSeconds <= 0 && !coupon.is_expired;
+              const isBusy = busyId === coupon.assignment_id;
+              const isBlockedByOpenedCoupon =
+                coupon.status === 'available' &&
+                Boolean(openedCoupon) &&
+                openedCoupon?.assignment_id !== coupon.assignment_id;
+              const isCompletedCoupon = coupon.status === 'liked' || coupon.status === 'disliked';
 
-            return (
-              <div key={coupon.assignment_id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-                {coupon.image_url && (
-                  <img src={coupon.image_url} alt={coupon.title} className="h-44 w-full object-cover" />
-                )}
-                <div className="p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-lg font-semibold text-gray-900">{coupon.title}</h4>
-                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold capitalize text-gray-700">
-                          {coupon.is_expired ? 'expired' : coupon.status}
-                        </span>
+              return (
+                <div key={coupon.assignment_id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                  {coupon.image_url && (
+                    <img src={coupon.image_url} alt={coupon.title} className="h-44 w-full object-cover" />
+                  )}
+                  <div className="p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-lg font-semibold text-gray-900">{coupon.title}</h4>
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold capitalize text-gray-700">
+                            {coupon.is_expired ? 'expired' : coupon.status}
+                          </span>
+                        </div>
+                        {renderDescription(coupon.description)}
+                        {isCompletedCoupon && renderRatingStars(coupon.rating)}
                       </div>
-                      {renderDescription(coupon.description)}
+                      <div className="rounded-lg bg-emerald-50 px-4 py-3 text-right">
+                        <p className="text-xs font-semibold uppercase text-emerald-700">ROI</p>
+                        <p className="text-xl font-bold text-emerald-950">{formatAmount(coupon.reward_amount)}</p>
+                      </div>
                     </div>
-                    <div className="rounded-lg bg-emerald-50 px-4 py-3 text-right">
-                      <p className="text-xs font-semibold uppercase text-emerald-700">ROI</p>
-                      <p className="text-xl font-bold text-emerald-950">{formatAmount(coupon.reward_amount)}</p>
-                    </div>
-                  </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar className="h-4 w-4" />
-                      Day {coupon.day_number} of 200
+                    <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Calendar className="h-4 w-4" />
+                        Day {coupon.day_number} of 200
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Clock className="h-4 w-4" />
+                        {getExpiryLabel(coupon)}
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Wallet className="h-4 w-4" />
+                        ROI Wallet
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Clock className="h-4 w-4" />
-                      {getExpiryLabel(coupon)}
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Wallet className="h-4 w-4" />
-                      ROI Wallet
-                    </div>
-                  </div>
 
-                  {coupon.status === 'opened' && waitSeconds > 0 && (
-                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                      <p className="text-sm font-semibold text-amber-800">Fetching the coupon for you in {waitSeconds}s</p>
-                    </div>
-                  )}
+                    {coupon.status === 'opened' && waitSeconds > 0 && (
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-amber-800">Fetching the coupon for you in {waitSeconds}s</p>
+                      </div>
+                    )}
 
-                  {isCodeVisible && coupon.coupon_code && (
-                    <div className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase text-indigo-700">Coupon Code</p>
-                      <p className="mt-1 font-mono text-lg font-bold text-indigo-950">{coupon.coupon_code}</p>
-                    </div>
-                  )}
+                    {isCodeVisible && coupon.coupon_code && (
+                      <div className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase text-indigo-700">Coupon Code</p>
+                        <p className="mt-1 font-mono text-lg font-bold text-indigo-950">{coupon.coupon_code}</p>
+                      </div>
+                    )}
 
-                  <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {!isOpened && (
-                        <button
-                          type="button"
-                          onClick={() => openCoupon(coupon)}
-                          disabled={isBusy || isBlockedByOpenedCoupon}
-                          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                          title={isBlockedByOpenedCoupon ? 'Finish the opened coupon first' : 'Open coupon'}
-                        >
-                          {isBlockedByOpenedCoupon ? 'Finish Opened Coupon First' : 'Open Coupon'}
-                        </button>
-                      )}
-                      {(coupon.status === 'liked' || coupon.status === 'disliked') && coupon.website_url && (
-                        <a
-                          href={coupon.website_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          {coupon.status === 'liked' ? 'Visit Site' : 'Visit Site Once'}
-                        </a>
-                      )}
+                    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {!isOpened && (
+                          <button
+                            type="button"
+                            onClick={() => openCoupon(coupon)}
+                            disabled={isBusy || isBlockedByOpenedCoupon}
+                            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                            title={isBlockedByOpenedCoupon ? 'Finish the opened coupon first' : 'Open coupon'}
+                          >
+                            {isBlockedByOpenedCoupon ? 'Finish Opened Coupon First' : 'Open Coupon'}
+                          </button>
+                        )}
+                        {isCompletedCoupon && coupon.website_url && (
+                          <a
+                            href={coupon.website_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            {coupon.status === 'liked' ? 'Visit Site' : 'Visit Site Once'}
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
           </div>
 
           {isHistoryFilter && totalHistoryPages > 1 && (
