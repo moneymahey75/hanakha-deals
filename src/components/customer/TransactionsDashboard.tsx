@@ -227,7 +227,8 @@ const TransactionsDashboard: React.FC = () => {
             referenceType === 'registration_parent_income' ||
             referenceType === 'mlm_level_reward' ||
             referenceType === 'mlm_level_reward_reserved' ||
-            referenceType === 'joining_commission'
+            referenceType === 'joining_commission' ||
+            referenceType === 'roi_level_income'
         ) return Gift;
         if (referenceType === 'social_share') return Share2;
         return type === 'credit' ? ArrowUpRight : ArrowDownLeft;
@@ -266,6 +267,9 @@ const TransactionsDashboard: React.FC = () => {
         if (referenceType === 'joining_commission') {
             return transaction.twt_description || 'Joining commission';
         }
+        if (referenceType === 'roi_level_income') {
+            return transaction.twt_description || 'ROI level income';
+        }
         return transaction.twt_description;
     };
 
@@ -281,6 +285,8 @@ const TransactionsDashboard: React.FC = () => {
                 return 'Reserved reward';
             case 'joining_commission':
                 return 'Joining';
+            case 'roi_level_income':
+                return 'ROI Level';
             case 'task_reward':
                 return 'Task';
             case 'coupon_share':

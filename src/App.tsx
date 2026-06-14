@@ -26,6 +26,7 @@ import AuthCallback from './pages/auth/AuthCallback';
 import VerifyOTP from './pages/auth/VerifyOTP';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Payment from './pages/Payment';
+import PaymentSuccess from './pages/PaymentSuccess';
 import ContactUs from './pages/ContactUs';
 import AboutUs from './pages/AboutUs';
 import SitePolicies from './pages/SitePolicies';
@@ -239,6 +240,11 @@ const MainSite: React.FC = () => {
           <Route path="/payment" element={
             <ProtectedRoute userType="customer">
               <Payment />
+            </ProtectedRoute>
+          } />
+          <Route path="/payment-success" element={
+            <ProtectedRoute userType="customer" requiresSubscription={false}>
+              <PaymentSuccess />
             </ProtectedRoute>
           } />
 

@@ -68,6 +68,93 @@ const chunk = <T>(items: T[], size: number) => {
   return chunks;
 };
 
+const getLaunchSubscriptionMap = async (
+  supabase: ReturnType<typeof createClient>,
+  userIds: string[]
+) => {
+  const uniqueUserIds = Array.from(new Set(userIds.map((id) => String(id || '').trim()).filter(Boolean)));
+  const launchByUserId = new Map<string, any>();
+  if (uniqueUserIds.length === 0) return launchByUserId;
+
+  const subscriptions: any[] = [];
+  for (const idChunk of chunk(uniqueUserIds, 500)) {
+    const { data, error } = await supabase
+      .from('tbl_user_subscriptions')
+      .select('tus_user_id, tus_status, tus_start_date, tus_end_date, tus_payment_amount, tus_plan_phase, tus_plan_id')
+      .in('tus_user_id', idChunk)
+      .in('tus_status', ['active', 'upgraded']);
+    if (error) throw error;
+    subscriptions.push(...(data || []));
+  }
+
+  const planIds = Array.from(
+    new Set(
+      subscriptions
+        .map((row) => String(row?.tus_plan_id || '').trim())
+        .filter(Boolean)
+    )
+  );
+  const planById = new Map<string, any>();
+  for (const planChunk of chunk(planIds, 500)) {
+    const { data, error } = await supabase
+      .from('tbl_subscription_plans')
+      .select('tsp_id, tsp_name, tsp_price, tsp_plan_phase')
+      .in('tsp_id', planChunk);
+    if (error) throw error;
+    for (const plan of data || []) {
+      planById.set(String((plan as any).tsp_id), plan);
+    }
+  }
+
+  const nowMs = Date.now();
+  for (const subscription of subscriptions) {
+    const userId = String(subscription?.tus_user_id || '').trim();
+    if (!userId) continue;
+
+    const plan = planById.get(String(subscription?.tus_plan_id || '').trim()) || null;
+    const planPhase = String(subscription?.tus_plan_phase || plan?.tsp_plan_phase || 'prelaunch').toLowerCase();
+    if (planPhase !== 'launch') continue;
+
+    const endDate = subscription?.tus_end_date ? new Date(subscription.tus_end_date) : null;
+    if (endDate && Number.isFinite(endDate.getTime()) && endDate.getTime() <= nowMs) continue;
+
+    const existing = launchByUserId.get(userId);
+    const existingStart = existing?.launch_subscription_start_date
+      ? new Date(existing.launch_subscription_start_date).getTime()
+      : 0;
+    const currentStart = subscription?.tus_start_date
+      ? new Date(subscription.tus_start_date).getTime()
+      : 0;
+    if (existing && existingStart > currentStart) continue;
+
+    launchByUserId.set(userId, {
+      has_launch_subscription: true,
+      launch_subscription_status: subscription?.tus_status || null,
+      launch_subscription_start_date: subscription?.tus_start_date || null,
+      launch_subscription_end_date: subscription?.tus_end_date || null,
+      launch_subscription_amount: subscription?.tus_payment_amount ?? plan?.tsp_price ?? null,
+      launch_plan_name: plan?.tsp_name || null,
+      launch_plan_price: plan?.tsp_price ?? null,
+    });
+  }
+
+  return launchByUserId;
+};
+
+const applyLaunchSubscriptionFields = (row: any, launchMap: Map<string, any>) => {
+  const launch = launchMap.get(String(row?.tu_id || '').trim());
+  return {
+    ...row,
+    has_launch_subscription: launch?.has_launch_subscription === true,
+    launch_subscription_status: launch?.launch_subscription_status || null,
+    launch_subscription_start_date: launch?.launch_subscription_start_date || null,
+    launch_subscription_end_date: launch?.launch_subscription_end_date || null,
+    launch_subscription_amount: launch?.launch_subscription_amount ?? null,
+    launch_plan_name: launch?.launch_plan_name || null,
+    launch_plan_price: launch?.launch_plan_price ?? null,
+  };
+};
+
 const normalizeSponsorshipKey = (value: unknown) => {
   const raw = normalizeString(value);
   if (!raw) return '';
@@ -320,6 +407,10 @@ Deno.serve(async (req: Request) => {
 
       const profileMap = new Map((profiles || []).map((p: any) => [p.tup_user_id, p]));
       const levelMap = new Map(filteredByLevel.map((n) => [n.userId, n.level]));
+      const launchSubscriptionByUserId = await getLaunchSubscriptionMap(
+        supabase,
+        (users || []).map((u: any) => u.tu_id)
+      );
 
       const combined = (users || [])
         .map((u: any) => {
@@ -347,7 +438,7 @@ Deno.serve(async (req: Request) => {
           if (statusFilter === 'pending' && !isPending) return null;
           if ((statusFilter === 'disabled' || statusFilter === 'inactive') && !isDisabled) return null;
 
-          return {
+          return applyLaunchSubscriptionFields({
             tu_id: u.tu_id,
             tu_email: u.tu_email,
             tu_user_type: u.tu_user_type,
@@ -379,7 +470,7 @@ Deno.serve(async (req: Request) => {
               tup_updated_at: p.tup_updated_at
             } : null,
             downline_level: levelMap.get(u.tu_id) ?? null
-          };
+          }, launchSubscriptionByUserId);
         })
         .filter(Boolean) as any[];
 
@@ -417,11 +508,16 @@ Deno.serve(async (req: Request) => {
 
     // Ensure status fields are present and follow current verification settings.
     const rows = Array.isArray(data) ? data : [];
+    const launchSubscriptionByUserId = await getLaunchSubscriptionMap(
+      supabase,
+      rows.map((row: any) => row?.tu_id)
+    );
+    const rowsWithLaunch = rows.map((row: any) => applyLaunchSubscriptionFields(row, launchSubscriptionByUserId));
     const missingRegFlag = rows.length > 0 && rows.some((row: any) => row?.tu_registration_paid === undefined);
     if (missingRegFlag) {
       const ids = Array.from(
         new Set(
-          rows
+          rowsWithLaunch
             .map((r: any) => String(r?.tu_id || '').trim())
             .filter(Boolean)
         )
@@ -440,7 +536,7 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const merged = rows.map((row: any) => ({
+      const merged = rowsWithLaunch.map((row: any) => ({
         ...row,
         tu_registration_paid: row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false),
         verification_complete: meetsVerificationRules(row),
@@ -456,7 +552,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const normalizedRows = rows.map((row: any) => {
+    const normalizedRows = rowsWithLaunch.map((row: any) => {
       const verificationComplete = meetsVerificationRules(row);
       return {
         ...row,

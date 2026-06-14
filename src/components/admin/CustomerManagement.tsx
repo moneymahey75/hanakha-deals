@@ -27,6 +27,13 @@ interface Customer {
     is_active_member?: boolean;
     verification_complete?: boolean;
     tu_is_dummy?: boolean;
+    has_launch_subscription?: boolean;
+    launch_subscription_status?: string | null;
+    launch_subscription_start_date?: string | null;
+    launch_subscription_end_date?: string | null;
+    launch_subscription_amount?: number | string | null;
+    launch_plan_name?: string | null;
+    launch_plan_price?: number | string | null;
     tu_created_at: string;
     downline_level?: number;
     tbl_user_profiles: {
@@ -135,6 +142,10 @@ const TableSkeleton: React.FC<{ rows?: number }> = ({ rows = 5 }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                         <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="h-6 bg-gray-200 rounded-full w-24 mb-1"></div>
+                        <div className="h-3 bg-gray-200 rounded w-16"></div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                         <div className="h-4 bg-gray-200 rounded w-24"></div>
@@ -253,6 +264,13 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                     tu_registration_paid: row.tu_registration_paid ?? false,
                     tu_is_active: row.tu_is_active,
                     tu_is_dummy: row.tu_is_dummy ?? false,
+                    has_launch_subscription: row.has_launch_subscription ?? false,
+                    launch_subscription_status: row.launch_subscription_status ?? null,
+                    launch_subscription_start_date: row.launch_subscription_start_date ?? null,
+                    launch_subscription_end_date: row.launch_subscription_end_date ?? null,
+                    launch_subscription_amount: row.launch_subscription_amount ?? null,
+                    launch_plan_name: row.launch_plan_name ?? null,
+                    launch_plan_price: row.launch_plan_price ?? null,
                     tu_created_at: row.tu_created_at,
                     downline_level: row.downline_level ?? row.level ?? null,
                     tbl_user_profiles: row.profile_data
@@ -636,6 +654,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -738,6 +757,24 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                             </span>
                                           );
                                         })()}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    {customer.has_launch_subscription ? (
+                                        <div>
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                <CreditCard className="h-3 w-3 mr-1" />
+                                                Launch
+                                            </span>
+                                            <div className="mt-1 text-xs text-gray-500 max-w-[140px] truncate" title={customer.launch_plan_name || undefined}>
+                                                {customer.launch_plan_name || 'Launch Plan'}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                            <AlertCircle className="h-3 w-3 mr-1" />
+                                            No Launch
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     <div className="flex items-center">
@@ -1289,6 +1326,30 @@ const CustomerDetails: React.FC<{
                                                 {statusBadge.label}
                                             </span>
                                         )}
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Launch Plan</label>
+                                        <div className="mt-1">
+                                            {customer.has_launch_subscription ? (
+                                                <div className="space-y-1">
+                                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
+                                                        <CreditCard className="h-4 w-4 mr-1" />
+                                                        Subscribed
+                                                    </span>
+                                                    <p className="text-sm text-gray-900">{customer.launch_plan_name || 'Launch Plan'}</p>
+                                                    {customer.launch_subscription_amount !== null && customer.launch_subscription_amount !== undefined ? (
+                                                        <p className="text-xs text-gray-500">
+                                                            Amount: {Number(customer.launch_subscription_amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                            ) : (
+                                                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
+                                                    <AlertCircle className="h-4 w-4 mr-1" />
+                                                    Not subscribed
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Dummy/Fake Account</label>
