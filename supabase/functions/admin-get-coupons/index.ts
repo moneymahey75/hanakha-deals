@@ -70,7 +70,34 @@ Deno.serve(async (req: Request) => {
       throw error;
     }
 
-    return new Response(JSON.stringify({ success: true, data }), {
+    const couponIds = (data || [])
+      .map((coupon: any) => coupon.tc_id)
+      .filter(Boolean);
+
+    let enrichedData = data || [];
+
+    if (couponIds.length > 0) {
+      const { data: couponWindows, error: couponWindowsError } = await supabase
+        .from('tbl_coupons')
+        .select('tc_id, tc_daily_start_time, tc_daily_end_time')
+        .in('tc_id', couponIds);
+
+      if (couponWindowsError) {
+        throw couponWindowsError;
+      }
+
+      const couponWindowById = new Map(
+        (couponWindows || []).map((coupon: any) => [coupon.tc_id, coupon])
+      );
+
+      enrichedData = enrichedData.map((coupon: any) => ({
+        ...coupon,
+        tc_daily_start_time: couponWindowById.get(coupon.tc_id)?.tc_daily_start_time ?? '00:00',
+        tc_daily_end_time: couponWindowById.get(coupon.tc_id)?.tc_daily_end_time ?? '23:59',
+      }));
+    }
+
+    return new Response(JSON.stringify({ success: true, data: enrichedData }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

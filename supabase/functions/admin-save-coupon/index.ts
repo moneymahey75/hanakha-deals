@@ -92,6 +92,8 @@ Deno.serve(async (req: Request) => {
       isActive,
       launchDate,
       launchNow,
+      dailyStartTime,
+      dailyEndTime,
       websiteUrl,
       revealTimerSeconds,
       feedbackEnabled,
@@ -115,6 +117,8 @@ Deno.serve(async (req: Request) => {
     const normalizedTermsConditions = termsConditions || null;
     const normalizedDescription = description || null;
     const normalizedLaunchDate = launchDate || null;
+    const normalizedDailyStartTime = String(dailyStartTime || '00:00').trim();
+    const normalizedDailyEndTime = String(dailyEndTime || '23:59').trim();
     const normalizedRevealTimerSeconds = Math.max(0, Math.min(86400, Number(revealTimerSeconds ?? 30) || 0));
     const normalizedFeedbackEnabled = feedbackEnabled === true;
     const normalizedFeedbackSamples = Array.isArray(feedbackSamples)
@@ -130,6 +134,27 @@ Deno.serve(async (req: Request) => {
     const normalizedRewardPercentage =
       parsedRewardPercentage && parsedRewardPercentage > 0 ? parsedRewardPercentage : null;
     const normalizedShareRewardAmount = Math.max(0, Number(shareRewardAmount ?? 0) || 0);
+
+    const timePattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+    if (!timePattern.test(normalizedDailyStartTime) || !timePattern.test(normalizedDailyEndTime)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Set a valid daily coupon start and end time'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (normalizedDailyStartTime >= normalizedDailyEndTime) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Daily coupon end time must be after start time'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (launchNow && normalizedLaunchDate && !normalizedRewardPercentage && normalizedShareRewardAmount <= 0) {
       return new Response(JSON.stringify({
@@ -163,6 +188,8 @@ Deno.serve(async (req: Request) => {
           tc_is_active: isActive,
           tc_launch_date: normalizedLaunchDate,
           tc_launch_now: launchNow,
+          tc_daily_start_time: normalizedDailyStartTime,
+          tc_daily_end_time: normalizedDailyEndTime,
           tc_website_url: normalizedWebsiteUrl,
           tc_reveal_timer_seconds: normalizedRevealTimerSeconds,
           tc_feedback_enabled: normalizedFeedbackEnabled,
@@ -196,6 +223,8 @@ Deno.serve(async (req: Request) => {
           tc_is_active: isActive,
           tc_launch_date: normalizedLaunchDate,
           tc_launch_now: launchNow,
+          tc_daily_start_time: normalizedDailyStartTime,
+          tc_daily_end_time: normalizedDailyEndTime,
           tc_website_url: normalizedWebsiteUrl,
           tc_reveal_timer_seconds: normalizedRevealTimerSeconds,
           tc_feedback_enabled: normalizedFeedbackEnabled,

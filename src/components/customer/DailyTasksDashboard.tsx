@@ -56,6 +56,9 @@ const secondsUntil = (value?: string | null) => {
   return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 1000));
 };
 
+const isAvailableCouponExpired = (coupon: RewardCoupon) =>
+  coupon.status === 'available' && Boolean(coupon.expires_at) && secondsUntil(coupon.expires_at) <= 0;
+
 const addSeconds = (value: string, seconds: number) => new Date(new Date(value).getTime() + seconds * 1000).toISOString();
 
 const formatDate = (value?: string | null) => {
@@ -70,6 +73,10 @@ const formatDate = (value?: string | null) => {
 const getExpiryLabel = (coupon: RewardCoupon) => {
   if (coupon.is_expired || coupon.status === 'expired') {
     return 'Coupon expired';
+  }
+
+  if (isAvailableCouponExpired(coupon)) {
+    return 'Launch expired';
   }
 
   if (coupon.opened_at) {
@@ -254,6 +261,12 @@ const DailyTasksDashboard: React.FC = () => {
   };
 
   const openCoupon = async (coupon: RewardCoupon) => {
+    if (isAvailableCouponExpired(coupon)) {
+      notification.showError('Launch Expired', 'This coupon launch window has ended.');
+      await loadCoupons(true);
+      return;
+    }
+
     const openedCoupon = coupons.find((item) => item.status === 'opened');
     if (openedCoupon && openedCoupon.assignment_id !== coupon.assignment_id) {
       notification.showError('Coupon Already Opened', 'Finish the opened coupon first, then open the next one.');
@@ -400,12 +413,16 @@ const DailyTasksDashboard: React.FC = () => {
 
   const filteredCoupons = useMemo(() => {
     if (filter === 'today') {
-      return coupons.filter((coupon) => coupon.status === 'available' || coupon.status === 'opened');
+      return coupons.filter(
+        (coupon) => (coupon.status === 'available' || coupon.status === 'opened') && !isAvailableCouponExpired(coupon)
+      );
     }
     return coupons.filter((coupon) => coupon.status === filter);
-  }, [coupons, filter]);
+  }, [coupons, filter, tick]);
 
-  const todayCoupons = coupons.filter((coupon) => coupon.status === 'available' || coupon.status === 'opened');
+  const todayCoupons = coupons.filter(
+    (coupon) => (coupon.status === 'available' || coupon.status === 'opened') && !isAvailableCouponExpired(coupon)
+  );
   const openedCoupon = coupons.find((coupon) => coupon.status === 'opened');
   const dailyTarget = todayCoupons[0]?.daily_target_amount || coupons[0]?.daily_target_amount || 0;
   const assignedTotal = todayCoupons[0]?.assigned_total_amount || 0;
@@ -450,7 +467,7 @@ const DailyTasksDashboard: React.FC = () => {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Daily Coupons</h3>
-            <p className="text-sm text-gray-600">Open today&apos;s coupons before midnight, then visit and rate after the timer to claim.</p>
+            <p className="text-sm text-gray-600">Open today&apos;s coupons during the launch window, then visit and rate after the timer to claim.</p>
           </div>
         </div>
         <button

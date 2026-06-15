@@ -30,6 +30,8 @@ interface Coupon {
   tc_updated_at: string;
   tc_launch_date?: string;
   tc_launch_now: boolean;
+  tc_daily_start_time?: string | null;
+  tc_daily_end_time?: string | null;
   tc_website_url?: string;
   tc_reveal_timer_seconds: number;
   tc_feedback_enabled: boolean;
@@ -74,6 +76,11 @@ const normalizeDateToIso = (value?: string | null) => {
     return `${value}T12:00:00.000Z`;
   }
   return new Date(value).toISOString();
+};
+
+const formatTimeForInput = (value?: string | null) => {
+  if (!value) return '';
+  return String(value).slice(0, 5);
 };
 
 const formatRewardRule = (coupon: Pick<Coupon, 'tc_reward_percentage' | 'tc_share_reward_amount'>) => {
@@ -141,6 +148,8 @@ const CouponManagement: React.FC = () => {
     is_active: true,
     launch_date: '',
     launch_now: false,
+    daily_start_time: '00:00',
+    daily_end_time: '23:59',
     website_url: '',
     reveal_timer_seconds: 30,
     feedback_enabled: false,
@@ -199,6 +208,8 @@ const CouponManagement: React.FC = () => {
         tc_is_active: row.tc_is_active ?? false,
         tc_launch_now: row.tc_launch_now ?? false,
         tc_launch_date: row.tc_launch_date,
+        tc_daily_start_time: formatTimeForInput(row.tc_daily_start_time ?? '00:00'),
+        tc_daily_end_time: formatTimeForInput(row.tc_daily_end_time ?? '23:59'),
         tc_website_url: row.tc_website_url,
         tc_reveal_timer_seconds: Number(row.tc_reveal_timer_seconds ?? 30),
         tc_feedback_enabled: Boolean(row.tc_feedback_enabled ?? false),
@@ -272,6 +283,8 @@ const CouponManagement: React.FC = () => {
         isActive: newCoupon.is_active,
         launchDate: newCoupon.launch_date ? normalizeDateToIso(newCoupon.launch_date) : null,
         launchNow: newCoupon.launch_now,
+        dailyStartTime: newCoupon.daily_start_time,
+        dailyEndTime: newCoupon.daily_end_time,
         websiteUrl: newCoupon.website_url,
         revealTimerSeconds: newCoupon.reveal_timer_seconds,
         feedbackEnabled: newCoupon.feedback_enabled,
@@ -308,6 +321,8 @@ const CouponManagement: React.FC = () => {
         isActive: updates.tc_is_active,
         launchDate: updates.tc_launch_date,
         launchNow: updates.tc_launch_now,
+        dailyStartTime: updates.tc_daily_start_time || '00:00',
+        dailyEndTime: updates.tc_daily_end_time || '23:59',
         websiteUrl: updates.tc_website_url,
         revealTimerSeconds: updates.tc_reveal_timer_seconds,
         feedbackEnabled: updates.tc_feedback_enabled,
@@ -397,6 +412,8 @@ const CouponManagement: React.FC = () => {
         isActive: coupon.tc_is_active,
         launchDate: null,
         launchNow: false,
+        dailyStartTime: coupon.tc_daily_start_time || '00:00',
+        dailyEndTime: coupon.tc_daily_end_time || '23:59',
         websiteUrl: coupon.tc_website_url,
         revealTimerSeconds: coupon.tc_reveal_timer_seconds,
         feedbackEnabled: coupon.tc_feedback_enabled,
@@ -420,6 +437,7 @@ const CouponManagement: React.FC = () => {
       usage_limit: '', share_reward_amount: 0, reward_percentage: 0.5,
       company_id: '', is_active: true,
       launch_date: '', launch_now: false, website_url: '', reveal_timer_seconds: 30,
+      daily_start_time: '00:00', daily_end_time: '23:59',
       feedback_enabled: false, feedback_samples: DEFAULT_FEEDBACK_SAMPLES
     });
   };
@@ -737,8 +755,16 @@ const CouponManagement: React.FC = () => {
                   </td>
                   {!showDailyTasks && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {coupon.tc_launch_date ? (
-                            <div className="flex items-center"><Calendar className="h-4 w-4 mr-1" />{new Date(coupon.tc_launch_date).toLocaleDateString()}</div>
+                    {coupon.tc_launch_date ? (
+                            <div>
+                              <div className="flex items-center">
+                                <Calendar className="h-4 w-4 mr-1" />
+                                {new Date(coupon.tc_launch_date).toLocaleDateString()}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-1">
+                                {formatTimeForInput(coupon.tc_daily_start_time || '00:00')} - {formatTimeForInput(coupon.tc_daily_end_time || '23:59')}
+                              </div>
+                            </div>
                         ) : <span className="text-gray-400">Not scheduled</span>}
                       </td>
                   )}
@@ -895,6 +921,29 @@ const CouponManagement: React.FC = () => {
                       <p className="text-xs text-gray-500 mt-1">Leave empty to create this coupon directly under admin.</p>
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Daily Start Time *</label>
+                      <input
+                        type="time"
+                        required
+                        value={newCoupon.daily_start_time}
+                        onChange={(e) => setNewCoupon(prev => ({ ...prev, daily_start_time: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Daily End Time *</label>
+                      <input
+                        type="time"
+                        required
+                        value={newCoupon.daily_end_time}
+                        onChange={(e) => setNewCoupon(prev => ({ ...prev, daily_end_time: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Customers can open the coupon only during this daily window.</p>
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Usage Limit</label>
                     <input type="number" min="1" value={newCoupon.usage_limit} onChange={(e) => setNewCoupon(prev => ({ ...prev, usage_limit: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent" placeholder="Optional. Defaults to 1000" />
@@ -973,6 +1022,8 @@ const CouponDetails: React.FC<{
         tc_is_active: editedCoupon.tc_is_active,
         tc_launch_date: normalizeDateToIso(formatDateForInput(editedCoupon.tc_launch_date || '')),
         tc_launch_now: editedCoupon.tc_launch_now,
+        tc_daily_start_time: editedCoupon.tc_daily_start_time || '00:00',
+        tc_daily_end_time: editedCoupon.tc_daily_end_time || '23:59',
         tc_website_url: editedCoupon.tc_website_url,
         tc_reveal_timer_seconds: editedCoupon.tc_reveal_timer_seconds,
         tc_feedback_enabled: editedCoupon.tc_feedback_enabled,
@@ -1273,6 +1324,12 @@ const CouponDetails: React.FC<{
                             <span className="font-medium text-gray-900">{new Date(displayCoupon.tc_launch_date).toLocaleDateString()}</span>
                           </div>
                         )}
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Daily Open Window</span>
+                          <span className="font-medium text-gray-900">
+                            {formatTimeForInput(displayCoupon.tc_daily_start_time || '00:00')} - {formatTimeForInput(displayCoupon.tc_daily_end_time || '23:59')}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1490,6 +1547,26 @@ const CouponDetails: React.FC<{
                         className={inputClass}
                       />
                       <p className="text-xs text-gray-500 mt-1">Leave empty if not scheduled</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Daily Start Time</label>
+                      <input
+                        type="time"
+                        value={formatTimeForInput(editedCoupon.tc_daily_start_time || '00:00')}
+                        onChange={(e) => setEditedCoupon({ ...editedCoupon, tc_daily_start_time: e.target.value })}
+                        className={inputClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Daily End Time</label>
+                      <input
+                        type="time"
+                        value={formatTimeForInput(editedCoupon.tc_daily_end_time || '23:59')}
+                        onChange={(e) => setEditedCoupon({ ...editedCoupon, tc_daily_end_time: e.target.value })}
+                        className={inputClass}
+                      />
                     </div>
 
                     <div className="flex items-center gap-6">
