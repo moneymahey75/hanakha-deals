@@ -132,6 +132,7 @@ const DailyTasksDashboard: React.FC = () => {
   const [selectedRating, setSelectedRating] = useState(0);
   const [promptedCouponIds, setPromptedCouponIds] = useState<Record<string, boolean>>({});
   const [revealRefreshIds, setRevealRefreshIds] = useState<Record<string, boolean>>({});
+  const [rewardWalletBalance, setRewardWalletBalance] = useState(0);
   const [historyPages, setHistoryPages] = useState<Record<'liked' | 'disliked', number>>({
     liked: 1,
     disliked: 1,
@@ -190,13 +191,30 @@ const DailyTasksDashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coupons, feedbackCoupon, promptedCouponIds, revealRefreshIds, tick]);
 
+  const loadRewardWalletBalance = async () => {
+    if (!user?.id) return;
+    const { data, error } = await supabase
+      .from('tbl_wallets')
+      .select('tw_balance')
+      .eq('tw_user_id', user.id)
+      .eq('tw_currency', 'USDT')
+      .eq('tw_wallet_type', 'reward')
+      .maybeSingle();
+
+    if (error) throw error;
+    setRewardWalletBalance(Number(data?.tw_balance ?? 0));
+  };
+
   const loadCoupons = async (silent = false) => {
     if (!user?.id) return;
     if (!silent) {
       setLoading(true);
     }
     try {
-      const { data, error } = await supabase.rpc('get_user_reward_coupons');
+      const [{ data, error }] = await Promise.all([
+        supabase.rpc('get_user_reward_coupons'),
+        loadRewardWalletBalance(),
+      ]);
       if (error) throw error;
 
       const normalizedCoupons: RewardCoupon[] = (data || []).map((row: any) => ({
@@ -389,9 +407,6 @@ const DailyTasksDashboard: React.FC = () => {
 
   const todayCoupons = coupons.filter((coupon) => coupon.status === 'available' || coupon.status === 'opened');
   const openedCoupon = coupons.find((coupon) => coupon.status === 'opened');
-  const creditedRewards = coupons
-    .filter((coupon) => coupon.status === 'liked' || coupon.status === 'disliked')
-    .reduce((sum, coupon) => sum + coupon.reward_amount, 0);
   const dailyTarget = todayCoupons[0]?.daily_target_amount || coupons[0]?.daily_target_amount || 0;
   const assignedTotal = todayCoupons[0]?.assigned_total_amount || 0;
   const isHistoryFilter = filter === 'liked' || filter === 'disliked';
@@ -460,9 +475,9 @@ const DailyTasksDashboard: React.FC = () => {
           <p className="text-xs text-emerald-700">Single or split coupons</p>
         </div>
         <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
-          <p className="text-xs font-semibold uppercase text-amber-700">ROI Wallet Credits</p>
-          <p className="mt-1 text-2xl font-bold text-amber-950">{formatAmount(creditedRewards)}</p>
-          <p className="text-xs text-amber-700">Credited after site visit and rating</p>
+          <p className="text-xs font-semibold uppercase text-amber-700">Non-working Balance</p>
+          <p className="mt-1 text-2xl font-bold text-amber-950">{formatAmount(rewardWalletBalance)}</p>
+          <p className="text-xs text-amber-700">Daily ROI available for withdrawal</p>
         </div>
       </div>
 

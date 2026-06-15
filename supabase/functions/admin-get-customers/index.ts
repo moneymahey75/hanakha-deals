@@ -76,6 +76,24 @@ const getLaunchSubscriptionMap = async (
   const launchByUserId = new Map<string, any>();
   if (uniqueUserIds.length === 0) return launchByUserId;
 
+  const userLaunchPhaseById = new Map<string, boolean>();
+  for (const idChunk of chunk(uniqueUserIds, 500)) {
+    const { data, error } = await supabase
+      .from('tbl_users')
+      .select('tu_id, tu_current_plan_phase, tu_launch_plan_activated_at')
+      .in('tu_id', idChunk);
+    if (error) throw error;
+    for (const user of data || []) {
+      const userId = String((user as any).tu_id || '').trim();
+      if (!userId) continue;
+      userLaunchPhaseById.set(
+        userId,
+        String((user as any).tu_current_plan_phase || '').toLowerCase() === 'launch' ||
+          Boolean((user as any).tu_launch_plan_activated_at)
+      );
+    }
+  }
+
   const subscriptions: any[] = [];
   for (const idChunk of chunk(uniqueUserIds, 500)) {
     const { data, error } = await supabase
@@ -113,7 +131,7 @@ const getLaunchSubscriptionMap = async (
 
     const plan = planById.get(String(subscription?.tus_plan_id || '').trim()) || null;
     const planPhase = String(subscription?.tus_plan_phase || plan?.tsp_plan_phase || 'prelaunch').toLowerCase();
-    if (planPhase !== 'launch') continue;
+    if (planPhase !== 'launch' && userLaunchPhaseById.get(userId) !== true) continue;
 
     const endDate = subscription?.tus_end_date ? new Date(subscription.tus_end_date) : null;
     if (endDate && Number.isFinite(endDate.getTime()) && endDate.getTime() <= nowMs) continue;
@@ -143,16 +161,57 @@ const getLaunchSubscriptionMap = async (
 
 const applyLaunchSubscriptionFields = (row: any, launchMap: Map<string, any>) => {
   const launch = launchMap.get(String(row?.tu_id || '').trim());
+  const hasLaunchFromUser =
+    String(row?.tu_current_plan_phase || '').toLowerCase() === 'launch' ||
+    Boolean(row?.tu_launch_plan_activated_at);
+  const hasLaunchSubscription = launch?.has_launch_subscription === true || hasLaunchFromUser;
   return {
     ...row,
-    has_launch_subscription: launch?.has_launch_subscription === true,
+    has_launch_subscription: hasLaunchSubscription,
     launch_subscription_status: launch?.launch_subscription_status || null,
-    launch_subscription_start_date: launch?.launch_subscription_start_date || null,
+    launch_subscription_start_date: launch?.launch_subscription_start_date || row?.tu_launch_plan_activated_at || null,
     launch_subscription_end_date: launch?.launch_subscription_end_date || null,
     launch_subscription_amount: launch?.launch_subscription_amount ?? null,
     launch_plan_name: launch?.launch_plan_name || null,
     launch_plan_price: launch?.launch_plan_price ?? null,
   };
+};
+
+const mergeUserLaunchPhaseFields = async (
+  supabase: ReturnType<typeof createClient>,
+  rows: any[]
+) => {
+  const ids = Array.from(
+    new Set(
+      rows
+        .map((row: any) => String(row?.tu_id || '').trim())
+        .filter(Boolean)
+    )
+  );
+  if (ids.length === 0) return rows;
+
+  const phaseByUserId = new Map<string, any>();
+  for (const idChunk of chunk(ids, 500)) {
+    const { data, error } = await supabase
+      .from('tbl_users')
+      .select('tu_id, tu_current_plan_phase, tu_launch_plan_activated_at')
+      .in('tu_id', idChunk);
+    if (error) throw error;
+    for (const user of data || []) {
+      const userId = String((user as any).tu_id || '').trim();
+      if (!userId) continue;
+      phaseByUserId.set(userId, user);
+    }
+  }
+
+  return rows.map((row: any) => {
+    const phaseRow = phaseByUserId.get(String(row?.tu_id || '').trim());
+    return {
+      ...row,
+      tu_current_plan_phase: row?.tu_current_plan_phase ?? phaseRow?.tu_current_plan_phase ?? null,
+      tu_launch_plan_activated_at: row?.tu_launch_plan_activated_at ?? phaseRow?.tu_launch_plan_activated_at ?? null,
+    };
+  });
 };
 
 const normalizeSponsorshipKey = (value: unknown) => {
@@ -349,7 +408,7 @@ Deno.serve(async (req: Request) => {
       for (const ids of chunk(downlineIds, 500)) {
         let usersQuery = supabase
           .from('tbl_users')
-          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_registration_paid, tu_is_active, tu_is_dummy, tu_created_at, tu_updated_at')
+          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_registration_paid, tu_is_active, tu_is_dummy, tu_current_plan_phase, tu_launch_plan_activated_at, tu_created_at, tu_updated_at')
           .in('tu_id', ids)
           .eq('tu_user_type', 'customer');
 
@@ -450,6 +509,8 @@ Deno.serve(async (req: Request) => {
             is_active_member: isMemberActive,
             verification_complete: verificationComplete,
             tu_is_dummy: !!u.tu_is_dummy,
+            tu_current_plan_phase: u.tu_current_plan_phase || null,
+            tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {
@@ -508,12 +569,13 @@ Deno.serve(async (req: Request) => {
 
     // Ensure status fields are present and follow current verification settings.
     const rows = Array.isArray(data) ? data : [];
+    const rowsWithUserLaunchPhase = await mergeUserLaunchPhaseFields(supabase, rows);
     const launchSubscriptionByUserId = await getLaunchSubscriptionMap(
       supabase,
-      rows.map((row: any) => row?.tu_id)
+      rowsWithUserLaunchPhase.map((row: any) => row?.tu_id)
     );
-    const rowsWithLaunch = rows.map((row: any) => applyLaunchSubscriptionFields(row, launchSubscriptionByUserId));
-    const missingRegFlag = rows.length > 0 && rows.some((row: any) => row?.tu_registration_paid === undefined);
+    const rowsWithLaunch = rowsWithUserLaunchPhase.map((row: any) => applyLaunchSubscriptionFields(row, launchSubscriptionByUserId));
+    const missingRegFlag = rowsWithUserLaunchPhase.length > 0 && rowsWithUserLaunchPhase.some((row: any) => row?.tu_registration_paid === undefined);
     if (missingRegFlag) {
       const ids = Array.from(
         new Set(

@@ -18,6 +18,7 @@ import {
 
 interface Transaction {
     twt_id: string;
+    twt_wallet_id: string;
     twt_transaction_type: 'credit' | 'debit' | 'transfer';
     twt_amount: number;
     twt_currency: string;
@@ -29,14 +30,33 @@ interface Transaction {
     twt_created_at: string;
 }
 
+type WalletType = 'working' | 'reward';
+type WalletFilter = 'all' | WalletType;
+
+type WalletTotals = Record<WalletType, {
+    balance: number;
+    reservedBalance: number;
+    pendingWithdrawal: number;
+}>;
+
+const createEmptyWalletTotals = (): WalletTotals => ({
+    working: { balance: 0, reservedBalance: 0, pendingWithdrawal: 0 },
+    reward: { balance: 0, reservedBalance: 0, pendingWithdrawal: 0 }
+});
+
+const walletFilterLabels: Record<WalletFilter, string> = {
+    all: 'All Wallets',
+    working: 'Working Wallet',
+    reward: 'Non-working Wallet'
+};
+
 const TransactionsDashboard: React.FC = () => {
     const { user } = useAuth();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [walletBalance, setWalletBalance] = useState(0);
-    const [walletReservedBalance, setWalletReservedBalance] = useState(0);
-    const [pendingWithdrawalTotal, setPendingWithdrawalTotal] = useState(0);
+    const [walletTotals, setWalletTotals] = useState<WalletTotals>(() => createEmptyWalletTotals());
+    const [walletFilter, setWalletFilter] = useState<WalletFilter>('all');
     const [dateFrom, setDateFrom] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 6);
@@ -51,50 +71,52 @@ const TransactionsDashboard: React.FC = () => {
 
     useEffect(() => {
         if (user?.id) {
-            setWalletBalance(0);
-            setWalletReservedBalance(0);
-            setPendingWithdrawalTotal(0);
-            loadWalletBalance();
-            loadPendingWithdrawals();
+            setWalletTotals(createEmptyWalletTotals());
+            loadWalletSummary();
         } else {
-            setWalletBalance(0);
-            setWalletReservedBalance(0);
-            setPendingWithdrawalTotal(0);
+            setWalletTotals(createEmptyWalletTotals());
         }
     }, [user?.id]);
 
-    const loadWalletBalance = async () => {
+    const loadWalletSummary = async () => {
         if (!user?.id) return;
         try {
-            const { data, error } = await supabase
-                .from('tbl_wallets')
-                .select('tw_balance, tw_reserved_balance')
-                .eq('tw_user_id', user.id)
-                .eq('tw_currency', 'USDT')
-                .eq('tw_wallet_type', 'working')
-                .maybeSingle();
-            if (error) throw error;
-            setWalletBalance(Number(data?.tw_balance ?? 0));
-            setWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
-        } catch (error) {
-            console.error('Failed to load wallet balance:', error);
-        }
-    };
+            const [walletResult, withdrawalResult] = await Promise.all([
+                supabase
+                    .from('tbl_wallets')
+                    .select('tw_wallet_type, tw_balance, tw_reserved_balance')
+                    .eq('tw_user_id', user.id)
+                    .eq('tw_currency', 'USDT')
+                    .in('tw_wallet_type', ['working', 'reward']),
+                supabase
+                    .from('tbl_withdrawal_requests')
+                    .select('twr_wallet_type, twr_amount, twr_status')
+                    .eq('twr_user_id', user.id)
+                    .in('twr_wallet_type', ['working', 'reward'])
+                    .in('twr_status', ['pending', 'processing', 'approved'])
+            ]);
 
-    const loadPendingWithdrawals = async () => {
-        if (!user?.id) return;
-        try {
-            const { data, error } = await supabase
-                .from('tbl_withdrawal_requests')
-                .select('twr_amount, twr_status')
-                .eq('twr_user_id', user.id)
-                .eq('twr_wallet_type', 'working')
-                .in('twr_status', ['pending', 'processing', 'approved']);
-            if (error) throw error;
-            const total = (data || []).reduce((sum: number, row: any) => sum + Number(row.twr_amount || 0), 0);
-            setPendingWithdrawalTotal(total);
+            if (walletResult.error) throw walletResult.error;
+            if (withdrawalResult.error) throw withdrawalResult.error;
+
+            const nextTotals = createEmptyWalletTotals();
+
+            (walletResult.data || []).forEach((row: any) => {
+                const type = row.tw_wallet_type as WalletType;
+                if (!nextTotals[type]) return;
+                nextTotals[type].balance = Number(row.tw_balance || 0);
+                nextTotals[type].reservedBalance = Number(row.tw_reserved_balance || 0);
+            });
+
+            (withdrawalResult.data || []).forEach((row: any) => {
+                const type = row.twr_wallet_type as WalletType;
+                if (!nextTotals[type]) return;
+                nextTotals[type].pendingWithdrawal += Number(row.twr_amount || 0);
+            });
+
+            setWalletTotals(nextTotals);
         } catch (error) {
-            console.error('Failed to load pending withdrawals:', error);
+            console.error('Failed to load wallet summary:', error);
         }
     };
 
@@ -110,6 +132,26 @@ const TransactionsDashboard: React.FC = () => {
                 .select('*', { count: 'exact' })
                 .eq('twt_user_id', user.id)
                 .order('twt_created_at', { ascending: false });
+
+            if (walletFilter !== 'all') {
+                const { data: walletRows, error: walletError } = await supabase
+                    .from('tbl_wallets')
+                    .select('tw_id')
+                    .eq('tw_user_id', user.id)
+                    .eq('tw_currency', 'USDT')
+                    .eq('tw_wallet_type', walletFilter);
+
+                if (walletError) throw walletError;
+
+                const walletIds = (walletRows || []).map((row: any) => row.tw_id).filter(Boolean);
+                if (walletIds.length === 0) {
+                    setTransactions([]);
+                    setTotalCount(0);
+                    return;
+                }
+
+                query = query.in('twt_wallet_id', walletIds);
+            }
 
             if (dateFrom) {
                 query = query.gte('twt_created_at', new Date(`${dateFrom}T00:00:00`).toISOString());
@@ -134,7 +176,7 @@ const TransactionsDashboard: React.FC = () => {
 
     const handleRefresh = async () => {
         setRefreshing(true);
-        await Promise.all([loadTransactions(), loadWalletBalance(), loadPendingWithdrawals()]);
+        await Promise.all([loadTransactions(), loadWalletSummary()]);
     };
 
     useEffect(() => {
@@ -145,7 +187,7 @@ const TransactionsDashboard: React.FC = () => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [dateFrom, dateTo, pageSize]);
+    }, [dateFrom, dateTo, pageSize, walletFilter]);
 
     useEffect(() => {
         if (!user?.id) {
@@ -160,7 +202,7 @@ const TransactionsDashboard: React.FC = () => {
         setLoading(true);
         loadTransactions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user?.id, currentPage, pageSize, dateFrom, dateTo]);
+    }, [user?.id, currentPage, pageSize, dateFrom, dateTo, walletFilter]);
 
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const clampedPage = Math.min(currentPage, totalPages);
@@ -185,6 +227,7 @@ const TransactionsDashboard: React.FC = () => {
             doc.setFontSize(11);
             doc.setTextColor(100);
             doc.text(`Date range: ${rangeLabel}`, 40, 60);
+            doc.text(`Wallet: ${walletFilterLabels[walletFilter]}`, 40, 76);
 
             const tableBody = pagedTransactions.map(tx => ([
                 new Date(tx.twt_created_at).toLocaleDateString(),
@@ -197,7 +240,7 @@ const TransactionsDashboard: React.FC = () => {
             ]));
 
             autoTable(doc, {
-                startY: 80,
+                startY: 96,
                 head: [[
                     'Date',
                     'Time',
@@ -244,9 +287,17 @@ const TransactionsDashboard: React.FC = () => {
         }
         return Array.from(map.entries());
     }, [pagedTransactions]);
-    const withdrawableBalance = useMemo(() => {
-        return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(pendingWithdrawalTotal || 0));
-    }, [walletBalance, walletReservedBalance, pendingWithdrawalTotal]);
+
+    const getWithdrawableBalance = (type: WalletType) => {
+        const total = walletTotals[type];
+        return Math.max(
+            0,
+            Number(total.balance || 0) - Number(total.reservedBalance || 0) - Number(total.pendingWithdrawal || 0)
+        );
+    };
+
+    const workingWithdrawableBalance = getWithdrawableBalance('working');
+    const roiWithdrawableBalance = getWithdrawableBalance('reward');
 
     const getDisplayDescription = (transaction: Transaction) => {
         const referenceType = transaction.twt_reference_type || '';
@@ -322,11 +373,16 @@ const TransactionsDashboard: React.FC = () => {
                     <h3 className="text-lg font-semibold text-gray-900">Transaction History</h3>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                            Available: {withdrawableBalance.toFixed(2)} USDT
+                            Working Wallet Balance: {workingWithdrawableBalance.toFixed(2)} USDT
                         </span>
-                        <span className="text-xs text-gray-500">Total: {walletBalance.toFixed(2)} USDT</span>
-                        {pendingWithdrawalTotal > 0 && (
-                            <span className="text-xs text-gray-500">Reserved: {pendingWithdrawalTotal.toFixed(2)} USDT</span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            Non-working Wallet Balance: {roiWithdrawableBalance.toFixed(2)} USDT
+                        </span>
+                        {walletTotals.working.pendingWithdrawal > 0 && (
+                            <span className="text-xs text-gray-500">Working reserved: {walletTotals.working.pendingWithdrawal.toFixed(2)} USDT</span>
+                        )}
+                        {walletTotals.reward.pendingWithdrawal > 0 && (
+                            <span className="text-xs text-gray-500">ROI pending withdrawal: {walletTotals.reward.pendingWithdrawal.toFixed(2)} USDT</span>
                         )}
                     </div>
                 </div>
@@ -344,71 +400,88 @@ const TransactionsDashboard: React.FC = () => {
             {/* Date Range Filters */}
             <div className="bg-white rounded-xl shadow-sm p-6">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4">Date Range</h4>
-                <div className="flex flex-col md:flex-row md:items-end gap-4">
-                    <div className="flex flex-col">
-                        <label className="text-sm text-gray-600 mb-1">From</label>
-                        <input
-                            type="date"
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        />
-                    </div>
-                    <div className="flex flex-col">
-                        <label className="text-sm text-gray-600 mb-1">To</label>
-                        <input
-                            type="date"
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            onClick={() => {
-                                const d = new Date();
-                                d.setDate(d.getDate() - 6);
-                                setDateFrom(d.toISOString().slice(0, 10));
-                                setDateTo(new Date().toISOString().slice(0, 10));
-                            }}
-                            className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        >
-                            Last 7 Days
-                        </button>
-                        <button
-                            onClick={() => {
-                                const now = new Date();
-                                const first = new Date(now.getFullYear(), now.getMonth(), 1);
-                                setDateFrom(first.toISOString().slice(0, 10));
-                                setDateTo(new Date().toISOString().slice(0, 10));
-                            }}
-                            className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        >
-                            This Month
-                        </button>
-                        <button
-                            onClick={() => {
-                                setDateFrom('');
-                                setDateTo('');
-                            }}
-                            className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        >
-                            All Time
-                        </button>
-                        <div className="flex items-center gap-2">
-                            <label className="text-sm text-gray-600">Page size</label>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div className="flex min-w-0 flex-col">
+                            <label className="text-sm text-gray-600 mb-1">From</label>
+                            <input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                className="h-12 w-full border border-gray-200 rounded-lg px-3 text-sm"
+                            />
+                        </div>
+                        <div className="flex min-w-0 flex-col">
+                            <label className="text-sm text-gray-600 mb-1">To</label>
+                            <input
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                className="h-12 w-full border border-gray-200 rounded-lg px-3 text-sm"
+                            />
+                        </div>
+                        <div className="flex min-w-0 flex-col">
+                            <label className="text-sm text-gray-600 mb-1">Wallet</label>
                             <select
-                                value={pageSize}
-                                onChange={(e) => setPageSize(Number(e.target.value))}
-                                className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                                value={walletFilter}
+                                onChange={(e) => setWalletFilter(e.target.value as WalletFilter)}
+                                className="h-12 w-full border border-gray-200 rounded-lg px-3 text-sm"
                             >
-                                <option value={10}>10</option>
-                                <option value={20}>20</option>
-                                <option value={50}>50</option>
+                                <option value="all">All Wallets</option>
+                                <option value="working">Working Wallet</option>
+                                <option value="reward">Non-working Wallet</option>
                             </select>
                         </div>
-                        <div className="text-sm text-gray-500">
-                            Total: {totalCount} transaction{totalCount === 1 ? '' : 's'}
+                    </div>
+                    <div className="flex flex-col">
+                        <label className="text-sm text-gray-600 mb-1">Quick Filters</label>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    const d = new Date();
+                                    d.setDate(d.getDate() - 6);
+                                    setDateFrom(d.toISOString().slice(0, 10));
+                                    setDateTo(new Date().toISOString().slice(0, 10));
+                                }}
+                                className="h-12 px-4 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            >
+                                Last 7 Days
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const now = new Date();
+                                    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+                                    setDateFrom(first.toISOString().slice(0, 10));
+                                    setDateTo(new Date().toISOString().slice(0, 10));
+                                }}
+                                className="h-12 px-4 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            >
+                                This Month
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setDateFrom('');
+                                    setDateTo('');
+                                }}
+                                className="h-12 px-4 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            >
+                                All Time
+                            </button>
+                            <div className="flex h-12 items-center gap-2">
+                                <label className="text-sm text-gray-600">Page size</label>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => setPageSize(Number(e.target.value))}
+                                    className="h-12 border border-gray-200 rounded-lg px-3 text-sm"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={50}>50</option>
+                                </select>
+                            </div>
+                            <div className="h-12 flex items-center text-sm text-gray-500">
+                                Total: {totalCount} transaction{totalCount === 1 ? '' : 's'}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -416,7 +489,9 @@ const TransactionsDashboard: React.FC = () => {
 
             {/* Full Transaction History */}
             <div className="bg-white rounded-xl shadow-sm p-6">
-                <h4 className="text-lg font-semibold text-gray-900 mb-4">All Transactions</h4>
+                <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                    {walletFilter === 'all' ? 'All Transactions' : `${walletFilterLabels[walletFilter]} Transactions`}
+                </h4>
 
                 {groupedTransactions.length > 0 ? (
                     <div className="space-y-6">
