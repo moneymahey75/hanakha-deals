@@ -340,6 +340,31 @@ Deno.serve(async (req: Request) => {
         throw updateSubscriptionError;
       }
     } else {
+      const { data: hasActiveSamePlan, error: samePlanCheckError } = await supabase.rpc(
+        'user_has_active_same_plan_package',
+        {
+          p_user_id: payment.tp_user_id,
+          p_plan_id: registrationPlan.tsp_id,
+        }
+      );
+
+      if (samePlanCheckError) {
+        throw samePlanCheckError;
+      }
+
+      if (hasActiveSamePlan === true) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Customer already has an active package for this plan. They can renew it after exhaustion.',
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
       const rawDurationDays = Number(registrationPlan.tsp_duration_days);
       const startDate = new Date();
       const endDate =
@@ -347,52 +372,24 @@ Deno.serve(async (req: Request) => {
           ? new Date(startDate.getTime() + rawDurationDays * 24 * 60 * 60 * 1000)
           : new Date('9999-12-31T23:59:59.999Z');
 
-      const { data: existingSubscription, error: existingSubscriptionError } = await supabase
+      const { data: createdSubscription, error: createSubscriptionError } = await supabase
         .from('tbl_user_subscriptions')
+        .insert({
+          tus_user_id: payment.tp_user_id,
+          tus_plan_id: registrationPlan.tsp_id,
+          tus_status: 'active',
+          tus_start_date: startDate.toISOString(),
+          tus_end_date: endDate.toISOString(),
+          tus_payment_amount: paymentAmount
+        })
         .select('tus_id')
-        .eq('tus_user_id', payment.tp_user_id)
-        .eq('tus_plan_id', registrationPlan.tsp_id)
-        .maybeSingle();
+        .single();
 
-      if (existingSubscriptionError) {
-        throw existingSubscriptionError;
+      if (createSubscriptionError) {
+        throw createSubscriptionError;
       }
 
-      if (existingSubscription?.tus_id) {
-        subscriptionId = existingSubscription.tus_id;
-        const { error: updateExistingSubscriptionError } = await supabase
-          .from('tbl_user_subscriptions')
-          .update({
-            tus_status: 'active',
-            tus_start_date: startDate.toISOString(),
-            tus_end_date: endDate.toISOString(),
-            tus_payment_amount: paymentAmount
-          })
-          .eq('tus_id', subscriptionId);
-
-        if (updateExistingSubscriptionError) {
-          throw updateExistingSubscriptionError;
-        }
-      } else {
-        const { data: createdSubscription, error: createSubscriptionError } = await supabase
-          .from('tbl_user_subscriptions')
-          .insert({
-            tus_user_id: payment.tp_user_id,
-            tus_plan_id: registrationPlan.tsp_id,
-            tus_status: 'active',
-            tus_start_date: startDate.toISOString(),
-            tus_end_date: endDate.toISOString(),
-            tus_payment_amount: paymentAmount
-          })
-          .select('tus_id')
-          .single();
-
-        if (createSubscriptionError) {
-          throw createSubscriptionError;
-        }
-
-        subscriptionId = createdSubscription?.tus_id || null;
-      }
+      subscriptionId = createdSubscription?.tus_id || null;
     }
 
     if (!launchPhaseActive && sponsorUserId && normalizedParentIncome > 0) {

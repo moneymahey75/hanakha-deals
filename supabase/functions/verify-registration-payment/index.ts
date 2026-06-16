@@ -341,13 +341,17 @@ Deno.serve(async (req: Request) => {
       ? parentIncomeSetting
       : 0;
 
-    const { data: activeSubscription } = await supabase
-      .from('tbl_user_subscriptions')
-      .select('tus_id')
-      .eq('tus_user_id', userId)
-      .eq('tus_plan_id', registrationPlan.tsp_id)
-      .eq('tus_status', 'active')
-      .maybeSingle();
+    const { data: hasActiveSamePlanEarly, error: samePlanEarlyCheckError } = await supabase.rpc(
+      'user_has_active_same_plan_package',
+      {
+        p_user_id: userId,
+        p_plan_id: registrationPlan.tsp_id,
+      }
+    );
+
+    if (samePlanEarlyCheckError) {
+      throw samePlanEarlyCheckError;
+    }
 
     const { data: existingPayment } = await supabase
       .from('tbl_payments')
@@ -367,10 +371,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (activeSubscription && !existingPayment) {
+    if (hasActiveSamePlanEarly === true && !existingPayment) {
       return new Response(JSON.stringify({
         success: false,
-        error: 'Registration payment already completed for this account'
+        error: 'Customer already has an active package for this plan. They can renew it after exhaustion.'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -635,43 +639,41 @@ Deno.serve(async (req: Request) => {
         ? new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000)
         : new Date('9999-12-31T23:59:59.999Z'); // lifetime
 
-    const { data: existingSubscription } = await supabase
-      .from('tbl_user_subscriptions')
-      .select('tus_id, tus_status')
-      .eq('tus_user_id', userId)
-      .eq('tus_plan_id', registrationPlan.tsp_id)
-      .maybeSingle();
+    const { data: hasActiveSamePlan, error: samePlanCheckError } = await supabase.rpc(
+      'user_has_active_same_plan_package',
+      {
+        p_user_id: userId,
+        p_plan_id: registrationPlan.tsp_id,
+      }
+    );
 
-    let subscriptionId = existingSubscription?.tus_id || null;
-
-    if (existingSubscription) {
-      await supabase
-        .from('tbl_user_subscriptions')
-        .update({
-          tus_status: 'active',
-          tus_start_date: startDate.toISOString(),
-          tus_end_date: endDate.toISOString(),
-          tus_payment_amount: expectedAmount,
-          tus_plan_phase: planPhase
-        })
-        .eq('tus_id', existingSubscription.tus_id);
-    } else {
-      const { data: newSubscription } = await supabase
-        .from('tbl_user_subscriptions')
-        .insert({
-          tus_user_id: userId,
-          tus_plan_id: registrationPlan.tsp_id,
-          tus_status: 'active',
-          tus_start_date: startDate.toISOString(),
-          tus_end_date: endDate.toISOString(),
-          tus_payment_amount: expectedAmount,
-          tus_plan_phase: planPhase
-        })
-        .select()
-        .single();
-
-      subscriptionId = newSubscription?.tus_id || null;
+    if (samePlanCheckError) {
+      throw samePlanCheckError;
     }
+
+    if (hasActiveSamePlan === true) {
+      throw new Error('Customer already has an active package for this plan. They can renew it after exhaustion.');
+    }
+
+    const { data: newSubscription, error: newSubscriptionError } = await supabase
+      .from('tbl_user_subscriptions')
+      .insert({
+        tus_user_id: userId,
+        tus_plan_id: registrationPlan.tsp_id,
+        tus_status: 'active',
+        tus_start_date: startDate.toISOString(),
+        tus_end_date: endDate.toISOString(),
+        tus_payment_amount: expectedAmount,
+        tus_plan_phase: planPhase
+      })
+      .select()
+      .single();
+
+    if (newSubscriptionError) {
+      throw newSubscriptionError;
+    }
+
+    const subscriptionId = newSubscription?.tus_id || null;
 
     // Parent A/C income + MLM level rewards
     const paymentAmount = expectedAmount;

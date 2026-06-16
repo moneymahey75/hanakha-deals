@@ -13,7 +13,19 @@ interface SubscriptionPlan {
   tsp_duration_days: number;
   tsp_features: any;
   tsp_is_active: boolean;
+  tsp_plan_phase?: string | null;
   tsp_created_at: string;
+}
+
+interface ActivePackage {
+  tus_plan_id: string;
+  tus_payment_amount: number | null;
+  tus_plan_phase?: string | null;
+  plan?: {
+    tsp_id: string;
+    tsp_price: number | null;
+    tsp_plan_phase?: string | null;
+  } | null;
 }
 
 const SubscriptionPlans: React.FC = () => {
@@ -22,6 +34,7 @@ const SubscriptionPlans: React.FC = () => {
   const launchPhase = (settings?.launchPhase || 'prelaunch') as 'prelaunch' | 'launched';
   const navigate = useNavigate();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [activePackages, setActivePackages] = useState<ActivePackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +42,11 @@ const SubscriptionPlans: React.FC = () => {
     loadPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launchPhase]);
+
+  useEffect(() => {
+    loadActivePackages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, launchPhase]);
 
   const loadPlans = async () => {
     try {
@@ -123,8 +141,71 @@ const SubscriptionPlans: React.FC = () => {
     }
   };
 
+  const loadActivePackages = async () => {
+    if (!user?.id || launchPhase !== 'launched') {
+      setActivePackages([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('tbl_user_subscriptions')
+        .select(`
+          tus_plan_id,
+          tus_payment_amount,
+          tus_plan_phase,
+          plan:tus_plan_id(
+            tsp_id,
+            tsp_price,
+            tsp_plan_phase
+          )
+        `)
+        .eq('tus_user_id', user.id)
+        .in('tus_status', ['active', 'upgraded'])
+        .is('tus_exhausted_at', null);
+
+      if (error) throw error;
+
+      setActivePackages((data || []).map((row: any) => ({
+        tus_plan_id: row.tus_plan_id,
+        tus_payment_amount: row.tus_payment_amount == null ? null : Number(row.tus_payment_amount),
+        tus_plan_phase: row.tus_plan_phase,
+        plan: row.plan
+          ? {
+              tsp_id: row.plan.tsp_id,
+              tsp_price: row.plan.tsp_price == null ? null : Number(row.plan.tsp_price),
+              tsp_plan_phase: row.plan.tsp_plan_phase,
+            }
+          : null,
+      })));
+    } catch (error) {
+      console.error('Failed to load active packages:', error);
+      setActivePackages([]);
+    }
+  };
+
+  const normalizeAmount = (value: number | null | undefined) => Number(Number(value || 0).toFixed(6));
+
+  const hasActiveSamePackage = (plan: SubscriptionPlan) => {
+    const planAmount = normalizeAmount(plan.tsp_price);
+    const planPhase = String(plan.tsp_plan_phase || 'prelaunch');
+
+    return activePackages.some((pkg) => {
+      const packageAmount = normalizeAmount(pkg.tus_payment_amount ?? pkg.plan?.tsp_price ?? 0);
+      const packagePhase = String(pkg.tus_plan_phase || pkg.plan?.tsp_plan_phase || 'prelaunch');
+
+      return pkg.tus_plan_id === plan.tsp_id || (packagePhase === planPhase && packageAmount === planAmount);
+    });
+  };
+
   const handleSelectPlan = (planId: string) => {
     console.log('🎯 Plan selected:', planId);
+    const selectedPlan = plans.find(p => p.tsp_id === planId);
+
+    if (selectedPlan && hasActiveSamePackage(selectedPlan)) {
+      alert('You already have an active package for this plan. You can renew it after the current package is exhausted.');
+      return;
+    }
     
     if (!user) {
       console.log('👤 User not logged in, redirecting to login with plan selection');
@@ -143,7 +224,7 @@ const SubscriptionPlans: React.FC = () => {
       state: { 
         selectedPlanId: planId, 
         fromPlanSelection: true,
-        selectedPlan: plans.find(p => p.tsp_id === planId)
+        selectedPlan
       } 
     });
   };
@@ -224,15 +305,29 @@ const SubscriptionPlans: React.FC = () => {
           </div>
         ) : plans.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {plans.map((plan, index) => (
+            {plans.map((plan, index) => {
+              const alreadyActive = hasActiveSamePackage(plan);
+
+              return (
               <div
                 key={plan.tsp_id}
-                className={`bg-white rounded-2xl shadow-xl border-2 p-8 relative transform transition-all duration-300 hover:scale-105 hover:shadow-2xl ${
-                  index === 1 ? 'border-indigo-500 ring-4 ring-indigo-200' : 'border-gray-200 hover:border-indigo-300'
+                className={`bg-white rounded-2xl shadow-xl border-2 p-8 relative transform transition-all duration-300 ${
+                  alreadyActive
+                    ? 'border-emerald-300 opacity-75'
+                    : index === 1
+                      ? 'border-indigo-500 ring-4 ring-indigo-200 hover:scale-105 hover:shadow-2xl'
+                      : 'border-gray-200 hover:border-indigo-300 hover:scale-105 hover:shadow-2xl'
                 }`}
               >
                 {/* Popular Badge */}
-                {index === 1 && (
+                {alreadyActive ? (
+                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                    <div className="bg-emerald-600 text-white px-6 py-2 rounded-full text-sm font-bold flex items-center space-x-2 shadow-lg">
+                      <CheckCircle className="h-4 w-4" />
+                      <span>Active Package</span>
+                    </div>
+                  </div>
+                ) : index === 1 && (
                   <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                     <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-full text-sm font-bold flex items-center space-x-2 shadow-lg">
                       <Star className="h-4 w-4" />
@@ -300,30 +395,38 @@ const SubscriptionPlans: React.FC = () => {
                 {/* Select Button */}
                 <button
                   onClick={() => handleSelectPlan(plan.tsp_id)}
-                  className={`w-full py-4 px-6 rounded-xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl transform hover:-translate-y-1 ${
-                    index === 1
+                  disabled={alreadyActive}
+                  className={`w-full py-4 px-6 rounded-xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg ${
+                    alreadyActive
+                      ? 'cursor-not-allowed bg-emerald-100 text-emerald-800 shadow-none'
+                      : index === 1
                       ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
                       : 'bg-gradient-to-r from-gray-800 to-gray-900 text-white hover:from-gray-900 hover:to-black'
                   }`}
                 >
-                  <CreditCard className="h-5 w-5" />
+                  {alreadyActive ? <CheckCircle className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
                   <span>
-                    {user 
+                    {alreadyActive
+                      ? 'Already Active'
+                      : user 
                       ? `Pay ${plan.tsp_price} USDT - Select Plan`
                       : `Select ${plan.tsp_name} - ${plan.tsp_price} USDT`
                     }
                   </span>
-                  <ArrowRight className="h-5 w-5" />
+                  {!alreadyActive && <ArrowRight className="h-5 w-5" />}
                 </button>
 
                 {/* Plan Benefits */}
                 <div className="mt-4 text-center">
                   <p className="text-xs text-gray-500">
-                    ✓ Instant activation • ✓ 24/7 support • ✓ USDT payments
+                    {alreadyActive
+                      ? 'Renewal opens after this package is exhausted.'
+                      : '✓ Instant activation • ✓ 24/7 support • ✓ USDT payments'}
                   </p>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         ) : (
           <div className="text-center py-12">
