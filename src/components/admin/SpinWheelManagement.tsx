@@ -66,6 +66,8 @@ const toServerTimestamp = (value: string) => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
+const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
 const getUserName = (row?: { tbl_users?: Assignment['tbl_users'] }) => {
   const profile = row?.tbl_users?.tbl_user_profiles?.[0];
   const name = `${profile?.tup_first_name || ''} ${profile?.tup_last_name || ''}`.trim();
@@ -154,6 +156,21 @@ const SpinWheelManagement: React.FC = () => {
 
   const handleSaveCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
+    const startDate = startAt ? new Date(startAt) : null;
+    const endDate = endAt ? new Date(endAt) : null;
+
+    if (startDate && endDate) {
+      if (endDate.getTime() <= startDate.getTime()) {
+        notification.showError('Invalid dates', 'End date must be after start date.');
+        return;
+      }
+
+      if (endDate.getTime() - startDate.getTime() > TWO_DAYS_MS) {
+        notification.showError('Invalid campaign window', 'Spin wheel can be enabled for 2 days only.');
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       await adminApi.post('admin-spin-wheel', {
@@ -270,7 +287,7 @@ const SpinWheelManagement: React.FC = () => {
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Campaign Settings</h3>
-            <p className="text-sm text-gray-500">Available only after launch phase is set to Launch.</p>
+            <p className="text-sm text-gray-500">Available only before launch for a maximum 2-day campaign window.</p>
           </div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
             <input

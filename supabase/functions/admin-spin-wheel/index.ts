@@ -48,6 +48,8 @@ const getCampaign = async (supabase: ReturnType<typeof createClient>) => {
   return existing;
 };
 
+const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -142,6 +144,10 @@ Deno.serve(async (req: Request) => {
 
       if (startAt && endAt && new Date(endAt).getTime() <= new Date(startAt).getTime()) {
         return jsonResponse({ success: false, error: 'End date must be after start date.' }, 400);
+      }
+
+      if (startAt && endAt && new Date(endAt).getTime() - new Date(startAt).getTime() > TWO_DAYS_MS) {
+        return jsonResponse({ success: false, error: 'Spin wheel can be enabled for 2 days only.' }, 400);
       }
 
       const current = await getCampaign(supabase);

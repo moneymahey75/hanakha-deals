@@ -9,6 +9,7 @@ type RewardCouponStatus = 'available' | 'opened' | 'liked' | 'disliked' | 'expir
 interface RewardCoupon {
   assignment_id: string;
   coupon_id: string;
+  subscription_id?: string | null;
   title: string;
   description?: string | null;
   coupon_code?: string | null;
@@ -18,7 +19,10 @@ interface RewardCoupon {
   reward_date: string;
   day_number: number;
   daily_target_amount: number;
+  package_plan_amount?: number;
+  package_daily_target_amount?: number;
   assigned_total_amount: number;
+  total_daily_target_amount?: number;
   status: RewardCouponStatus;
   opened_at?: string | null;
   reaction_available_at?: string | null;
@@ -228,12 +232,15 @@ const DailyTasksDashboard: React.FC = () => {
         ...row,
         reward_amount: Number(row.reward_amount || 0),
         daily_target_amount: Number(row.daily_target_amount || 0),
-          assigned_total_amount: Number(row.assigned_total_amount || 0),
-          day_number: Number(row.day_number || 0),
-          timer_seconds: Number(row.timer_seconds ?? 30),
-          feedback_enabled: Boolean(row.feedback_enabled ?? false),
-          feedback_samples: normalizeFeedbackSamples(row.feedback_samples),
-          coupon_valid_until: row.coupon_valid_until ?? null,
+        package_plan_amount: Number(row.package_plan_amount ?? 0),
+        package_daily_target_amount: Number(row.package_daily_target_amount ?? row.daily_target_amount ?? 0),
+        assigned_total_amount: Number(row.assigned_total_amount || 0),
+        total_daily_target_amount: Number(row.total_daily_target_amount ?? row.daily_target_amount ?? 0),
+        day_number: Number(row.day_number || 0),
+        timer_seconds: Number(row.timer_seconds ?? 30),
+        feedback_enabled: Boolean(row.feedback_enabled ?? false),
+        feedback_samples: normalizeFeedbackSamples(row.feedback_samples),
+        coupon_valid_until: row.coupon_valid_until ?? null,
         is_expired: Boolean(row.is_expired ?? row.status === 'expired'),
         site_visited_at: row.site_visited_at ?? null,
         rating: row.rating == null ? null : Number(row.rating),
@@ -424,7 +431,7 @@ const DailyTasksDashboard: React.FC = () => {
     (coupon) => (coupon.status === 'available' || coupon.status === 'opened') && !isAvailableCouponExpired(coupon)
   );
   const openedCoupon = coupons.find((coupon) => coupon.status === 'opened');
-  const dailyTarget = todayCoupons[0]?.daily_target_amount || coupons[0]?.daily_target_amount || 0;
+  const dailyTarget = todayCoupons[0]?.total_daily_target_amount || coupons[0]?.total_daily_target_amount || todayCoupons[0]?.daily_target_amount || coupons[0]?.daily_target_amount || 0;
   const assignedTotal = todayCoupons[0]?.assigned_total_amount || 0;
   const isHistoryFilter = filter === 'liked' || filter === 'disliked';
   const historyPage = isHistoryFilter ? historyPages[filter] : 1;
@@ -550,6 +557,11 @@ const DailyTasksDashboard: React.FC = () => {
                           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold capitalize text-gray-700">
                             {coupon.is_expired ? 'expired' : coupon.status}
                           </span>
+                          {Number(coupon.package_plan_amount || 0) > 0 && (
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                              {formatAmount(Number(coupon.package_plan_amount || 0))} Package
+                            </span>
+                          )}
                         </div>
                         {renderDescription(coupon.description)}
                         {isCompletedCoupon && renderRatingStars(coupon.rating)}
@@ -571,7 +583,9 @@ const DailyTasksDashboard: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2 text-gray-600">
                         <Wallet className="h-4 w-4" />
-                        ROI Wallet
+                        {Number(coupon.package_plan_amount || 0) > 0
+                          ? `${formatAmount(Number(coupon.package_plan_amount || 0))} Package`
+                          : 'ROI Wallet'}
                       </div>
                     </div>
 
@@ -655,6 +669,11 @@ const DailyTasksDashboard: React.FC = () => {
 	              <div>
 	                <h4 className="text-lg font-semibold text-gray-900">How is this coupon code?</h4>
 	                <p className="mt-1 text-sm text-gray-600">{feedbackCoupon.title}</p>
+                  {Number(feedbackCoupon.package_plan_amount || 0) > 0 && (
+                    <p className="mt-1 text-xs font-semibold text-indigo-700">
+                      {formatAmount(Number(feedbackCoupon.package_plan_amount || 0))} package coupon
+                    </p>
+                  )}
 	              </div>
 	            </div>
 

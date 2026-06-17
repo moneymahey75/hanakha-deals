@@ -268,7 +268,7 @@ const SpinWheel: React.FC = () => {
             <div className="rounded-lg border border-teal-100 bg-white/80 p-5 shadow-sm">
               <p className="text-sm font-semibold text-teal-900">Spin Rule</p>
               <p className="mt-1 text-sm text-teal-700">
-                Each customer can spin only once. The result is saved permanently after the wheel stops.
+                Each customer can spin only once. Prize rewards are added to reserved balance for upgrades and expire after 72 hours if unused.
               </p>
             </div>
 
@@ -277,7 +277,7 @@ const SpinWheel: React.FC = () => {
                 <p className="font-semibold text-gray-900">You have already used your spin.</p>
                 <p className="mt-1 text-sm text-gray-600">
                   {Number(status.prizeAmount || 0) > 0
-                    ? `Your prize was ${Number(status.prizeAmount || 0).toFixed(2)} USDT.`
+                    ? `Your prize was ${Number(status.prizeAmount || 0).toFixed(2)} USDT reserved for upgrade. Unused reward expires after 72 hours.`
                     : 'Better luck next time.'}
                 </p>
               </div>
@@ -316,7 +316,7 @@ const SpinWheel: React.FC = () => {
             </h3>
             <p className="mt-2 text-gray-600">
               {hasWon
-                ? `${Number(result.prizeAmount || 0).toFixed(2)} USDT has been added to your reserved wallet for upgrade.`
+                ? `${Number(result.prizeAmount || 0).toFixed(2)} USDT has been added to your reserved wallet for upgrade. Use it within 72 hours.`
                 : 'Your spin has been recorded.'}
             </p>
             <button
