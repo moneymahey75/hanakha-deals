@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, RefreshCw } from 'lucide-react';
 import { getReferralNetworkPage } from '../../lib/supabase';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
@@ -34,53 +34,72 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
   const [searchTerm, setSearchTerm] = useState('');
-  const [maxLevels, setMaxLevels] = useState(10);
+  const [maxLevels, setMaxLevels] = useState(100);
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
+  const [networkSummary, setNetworkSummary] = useState({
+    totalNetwork: 0,
+    directReferrals: 0,
+    maxDepth: 0
+  });
+  const [hasNextPage, setHasNextPage] = useState(false);
   const topRef = useScrollToTopOnChange([page], { smooth: true });
   const VIEW_STORAGE_KEY = 'customer.network.viewMode';
 
-  const loadPage = async (opts?: { resetPage?: boolean }) => {
+  const loadPage = useCallback(async (nextPage: number) => {
     if (!userId) return;
     setLoading(true);
     setError(null);
     try {
-      const nextPage = opts?.resetPage ? 1 : page;
-      const offset = (nextPage - 1) * pageSize;
+      const safePage = Math.max(1, nextPage);
+      const offset = (safePage - 1) * pageSize;
+      const requestedLimit = pageSize < 100 ? pageSize + 1 : pageSize;
       const data = await getReferralNetworkPage({
         userId,
         maxLevels,
         level: levelFilter,
         searchTerm: searchTerm.trim() || null,
         offset,
-        limit: pageSize
+        limit: requestedLimit
       });
-      setRows((data || []) as ReferralRow[]);
-      if (opts?.resetPage) setPage(1);
+      const fetchedRows = (data || []) as ReferralRow[];
+      const nextRows = fetchedRows.slice(0, pageSize);
+      const hasMore = fetchedRows.length > pageSize;
+      const firstRow = fetchedRows[0];
+      const reportedTotal = Number(firstRow?.total_count ?? 0);
+      const knownMinimumTotal = offset + nextRows.length + (hasMore ? 1 : 0);
+
+      setRows(nextRows);
+      setHasNextPage(hasMore);
+      setNetworkSummary({
+        totalNetwork: Math.max(reportedTotal, knownMinimumTotal),
+        directReferrals: Number(firstRow?.direct_referrals ?? 0),
+        maxDepth: Number(firstRow?.max_depth ?? 0)
+      });
     } catch (e: any) {
       setError(e?.message || 'Failed to load referrals');
       setRows([]);
+      setHasNextPage(false);
+      setNetworkSummary({
+        totalNetwork: 0,
+        directReferrals: 0,
+        maxDepth: 0
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [levelFilter, maxLevels, pageSize, searchTerm, userId]);
 
-  const refresh = async () => loadPage();
-
-  useEffect(() => {
-    loadPage({ resetPage: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, maxLevels, levelFilter, pageSize]);
+  const refresh = async () => loadPage(page);
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm]);
+  }, [userId, maxLevels, levelFilter, pageSize, searchTerm]);
 
   useEffect(() => {
-    loadPage({ resetPage: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm]);
+    loadPage(page);
+  }, [loadPage, page]);
 
   useEffect(() => {
     try {
@@ -154,17 +173,12 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
     return node.parent_sponsorship_number || node.parent_user_id;
   };
 
-  const totalNetwork = rows[0]?.total_count ?? 0;
-  const directReferrals = rows[0]?.direct_referrals ?? 0;
-  const maxDepth = rows[0]?.max_depth ?? 0;
+  const totalNetwork = networkSummary.totalNetwork;
+  const directReferrals = networkSummary.directReferrals;
+  const maxDepth = networkSummary.maxDepth;
   const totalPages = useMemo(() => Math.max(1, Math.ceil(totalNetwork / pageSize)), [totalNetwork, pageSize]);
   const canPrev = page > 1;
-  const canNext = page < totalPages;
-
-  useEffect(() => {
-    loadPage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  const canNext = page < totalPages || hasNextPage;
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
@@ -182,7 +196,10 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           <div className="flex items-center gap-2">
             <input
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
               placeholder="Search..."
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white w-44 md:w-56"
             />
@@ -190,10 +207,14 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           <div className="flex items-center gap-2">
             <select
               value={maxLevels}
-              onChange={(e) => setMaxLevels(Number(e.target.value))}
+              onChange={(e) => {
+                setMaxLevels(Number(e.target.value));
+                setPage(1);
+              }}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
               title="How deep to traverse"
             >
+              <option value={100}>All depth</option>
               <option value={5}>Depth 5</option>
               <option value={10}>Depth 10</option>
               <option value={20}>Depth 20</option>
@@ -203,7 +224,10 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           <div className="flex items-center gap-2">
             <select
               value={levelFilter ?? ''}
-              onChange={(e) => setLevelFilter(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => {
+                setLevelFilter(e.target.value ? Number(e.target.value) : null);
+                setPage(1);
+              }}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
               title="Filter by a single level"
             >
@@ -232,7 +256,10 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           <div className="flex items-center gap-2">
             <select
               value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
               title="Rows per page"
             >
