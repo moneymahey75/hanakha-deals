@@ -78,6 +78,16 @@ interface WalletConnection {
     tuwc_last_connected_at?: string | null;
 }
 
+interface WalletEditForm {
+    walletConnectionId: string | null;
+    walletAddress: string;
+    walletName: string;
+    walletType: string;
+    chainId: string;
+    isDefault: boolean;
+    isActive: boolean;
+}
+
 interface WalletTotals {
     walletBalance: number;
     withdrawableBalance: number;
@@ -917,6 +927,8 @@ const CustomerDetails: React.FC<{
     const [walletTxPage, setWalletTxPage] = useState(1);
     const [walletTxPageSize, setWalletTxPageSize] = useState(10);
     const [walletTxTotalCount, setWalletTxTotalCount] = useState(0);
+    const [walletEditForm, setWalletEditForm] = useState<WalletEditForm | null>(null);
+    const [walletSaving, setWalletSaving] = useState(false);
     const [loading, setLoading] = useState(false);
     const walletTxTopRef = useScrollToTopOnChange([walletTxPage], { smooth: true });
     const [editData, setEditData] = useState({
@@ -1025,6 +1037,60 @@ const CustomerDetails: React.FC<{
             setWalletTxTotalCount(0);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const startWalletEdit = (wallet?: WalletConnection) => {
+        setWalletEditForm({
+            walletConnectionId: wallet?.tuwc_id || null,
+            walletAddress: wallet?.tuwc_wallet_address || '',
+            walletName: wallet?.tuwc_wallet_name || 'Admin Updated Wallet',
+            walletType: wallet?.tuwc_wallet_type || 'web3',
+            chainId: wallet?.tuwc_chain_id != null ? String(wallet.tuwc_chain_id) : '',
+            isDefault: wallet?.tuwc_is_default ?? true,
+            isActive: wallet?.tuwc_is_active ?? true,
+        });
+    };
+
+    const cancelWalletEdit = () => {
+        setWalletEditForm(null);
+    };
+
+    const handleSaveWalletAddress = async () => {
+        if (!walletEditForm) return;
+
+        const trimmedAddress = walletEditForm.walletAddress.trim();
+        if (!/^0x[a-fA-F0-9]{40}$/.test(trimmedAddress)) {
+            notification.showError('Invalid Wallet Address', 'Enter a valid EVM wallet address.');
+            return;
+        }
+
+        if (walletEditForm.chainId.trim() && !Number.isFinite(Number(walletEditForm.chainId))) {
+            notification.showError('Invalid Chain ID', 'Chain ID must be a number.');
+            return;
+        }
+
+        try {
+            setWalletSaving(true);
+            await adminApi.post('admin-update-customer-wallet', {
+                userId: customer.tu_id,
+                walletConnectionId: walletEditForm.walletConnectionId,
+                walletAddress: trimmedAddress,
+                walletName: walletEditForm.walletName.trim() || 'Admin Updated Wallet',
+                walletType: walletEditForm.walletType.trim() || 'web3',
+                chainId: walletEditForm.chainId.trim() ? Number(walletEditForm.chainId) : null,
+                isDefault: walletEditForm.isDefault,
+                isActive: walletEditForm.isActive,
+            });
+
+            setWalletEditForm(null);
+            await loadWalletDetails();
+            notification.showSuccess('Wallet Updated', 'Customer wallet address has been updated successfully');
+        } catch (error: any) {
+            console.error('Failed to update customer wallet:', error);
+            notification.showError('Wallet Update Failed', error?.message || 'Failed to update customer wallet address');
+        } finally {
+            setWalletSaving(false);
         }
     };
 
@@ -1532,10 +1598,121 @@ const CustomerDetails: React.FC<{
                                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                                     <div className="flex items-center justify-between mb-3">
                                         <div className="text-sm font-semibold text-gray-900">Connected Wallet Addresses</div>
-                                        <div className="text-xs text-gray-500">
-                                            Total: {walletDetails.walletConnections.length}
+                                        <div className="flex items-center gap-3">
+                                            <div className="text-xs text-gray-500">
+                                                Total: {walletDetails.walletConnections.length}
+                                            </div>
+                                            {hasPermission('wallets' as any, 'write') && !walletEditForm && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startWalletEdit()}
+                                                    className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                                                >
+                                                    <Edit className="h-3.5 w-3.5" />
+                                                    <span>Add Wallet</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
+
+                                    {walletEditForm && (
+                                        <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                                            <div className="mb-3 flex items-center justify-between">
+                                                <div className="text-sm font-semibold text-blue-900">
+                                                    {walletEditForm.walletConnectionId ? 'Update Wallet Address' : 'Add Wallet Address'}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={cancelWalletEdit}
+                                                    className="rounded-md p-1 text-blue-700 hover:bg-blue-100"
+                                                    title="Cancel"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                                <div className="lg:col-span-2">
+                                                    <label className="text-xs font-medium text-blue-900">Wallet Address</label>
+                                                    <input
+                                                        type="text"
+                                                        value={walletEditForm.walletAddress}
+                                                        onChange={(e) => setWalletEditForm(prev => prev ? ({ ...prev, walletAddress: e.target.value }) : prev)}
+                                                        className="mt-1 block w-full rounded-lg border border-blue-200 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="0x..."
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-blue-900">Wallet Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={walletEditForm.walletName}
+                                                        onChange={(e) => setWalletEditForm(prev => prev ? ({ ...prev, walletName: e.target.value }) : prev)}
+                                                        className="mt-1 block w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="Wallet name"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-blue-900">Wallet Type</label>
+                                                    <input
+                                                        type="text"
+                                                        value={walletEditForm.walletType}
+                                                        onChange={(e) => setWalletEditForm(prev => prev ? ({ ...prev, walletType: e.target.value }) : prev)}
+                                                        className="mt-1 block w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="web3"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-blue-900">Chain ID</label>
+                                                    <input
+                                                        type="number"
+                                                        value={walletEditForm.chainId}
+                                                        onChange={(e) => setWalletEditForm(prev => prev ? ({ ...prev, chainId: e.target.value }) : prev)}
+                                                        className="mt-1 block w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="56"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-6 pt-6">
+                                                    <label className="inline-flex items-center gap-2 text-sm text-blue-900">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={walletEditForm.isDefault}
+                                                            onChange={(e) => setWalletEditForm(prev => prev ? ({ ...prev, isDefault: e.target.checked }) : prev)}
+                                                            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                        <span>Default</span>
+                                                    </label>
+                                                    <label className="inline-flex items-center gap-2 text-sm text-blue-900">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={walletEditForm.isActive}
+                                                            onChange={(e) => setWalletEditForm(prev => prev ? ({ ...prev, isActive: e.target.checked }) : prev)}
+                                                            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                        <span>Active</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 flex justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={cancelWalletEdit}
+                                                    disabled={walletSaving}
+                                                    className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSaveWalletAddress}
+                                                    disabled={walletSaving}
+                                                    className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    <Save className="h-4 w-4" />
+                                                    <span>{walletSaving ? 'Saving...' : 'Save Wallet'}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {walletDetails.walletConnections.length > 0 ? (
                                         <div className="space-y-3">
@@ -1573,6 +1750,17 @@ const CustomerDetails: React.FC<{
                                                             <span>Last: {new Date(w.tuwc_last_connected_at).toLocaleString()}</span>
                                                         ) : (
                                                             <span>Never connected</span>
+                                                        )}
+                                                        {hasPermission('wallets' as any, 'write') && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => startWalletEdit(w)}
+                                                                disabled={walletSaving}
+                                                                className="mt-2 ml-auto flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                <Edit className="h-3.5 w-3.5" />
+                                                                <span>Edit</span>
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </div>

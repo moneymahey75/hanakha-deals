@@ -57,6 +57,10 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+[functions.admin-update-customer-wallet]
+enabled = true
+verify_jwt = false
+
 [functions.admin-delete-sub-admin]
 enabled = true
 verify_jwt = false
