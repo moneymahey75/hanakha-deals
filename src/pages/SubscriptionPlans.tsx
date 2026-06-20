@@ -21,6 +21,7 @@ interface ActivePackage {
   tus_plan_id: string;
   tus_payment_amount: number | null;
   tus_plan_phase?: string | null;
+  tus_package_kind?: 'registration' | 'upgrade' | 'renew' | null;
   plan?: {
     tsp_id: string;
     tsp_price: number | null;
@@ -154,6 +155,7 @@ const SubscriptionPlans: React.FC = () => {
           tus_plan_id,
           tus_payment_amount,
           tus_plan_phase,
+          tus_package_kind,
           plan:tus_plan_id(
             tsp_id,
             tsp_price,
@@ -170,6 +172,7 @@ const SubscriptionPlans: React.FC = () => {
         tus_plan_id: row.tus_plan_id,
         tus_payment_amount: row.tus_payment_amount == null ? null : Number(row.tus_payment_amount),
         tus_plan_phase: row.tus_plan_phase,
+        tus_package_kind: row.tus_package_kind,
         plan: row.plan
           ? {
               tsp_id: row.plan.tsp_id,
