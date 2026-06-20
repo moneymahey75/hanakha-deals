@@ -33,6 +33,7 @@ interface GeneralSettings {
   afterLaunchPlanConfig?: any;
   launchPhase?: 'prelaunch' | 'launched';
   siteMode?: 'live' | 'development';
+  captchaVerificationEnabled: boolean;
   emailVerificationRequired: boolean;
   mobileVerificationRequired: boolean;
   eitherVerificationRequired: boolean;
@@ -119,6 +120,17 @@ const defaultPaymentWalletsEnabled = {
   bitget: true
 };
 
+const toBooleanSetting = (value: unknown, defaultValue = false): boolean => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(/^"|"$/g, '').toLowerCase();
+    if (['false', '0', 'off', 'disabled', 'no'].includes(normalized)) return false;
+    if (['true', '1', 'on', 'enabled', 'yes'].includes(normalized)) return true;
+  }
+  return defaultValue;
+};
+
 interface SubscriptionPlan {
   id: string;
   name: string;
@@ -184,6 +196,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     afterLaunchPlanConfig: null,
     launchPhase: 'prelaunch',
     siteMode: 'live',
+    captchaVerificationEnabled: true,
     emailVerificationRequired: true,
     mobileVerificationRequired: true,
     eitherVerificationRequired: true,
@@ -442,6 +455,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 loadedSettings.siteMode = mode === 'development' ? 'development' : 'live';
                 break;
               }
+              case 'captcha_verification_enabled':
+                loadedSettings.captchaVerificationEnabled = toBooleanSetting(value, true);
+                break;
               case 'email_verification_required':
                 loadedSettings.emailVerificationRequired = value;
                 break;

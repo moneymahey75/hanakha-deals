@@ -60,17 +60,25 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const isDevelopmentMode = (settings.siteMode || 'live') === 'development';
+  const isCaptchaEnabled = settings.captchaVerificationEnabled !== false;
   const [resolvedSiteKey, setResolvedSiteKey] = useState(siteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY || '');
 
   useEffect(() => {
-    if (isDevelopmentMode) return;
+    if (!isCaptchaEnabled || isDevelopmentMode) return;
     if (resolvedSiteKey) return;
     fetchTurnstileSiteKey().then((key) => {
       if (key) setResolvedSiteKey(key);
     });
-  }, [isDevelopmentMode, resolvedSiteKey]);
+  }, [isCaptchaEnabled, isDevelopmentMode, resolvedSiteKey]);
 
   useEffect(() => {
+    if (!isCaptchaEnabled) {
+      setIsVerified(true);
+      setLoadError('');
+      onVerify('captcha-disabled');
+      return;
+    }
+
     if (isDevelopmentMode) return;
 
     let cancelled = false;
@@ -122,7 +130,7 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
         widgetIdRef.current = null;
       }
     };
-  }, [containerId, isDevelopmentMode, onVerify, resolvedSiteKey]);
+  }, [containerId, isCaptchaEnabled, isDevelopmentMode, onVerify, resolvedSiteKey]);
 
   const handleMockVerification = async () => {
     setIsLoading(true);
@@ -136,10 +144,23 @@ const ReCaptcha: React.FC<ReCaptchaProps> = ({ onVerify, siteKey }) => {
   const handleReset = () => {
     setIsVerified(false);
     onVerify(null);
-    if (!isDevelopmentMode && widgetIdRef.current && window.turnstile) {
+    if (isCaptchaEnabled && !isDevelopmentMode && widgetIdRef.current && window.turnstile) {
       window.turnstile.reset(widgetIdRef.current);
     }
   };
+
+  if (!isCaptchaEnabled) {
+    return (
+      <div className="flex justify-center">
+        <div className="w-full max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+          <div className="flex items-center justify-center space-x-2 text-xs text-amber-700">
+            <CheckCircle className="h-4 w-4" />
+            <span>Captcha verification is disabled</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isDevelopmentMode) {
     return (

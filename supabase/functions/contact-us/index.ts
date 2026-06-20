@@ -143,6 +143,29 @@ const getSetting = async (supabase: ReturnType<typeof createClient>, key: string
   return typeof value === 'string' ? value.trim() : '';
 };
 
+const getBooleanSetting = async (
+  supabase: ReturnType<typeof createClient>,
+  key: string,
+  defaultValue: boolean,
+): Promise<boolean> => {
+  const { data } = await supabase
+    .from('tbl_system_settings')
+    .select('tss_setting_value')
+    .eq('tss_setting_key', key)
+    .maybeSingle();
+
+  const value = data?.tss_setting_value;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(/^"|"$/g, '').toLowerCase();
+    if (['false', '0', 'off', 'disabled', 'no'].includes(normalized)) return false;
+    if (['true', '1', 'on', 'enabled', 'yes'].includes(normalized)) return true;
+  }
+
+  return defaultValue;
+};
+
 const verifyTurnstile = async (token: string, siteMode: string, remoteip: string | null) => {
   if (siteMode === 'development') {
     if (token.startsWith('mock-turnstile-token-') || token.startsWith('mock-recaptcha-token-')) {
@@ -235,12 +258,16 @@ Deno.serve(async (req: Request) => {
     if (!emailRegex.test(email) || email.length > 160) throw new Error('Please enter a valid email address');
     if (!subject || subject.length > 180) throw new Error('Please enter a valid subject');
     if (!message || message.length > 5000) throw new Error('Please enter a valid message');
-    if (!turnstileToken) throw new Error('Please complete the security verification');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const siteMode = (await getSetting(supabase, 'site_mode')) || 'live';
+    const captchaVerificationEnabled = await getBooleanSetting(supabase, 'captcha_verification_enabled', true);
     const remoteip = getIpFromHeaders(req.headers);
-    await verifyTurnstile(turnstileToken, siteMode, remoteip);
+
+    if (captchaVerificationEnabled) {
+      if (!turnstileToken) throw new Error('Please complete the security verification');
+      await verifyTurnstile(turnstileToken, siteMode, remoteip);
+    }
 
     const configuredAdminEmail = Deno.env.get('CONTACT_ADMIN_EMAIL') || Deno.env.get('ADMIN_CONTACT_EMAIL');
     const settingsContactEmail = await getSetting(supabase, 'contact_email');
