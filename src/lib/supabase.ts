@@ -627,20 +627,39 @@ export interface SponsorStatus {
   mobile_verified: boolean;
 }
 
+const getSponsorshipLookupVariants = (value: string): string[] => {
+  const cleaned = String(value || '').trim().replace(/[\s\u200B-\u200D\uFEFF]/g, '');
+  if (!cleaned) return [];
+
+  const withoutPrefix = cleaned.replace(/^sp/i, '');
+  const variants = [
+    cleaned,
+    withoutPrefix,
+    withoutPrefix ? `SP${withoutPrefix}` : '',
+  ];
+
+  return Array.from(new Set(variants.filter(Boolean)));
+};
+
 export const getSponsorStatusBySponsorshipNumber = async (sponsorshipNumber: string): Promise<SponsorStatus | null> => {
   try {
-    const { data, error } = await supabase
-      .rpc('get_sponsor_status_by_sponsorship_number', {
-        p_sponsorship_number: sponsorshipNumber
-      });
+    const variants = getSponsorshipLookupVariants(sponsorshipNumber);
 
-    if (error) {
-      console.error('RPC Error checking sponsor status:', error);
-      return null;
+    for (const variant of variants) {
+      const { data, error } = await supabase
+        .rpc('get_sponsor_status_by_sponsorship_number', {
+          p_sponsorship_number: variant
+        });
+
+      if (error) {
+        console.error('RPC Error checking sponsor status:', error);
+        continue;
+      }
+
+      if (data && data.length > 0) return data[0] as SponsorStatus;
     }
 
-    if (!data || data.length === 0) return null;
-    return data[0] as SponsorStatus;
+    return null;
   } catch (error) {
     console.error('Failed to check sponsor status:', error);
     return null;

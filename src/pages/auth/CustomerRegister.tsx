@@ -179,6 +179,7 @@ const CustomerRegister: React.FC = () => {
   const tooltipTimeout = useRef<NodeJS.Timeout>();
   const emailCheckSeq = useRef(0);
   const mobileCheckSeq = useRef(0);
+  const referralCheckSeq = useRef(0);
 
   // Initialize referral code from URL once
   useEffect(() => {
@@ -396,9 +397,12 @@ const CustomerRegister: React.FC = () => {
       return;
     }
 
+    const seq = ++referralCheckSeq.current;
     setValidatingReferral(true);
     try {
       const sponsor = await getSponsorStatusBySponsorshipNumber(referralCode);
+      if (seq !== referralCheckSeq.current) return;
+
       if (!sponsor) {
         setReferralValid(false);
         setReferralMessage('Invalid referral code');
@@ -424,12 +428,15 @@ const CustomerRegister: React.FC = () => {
       }
 
       setReferralValid(true);
-      setReferralMessage('Valid referral code ✓');
+      setReferralMessage('Valid referral code');
     } catch (error) {
+      if (seq !== referralCheckSeq.current) return;
       setReferralValid(false);
       setReferralMessage('Unable to validate referral code. Please try again.');
     } finally {
-      setValidatingReferral(false);
+      if (seq === referralCheckSeq.current) {
+        setValidatingReferral(false);
+      }
     }
   }, []);
 
@@ -886,6 +893,8 @@ const CustomerRegister: React.FC = () => {
           setError('Invalid referral code. Please check and try again.');
           return;
         }
+
+        finalParentAccount = sponsor.sponsorship_number || finalParentAccount;
 
         if (!sponsor.is_active) {
           setError('Parent A/C must be active to continue.');
