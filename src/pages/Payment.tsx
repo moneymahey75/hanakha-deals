@@ -11,6 +11,7 @@ import { WalletInfo as WalletInfoComponent } from '../components/payment/WalletI
 import { CheckCircle, CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle, Loader, XCircle, ExternalLink, Copy } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
 import { sendAccountEmail } from '../utils/accountEmails';
+import { getBscExplorerBaseUrl, getPaymentNetworkName } from '../utils/paymentMode';
 
 interface SubscriptionPlan {
   tsp_id: string;
@@ -93,11 +94,6 @@ const getWalletType = (provider: any): string => {
   ) return 'bitget';
   if (provider.isBinanceChain || provider.isBinance) return 'binance';
   return 'web3';
-};
-
-const isLivePaymentModeValue = (paymentMode: unknown): boolean => {
-  const normalized = String(paymentMode ?? '').trim().toLowerCase();
-  return paymentMode === true || paymentMode === 1 || normalized === '1' || normalized === 'true' || normalized === 'live' || normalized === 'mainnet';
 };
 
 const isWalletRequestAlreadyOpenMessage = (message: string): boolean => {
@@ -389,9 +385,7 @@ const Payment: React.FC = () => {
     return price > 0 && price < 1000000; // Reasonable upper limit
   };
 
-  const isLivePaymentMode = isLivePaymentModeValue(settings?.paymentMode);
-
-  const networkName = isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet';
+  const networkName = getPaymentNetworkName(settings?.paymentMode);
 
   const formatAddress = (address: string) => {
     if (!address) return '';
@@ -409,9 +403,7 @@ const Payment: React.FC = () => {
 
   const openTransaction = () => {
     if (!transaction.hash) return;
-    const explorerUrl = isLivePaymentMode
-      ? `https://bscscan.com/tx/${transaction.hash}`
-      : `https://testnet.bscscan.com/tx/${transaction.hash}`;
+    const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/tx/${transaction.hash}`;
     window.open(explorerUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -428,7 +420,7 @@ const Payment: React.FC = () => {
         txHash: details.txHash || null,
         amount: details.amount,
         reservedUsed: details.reservedUsed || 0,
-        network: isLivePaymentModeValue(settings?.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+        network: getPaymentNetworkName(settings?.paymentMode),
         planName: selectedPlan?.tsp_name,
       }
     });
@@ -502,7 +494,7 @@ const Payment: React.FC = () => {
       p_currency: 'USDT',
       p_transaction_id: recoveredHash,
       p_gateway_response: {
-        blockchain: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+        blockchain: getPaymentNetworkName(settings.paymentMode),
         usdt_contract: settings.usdtAddress,
         admin_wallet: attempt.toAddress,
         transaction_hash: recoveredHash,
@@ -545,7 +537,7 @@ const Payment: React.FC = () => {
       amount: selectedPlan.tsp_price,
       transactionHash: recoveredHash,
       reservedUsed: attempt.reservedUsed,
-      network: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+      network: getPaymentNetworkName(settings.paymentMode),
     });
     notification.showSuccess('Payment Recovered', 'TokenPocket payment was found and your upgrade has been activated.');
     goToPaymentSuccess({
@@ -960,7 +952,7 @@ const Payment: React.FC = () => {
           p_currency: 'USDT',
           p_transaction_id: hash,
           p_gateway_response: {
-            blockchain: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+            blockchain: getPaymentNetworkName(settings.paymentMode),
             usdt_contract: settings.usdtAddress,
             admin_wallet: adminReceivingWallet,
             transaction_hash: hash,
@@ -1002,7 +994,7 @@ const Payment: React.FC = () => {
           amount: selectedPlan.tsp_price,
           transactionHash: hash,
           reservedUsed: reservedUsedRounded,
-          network: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+          network: getPaymentNetworkName(settings.paymentMode),
         });
         notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance and USDT payment.');
         goToPaymentSuccess({
@@ -1136,7 +1128,7 @@ const Payment: React.FC = () => {
       setTransaction(finalTransactionState);
 
       const gatewayResponse = {
-        blockchain: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+        blockchain: getPaymentNetworkName(settings.paymentMode),
         usdt_contract: settings.usdtAddress,
         admin_wallet: adminReceivingWallet,
         transaction_hash: hash,
@@ -1192,7 +1184,7 @@ const Payment: React.FC = () => {
           planName: selectedPlan.tsp_name,
           amount: selectedPlan.tsp_price,
           transactionHash: hash,
-          network: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+          network: getPaymentNetworkName(settings.paymentMode),
         });
       }
 
@@ -1246,7 +1238,7 @@ const Payment: React.FC = () => {
               tp_transaction_id: transaction.hash,
               tp_error_message: errorMessage,
               tp_gateway_response: {
-                blockchain: isLivePaymentModeValue(settings.paymentMode) ? 'BSC Mainnet' : 'BSC Testnet',
+                blockchain: getPaymentNetworkName(settings.paymentMode),
                 usdt_contract: settings.usdtAddress,
                 admin_wallet: adminReceivingWallet,
                 transaction_hash: transaction.hash,

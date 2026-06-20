@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
 import { adminApi } from '../../lib/adminApi';
 import { Settings, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { isLivePaymentModeValue } from '../../utils/paymentMode';
 
 const defaultPaymentWalletsEnabled = {
     trust_wallet: true,
@@ -9,11 +10,6 @@ const defaultPaymentWalletsEnabled = {
     safepal: true,
     tokenpocket: true,
     bitget: true
-};
-
-const isLivePaymentModeValue = (paymentMode: unknown): boolean => {
-    const normalized = String(paymentMode ?? '').trim().toLowerCase();
-    return paymentMode === true || paymentMode === 1 || normalized === '1' || normalized === 'true' || normalized === 'live' || normalized === 'mainnet';
 };
 
 const PaymentSettings: React.FC = () => {

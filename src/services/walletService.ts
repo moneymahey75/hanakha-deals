@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { WalletInfo, WalletState } from '../types/wallet';
+import { getPaymentNetworkName, isLivePaymentModeValue } from '../utils/paymentMode';
 
 const WALLET_STATE_STORAGE_KEY = 'registration_payment_wallet_state';
 
@@ -229,10 +230,9 @@ export class WalletService {
   // Method to set admin settings from context
   setAdminSettings(settings: AdminSettings): void {
     this.adminSettings = settings;
-    const isLive = this.isLivePaymentMode(settings.paymentMode);
     console.log('Admin settings configured:', {
       paymentMode: settings.paymentMode,
-      network: isLive ? 'BSC Mainnet' : 'BSC Testnet',
+      network: getPaymentNetworkName(settings.paymentMode),
       usdtAddress: settings.usdtAddress?.substring(0, 10) + '...',
       subscriptionContract: settings.subscriptionContractAddress?.substring(0, 10) + '...',
       subscriptionWallet: settings.subscriptionWalletAddress?.substring(0, 10) + '...'
@@ -256,8 +256,7 @@ export class WalletService {
   }
 
   private isLivePaymentMode(paymentMode: AdminSettings['paymentMode'] | undefined | null): boolean {
-    const normalized = String(paymentMode ?? '').trim().toLowerCase();
-    return paymentMode === true || paymentMode === 1 || normalized === '1' || normalized === 'true' || normalized === 'live' || normalized === 'mainnet';
+    return isLivePaymentModeValue(paymentMode);
   }
 
   private getExpectedChainId(): number {

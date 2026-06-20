@@ -1,6 +1,7 @@
 import React from 'react';
 import { TransactionState } from '../types/wallet';
 import { CreditCard, CheckCircle, XCircle, Loader, ExternalLink, Users, Shield, Home } from 'lucide-react';
+import { getBscExplorerBaseUrl, getPaymentNetworkName } from '../../utils/paymentMode';
 
 interface PaymentSectionProps {
     onPayment: () => void;
@@ -24,23 +25,15 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                                                   settings,
                                                                   onGoToDashboard,
                                                               }) => {
-    const isLive =
-      settings?.paymentMode === true ||
-      settings?.paymentMode === 1 ||
-      settings?.paymentMode === '1' ||
-      settings?.paymentMode === 'true';
-
     const openTransaction = () => {
         if (transaction.hash) {
-            const explorerUrl = isLive
-                ? `https://bscscan.com/tx/${transaction.hash}`
-                : `https://testnet.bscscan.com/tx/${transaction.hash}`;
+            const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/tx/${transaction.hash}`;
             window.open(explorerUrl, '_blank', 'noopener,noreferrer');
         }
     };
 
     const getNetworkName = () => {
-        return isLive ? 'BSC Mainnet' : 'BSC Testnet';
+        return getPaymentNetworkName(settings?.paymentMode);
     };
 
     const getUSDTContractAddress = () => {

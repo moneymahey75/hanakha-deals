@@ -10,6 +10,7 @@ import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../
 import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
 import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink, Copy, PlusCircle } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../../utils/edgeFunctionError';
+import { getBscExplorerBaseUrl, getPaymentNetworkName, isLivePaymentModeValue } from '../../utils/paymentMode';
 
 interface RegistrationPlan {
   tsp_id: string;
@@ -55,11 +56,6 @@ const clearPendingTxHash = () => {
     sessionStorage.removeItem(PENDING_TX_HASH_KEY);
     localStorage.removeItem(PENDING_TX_HASH_KEY);
   } catch { /* ignore */ }
-};
-
-const isLivePaymentModeValue = (paymentMode: unknown): boolean => {
-  const normalized = String(paymentMode ?? '').trim().toLowerCase();
-  return paymentMode === true || paymentMode === 1 || normalized === '1' || normalized === 'true' || normalized === 'live' || normalized === 'mainnet';
 };
 
 const isAlreadyProcessedRegistrationPayment = (value: any) => {
@@ -835,7 +831,6 @@ const RegistrationPayment: React.FC = () => {
   };
 
   const safeSerializeGatewayResponse = (error: any, txHash: string | null, steps: string[]) => {
-    const isLivePaymentMode = isLivePaymentModeValue(settings?.paymentMode);
     const gatewayResponse = error?.gatewayResponse || error?.response?.data || error?.data || error?.info || null;
     const rawError: Record<string, any> = {};
 
@@ -858,7 +853,7 @@ const RegistrationPayment: React.FC = () => {
     }
 
     const payload = {
-      blockchain: isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet',
+      blockchain: getPaymentNetworkName(settings?.paymentMode),
       usdt_contract: settings?.usdtAddress || null,
       admin_wallet: adminReceivingWallet || null,
       transaction_hash: txHash,
@@ -911,7 +906,7 @@ const RegistrationPayment: React.FC = () => {
       tp_wallet_address: walletState.address ? walletState.address.toLowerCase() : null,
       tp_to_address: adminReceivingWallet ? adminReceivingWallet.toLowerCase() : null,
       tp_expected_amount: plan.tsp_price,
-      tp_network: isLivePaymentMode ? 'BSC Mainnet' : 'BSC Testnet',
+      tp_network: getPaymentNetworkName(settings?.paymentMode),
       tp_chain_id: isLivePaymentMode ? 56 : 97,
       tp_error_message: errorMessage,
       tp_gateway_response: gatewayResponse,
@@ -1740,10 +1735,7 @@ const RegistrationPayment: React.FC = () => {
 
   const openTransaction = () => {
     if (!transaction.hash) return;
-    const isMainnet = isLivePaymentModeValue(settings?.paymentMode);
-    const explorerUrl = isMainnet
-      ? `https://bscscan.com/tx/${transaction.hash}`
-      : `https://testnet.bscscan.com/tx/${transaction.hash}`;
+    const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/tx/${transaction.hash}`;
     window.open(explorerUrl, '_blank', 'noopener,noreferrer');
   };
 

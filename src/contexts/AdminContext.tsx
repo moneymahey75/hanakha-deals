@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { adminApi } from '../lib/adminApi';
 import { supabase } from '../lib/supabase';
+import { isLivePaymentModeValue } from '../utils/paymentMode';
 
 let inFlightAdminSettingsRequest: Promise<any[]> | null = null;
 
@@ -694,15 +695,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             : defaultSettings.withdrawalDisabledMessage
         };
 
-        const paymentModeValue = mergedBase.paymentMode;
-        const normalizedPaymentMode = String(paymentModeValue ?? '').trim().toLowerCase();
-        const isLive =
-          paymentModeValue === true ||
-          paymentModeValue === 1 ||
-          normalizedPaymentMode === '1' ||
-          normalizedPaymentMode === 'true' ||
-          normalizedPaymentMode === 'live' ||
-          normalizedPaymentMode === 'mainnet';
+        const isLive = isLivePaymentModeValue(mergedBase.paymentMode);
 
         const effectiveUsdtAddress = isLive
           ? (mergedBase.usdtAddressMainnet || mergedBase.usdtAddress || defaultSettings.usdtAddress)

@@ -2,6 +2,7 @@ import React from 'react';
 import { WalletState } from '../types/wallet';
 import { Copy, ExternalLink, LogOut, Coins, Shield } from 'lucide-react';
 import { useAdmin } from '../../contexts/AdminContext';
+import { getBscExplorerBaseUrl, getPaymentNetworkName } from '../../utils/paymentMode';
 
 interface WalletInfoProps {
   wallet: WalletState;
@@ -13,11 +14,6 @@ interface WalletInfoProps {
 export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, onRefresh, refreshing }) => {
   const { settings } = useAdmin();
 
-  const isLive = settings?.paymentMode === true ||
-    settings?.paymentMode === 1 ||
-    settings?.paymentMode === '1' ||
-    settings?.paymentMode === 'true';
-
   const copyAddress = () => {
     if (wallet.address) {
       navigator.clipboard.writeText(wallet.address);
@@ -28,9 +24,7 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
 
   const openInExplorer = () => {
     if (wallet.address) {
-      const explorerUrl = isLive
-        ? `https://bscscan.com/address/${wallet.address}`
-        : `https://testnet.bscscan.com/address/${wallet.address}`;
+      const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/address/${wallet.address}`;
       window.open(explorerUrl, '_blank');
     }
   };
@@ -45,15 +39,13 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
   };
 
   const getNetworkName = () => {
-    return isLive ? 'BSC Mainnet' : 'BSC Testnet';
+    return getPaymentNetworkName(settings?.paymentMode);
   };
 
   const openTokenInExplorer = () => {
     const contract = String(settings?.usdtAddress || '').trim();
     if (!contract) return;
-    const explorerUrl = isLive
-      ? `https://bscscan.com/token/${contract}`
-      : `https://testnet.bscscan.com/token/${contract}`;
+    const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/token/${contract}`;
     window.open(explorerUrl, '_blank');
   };
 
