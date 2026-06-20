@@ -9,7 +9,7 @@
 git init
 
 # Add all files
-git add .
+git add . 
 
 # Initial commit
 git commit -m "Initial commit: MLM Platform with Binary Tree Architecture"
