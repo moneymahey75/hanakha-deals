@@ -43,6 +43,9 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const PORTAL_USER_TYPES: User['userType'][] = ['customer', 'company'];
+
+const formatUserType = (userType: string) => userType.charAt(0).toUpperCase() + userType.slice(1);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -556,6 +559,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!authData.user || !authData.session) {
         throw new Error('Authentication failed - no session created');
+      }
+
+      const expectedUserType = PORTAL_USER_TYPES.includes(userType as User['userType'])
+        ? (userType as User['userType'])
+        : null;
+
+      if (expectedUserType) {
+        console.log('🔒 Verifying account type for portal:', expectedUserType);
+        const { data: accountData, error: accountError } = await withTimeout(
+          supabase
+            .from('tbl_users')
+            .select('tu_user_type')
+            .eq('tu_id', authData.user.id)
+            .maybeSingle(),
+          8000,
+          'Verify account type'
+        );
+
+        if (accountError || !accountData?.tu_user_type) {
+          console.error('❌ Could not verify account type:', accountError);
+          await supabase.auth.signOut();
+          throw new Error('Unable to verify account type. Please try again.');
+        }
+
+        if (accountData.tu_user_type !== expectedUserType) {
+          console.warn('🚫 Login blocked due to account type mismatch:', {
+            expectedUserType,
+            actualUserType: accountData.tu_user_type
+          });
+          await supabase.auth.signOut();
+          throw new Error(
+            `${formatUserType(expectedUserType)} login is only for ${expectedUserType} accounts.`
+          );
+        }
       }
 
       // Explicitly save the session
