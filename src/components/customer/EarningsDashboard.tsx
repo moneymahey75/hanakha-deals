@@ -9,9 +9,12 @@ interface Transaction {
   twt_transaction_type: 'credit' | 'debit' | 'transfer';
   twt_amount: number | string;
   twt_currency: string;
+  twt_reference_type?: string | null;
   twt_status: 'pending' | 'completed' | 'failed' | 'cancelled';
   twt_created_at: string;
 }
+
+const EARNING_EXCLUDED_REFERENCE_TYPES = new Set(['spin_wheel_prize']);
 
 const EarningsDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -65,7 +68,7 @@ const EarningsDashboard: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('tbl_wallet_transactions')
-        .select('twt_id, twt_transaction_type, twt_amount, twt_currency, twt_status, twt_created_at')
+        .select('twt_id, twt_transaction_type, twt_amount, twt_currency, twt_reference_type, twt_status, twt_created_at')
         .eq('twt_user_id', user.id)
         .eq('twt_status', 'completed')
         .order('twt_created_at', { ascending: false })
@@ -141,7 +144,10 @@ const EarningsDashboard: React.FC = () => {
 
   const allTimeCredits = useMemo(() => {
     return transactions
-      .filter(t => t.twt_transaction_type === 'credit')
+      .filter(t =>
+        t.twt_transaction_type === 'credit' &&
+        !EARNING_EXCLUDED_REFERENCE_TYPES.has(String(t.twt_reference_type || '').toLowerCase())
+      )
       .reduce((sum, t) => sum + toAmount(t.twt_amount), 0);
   }, [transactions]);
 
@@ -154,14 +160,21 @@ const EarningsDashboard: React.FC = () => {
   const todayCredits = useMemo(() => {
     const today = new Date().toDateString();
     return transactions
-      .filter(t => t.twt_transaction_type === 'credit' && new Date(t.twt_created_at).toDateString() === today)
+      .filter(t =>
+        t.twt_transaction_type === 'credit' &&
+        new Date(t.twt_created_at).toDateString() === today &&
+        !EARNING_EXCLUDED_REFERENCE_TYPES.has(String(t.twt_reference_type || '').toLowerCase())
+      )
       .reduce((sum, t) => sum + toAmount(t.twt_amount), 0);
   }, [transactions]);
 
   const monthCredits = useMemo(() => {
     const now = new Date();
     return transactions
-      .filter(t => t.twt_transaction_type === 'credit')
+      .filter(t =>
+        t.twt_transaction_type === 'credit' &&
+        !EARNING_EXCLUDED_REFERENCE_TYPES.has(String(t.twt_reference_type || '').toLowerCase())
+      )
       .filter(t => {
         const d = new Date(t.twt_created_at);
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
@@ -171,7 +184,10 @@ const EarningsDashboard: React.FC = () => {
 
   const rangeCredits = useMemo(() => {
     return filteredTransactions
-      .filter(t => t.twt_transaction_type === 'credit')
+      .filter(t =>
+        t.twt_transaction_type === 'credit' &&
+        !EARNING_EXCLUDED_REFERENCE_TYPES.has(String(t.twt_reference_type || '').toLowerCase())
+      )
       .reduce((sum, t) => sum + toAmount(t.twt_amount), 0);
   }, [filteredTransactions]);
 

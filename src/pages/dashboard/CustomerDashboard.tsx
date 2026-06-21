@@ -80,7 +80,10 @@ type WithdrawalRow = {
 type EarningsRow = {
   twt_amount: number;
   twt_transaction_type: 'credit' | 'debit' | 'transfer';
+  twt_reference_type?: string | null;
 };
+
+const EARNING_EXCLUDED_REFERENCE_TYPES = new Set(['spin_wheel_prize']);
 
 
 const CustomerDashboard: React.FC = () => {
@@ -303,7 +306,13 @@ const CustomerDashboard: React.FC = () => {
       const txActivities: RecentActivity[] = (txRes.data || []).map((row: WalletTxRow) => {
         const amount = Number(row.twt_amount || 0);
         const isCredit = row.twt_transaction_type === 'credit';
-        const isWithdrawal = String(row.twt_reference_type || '').toLowerCase() === 'withdrawal';
+        const referenceType = String(row.twt_reference_type || '').toLowerCase();
+        const isWithdrawal = referenceType === 'withdrawal';
+        const isConsumedSpinReward = referenceType === 'spin_wheel_prize' && (txRes.data || []).some((tx: WalletTxRow) =>
+          tx.twt_transaction_type === 'debit' &&
+          String(tx.twt_reference_type || '').toLowerCase() === 'upgrade_from_reserved' &&
+          String(tx.twt_created_at || '') > String(row.twt_created_at || '')
+        );
         const status = String(row.twt_status || '').toLowerCase();
         const baseMessage = String(row.twt_description || (isCredit ? 'Wallet credited' : 'Wallet debited'));
 
@@ -312,9 +321,9 @@ const CustomerDashboard: React.FC = () => {
           type: isWithdrawal ? 'withdrawal' : isCredit ? 'earning' : 'transaction',
           message: status && status !== 'completed' ? `${baseMessage} (${status})` : baseMessage,
           timestamp: row.twt_created_at,
-          amount: Number.isFinite(amount) ? amount : undefined
+          amount: Number.isFinite(amount) && !isConsumedSpinReward ? amount : undefined
         };
-      });
+      }).filter((activity) => !activity.message.toLowerCase().includes('spin wheel reserved reward'));
 
       const wdActivities: RecentActivity[] = (wdRes.data || []).map((row: WithdrawalRow) => {
         const status = String(row.twr_status || '').toLowerCase();
@@ -357,7 +366,7 @@ const CustomerDashboard: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('tbl_wallet_transactions')
-        .select('twt_amount, twt_transaction_type, twt_status, twt_created_at')
+        .select('twt_amount, twt_transaction_type, twt_reference_type, twt_status, twt_created_at')
         .eq('twt_user_id', userId)
         .eq('twt_currency', 'USDT')
         .eq('twt_status', 'completed')
@@ -366,7 +375,10 @@ const CustomerDashboard: React.FC = () => {
       if (error) throw error;
 
       const totalCredits = ((data || []) as EarningsRow[])
-        .filter((row) => row.twt_transaction_type === 'credit')
+        .filter((row) =>
+          row.twt_transaction_type === 'credit' &&
+          !EARNING_EXCLUDED_REFERENCE_TYPES.has(String(row.twt_reference_type || '').toLowerCase())
+        )
         .reduce((sum, row) => sum + Number(row.twt_amount || 0), 0);
 
       if (currentUserIdRef.current === userId) {
