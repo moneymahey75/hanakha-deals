@@ -61,6 +61,10 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+[functions.admin-package-test-stats]
+enabled = true
+verify_jwt = false
+
 [functions.admin-delete-sub-admin]
 enabled = true
 verify_jwt = false

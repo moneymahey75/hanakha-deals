@@ -76,6 +76,18 @@ interface User {
   company_name?: string;
 }
 
+interface PackageTestStats {
+  subscriptionId: string;
+  planName: string;
+  planAmount: number;
+  status: string;
+  startDate: string | null;
+  exhaustedAt: string | null;
+  exhaustionReason: string | null;
+  daysUsed: number;
+  daysRemaining: number;
+}
+
 // Loader Component
 const Loader: React.FC = () => {
   return (
@@ -172,12 +184,20 @@ const WalletManagement: React.FC = () => {
   const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState('');
   const [transactionType, setTransactionType] = useState<'credit' | 'debit'>('credit');
+  const [walletTransactionSubmitting, setWalletTransactionSubmitting] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showTransactionsModal, setShowTransactionsModal] = useState(false);
   const [selectedWalletTransactions, setSelectedWalletTransactions] = useState<Transaction[]>([]);
   const [selectedWalletUser, setSelectedWalletUser] = useState<User | null>(null);
+  const [packageStatsLoading, setPackageStatsLoading] = useState(false);
+  const [packageStatsSubmitting, setPackageStatsSubmitting] = useState(false);
+  const [packageTestStats, setPackageTestStats] = useState<PackageTestStats[]>([]);
+  const [selectedTestSubscriptionId, setSelectedTestSubscriptionId] = useState('');
+  const [testWorkingAmount, setTestWorkingAmount] = useState(0);
+  const [testNonWorkingAmount, setTestNonWorkingAmount] = useState(0);
+  const [testDaysToAdd, setTestDaysToAdd] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const notification = useNotification();
@@ -199,6 +219,12 @@ const WalletManagement: React.FC = () => {
       setShowUserDropdown(false);
     }
   }, [userSearch]);
+
+  useEffect(() => {
+    if (showManageModal && selectedUserId) {
+      loadPackageTestStats(selectedUserId);
+    }
+  }, [showManageModal, selectedUserId]);
 
   const searchUsers = async (searchQuery: string) => {
     try {
@@ -340,6 +366,96 @@ const WalletManagement: React.FC = () => {
     }
   };
 
+  const resetPackageTestInputs = () => {
+    setTestWorkingAmount(0);
+    setTestNonWorkingAmount(0);
+    setTestDaysToAdd(0);
+  };
+
+  const resetManageWalletModal = () => {
+    setShowManageModal(false);
+    setSelectedUserId('');
+    setSelectedUser(null);
+    setUserSearch('');
+    setAmount(0);
+    setDescription('');
+    setTransactionType('credit');
+    setWalletTransactionSubmitting(false);
+    setPackageStatsSubmitting(false);
+    setPackageStatsLoading(false);
+    setPackageTestStats([]);
+    setSelectedTestSubscriptionId('');
+    resetPackageTestInputs();
+  };
+
+  const loadPackageTestStats = async (userId: string) => {
+    try {
+      setPackageStatsLoading(true);
+      const result = await adminApi.post<{ packages: PackageTestStats[] }>('admin-package-test-stats', {
+        action: 'list',
+        userId
+      });
+      const packages = result.packages || [];
+      setPackageTestStats(packages);
+      setSelectedTestSubscriptionId((current) => (
+        packages.some((pkg) => pkg.subscriptionId === current)
+          ? current
+          : packages[0]?.subscriptionId || ''
+      ));
+    } catch (error: any) {
+      console.error('Failed to load package test stats:', error);
+      setPackageTestStats([]);
+      setSelectedTestSubscriptionId('');
+    } finally {
+      setPackageStatsLoading(false);
+    }
+  };
+
+  const handleApplyPackageTestStats = async () => {
+    if (packageStatsSubmitting) return;
+
+    if (!selectedUserId || !selectedTestSubscriptionId) {
+      notification.showError('Validation Error', 'Please select a user and package');
+      return;
+    }
+
+    if (testWorkingAmount <= 0 && testNonWorkingAmount <= 0 && testDaysToAdd <= 0) {
+      notification.showError('Validation Error', 'Enter income or days to add');
+      return;
+    }
+
+    try {
+      setPackageStatsSubmitting(true);
+      const result = await adminApi.post<{
+        newBalance: number;
+        packages: PackageTestStats[];
+        exhaustionResult?: { exhausted?: boolean; reason?: string };
+      }>('admin-package-test-stats', {
+        action: 'apply',
+        userId: selectedUserId,
+        subscriptionId: selectedTestSubscriptionId,
+        workingAmount: testWorkingAmount,
+        nonWorkingAmount: testNonWorkingAmount,
+        daysToAdd: testDaysToAdd
+      });
+
+      setPackageTestStats(result.packages || []);
+      resetPackageTestInputs();
+      notification.showSuccess(
+        'Test Stats Applied',
+        result.exhaustionResult?.exhausted
+          ? `Package exhausted: ${result.exhaustionResult.reason || 'limit reached'}`
+          : 'Package test stats were added successfully'
+      );
+      loadWallets();
+    } catch (error: any) {
+      console.error('Failed to apply package test stats:', error);
+      notification.showError('Update Failed', error.message || 'Failed to apply package test stats');
+    } finally {
+      setPackageStatsSubmitting(false);
+    }
+  };
+
   const handleCreateWalletForAllUsers = async () => {
     try {
       setLoading(true);
@@ -368,15 +484,19 @@ const WalletManagement: React.FC = () => {
 
   const handleWalletTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (walletTransactionSubmitting) return;
+    setWalletTransactionSubmitting(true);
 
     // Check if we have a selected user ID OR if we need to validate the search field
     if (!selectedUserId && !userSearch) {
       notification.showError('Validation Error', 'Please select a user and enter a valid amount');
+      setWalletTransactionSubmitting(false);
       return;
     }
 
     if (amount <= 0) {
       notification.showError('Validation Error', 'Please enter a valid amount');
+      setWalletTransactionSubmitting(false);
       return;
     }
 
@@ -406,6 +526,7 @@ const WalletManagement: React.FC = () => {
       } catch (error) {
         console.error('Failed to fetch user details:', error);
         notification.showError('Error', 'Failed to load user details');
+        setWalletTransactionSubmitting(false);
         return;
       }
     }
@@ -426,17 +547,13 @@ const WalletManagement: React.FC = () => {
           `Successfully ${transactionType === 'credit' ? 'credited' : 'debited'} ${amount} USDT. New balance: ${newBalance.toFixed(2)} USDT`
       );
 
-      setShowManageModal(false);
-      setSelectedUserId('');
-      setSelectedUser(null);
-      setUserSearch('');
-      setAmount(0);
-      setDescription('');
-      setTransactionType('credit');
+      resetManageWalletModal();
       loadWallets();
     } catch (error: any) {
       console.error('Failed to update wallet:', error);
       notification.showError('Transaction Failed', error.message || 'Failed to process transaction');
+    } finally {
+      setWalletTransactionSubmitting(false);
     }
   };
 
@@ -551,6 +668,8 @@ const WalletManagement: React.FC = () => {
   };
 
   const stats = getWalletStats();
+  const selectedPackageStats = packageTestStats.find((pkg) => pkg.subscriptionId === selectedTestSubscriptionId);
+  const packageTestDisabled = walletTransactionSubmitting || packageStatsSubmitting || packageStatsLoading || !selectedTestSubscriptionId;
 
   return (
       <div className="bg-white rounded-xl shadow-sm">
@@ -1012,19 +1131,12 @@ const WalletManagement: React.FC = () => {
         {/* Manage Wallet Modal */}
         {showManageModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl p-6 w-full max-w-md">
+              <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-gray-900">Manage User Wallet</h3>
                   <button
-                      onClick={() => {
-                        setShowManageModal(false);
-                        setSelectedUserId('');
-                        setSelectedUser(null);
-                        setUserSearch('');
-                        setAmount(0);
-                        setDescription('');
-                        setTransactionType('credit');
-                      }}
+                      onClick={resetManageWalletModal}
+                      disabled={walletTransactionSubmitting || packageStatsSubmitting}
                       className="text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-6 w-6" />
@@ -1043,6 +1155,7 @@ const WalletManagement: React.FC = () => {
                           onChange={(e) => setUserSearch(e.target.value)}
                           onFocus={() => userSearch.length > 2 && setShowUserDropdown(true)}
                           placeholder="Search by name or email..."
+                          disabled={walletTransactionSubmitting || packageStatsSubmitting}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                           required
                       />
@@ -1080,11 +1193,12 @@ const WalletManagement: React.FC = () => {
                       <button
                           type="button"
                           onClick={() => setTransactionType('credit')}
+                          disabled={walletTransactionSubmitting}
                           className={`px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
                               transactionType === 'credit'
                                   ? 'border-green-500 bg-green-50 text-green-700'
                                   : 'border-gray-300 text-gray-700 hover:border-green-300'
-                          }`}
+                          } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
                       >
                         <Plus className="h-4 w-4 inline mr-2" />
                         Credit
@@ -1092,11 +1206,12 @@ const WalletManagement: React.FC = () => {
                       <button
                           type="button"
                           onClick={() => setTransactionType('debit')}
+                          disabled={walletTransactionSubmitting}
                           className={`px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
                               transactionType === 'debit'
                                   ? 'border-red-500 bg-red-50 text-red-700'
                                   : 'border-gray-300 text-gray-700 hover:border-red-300'
-                          }`}
+                          } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
                       >
                         <Minus className="h-4 w-4 inline mr-2" />
                         Debit
@@ -1115,6 +1230,7 @@ const WalletManagement: React.FC = () => {
                         step="0.01"
                         value={amount}
                         onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                        disabled={walletTransactionSubmitting}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         placeholder="0.00"
                     />
@@ -1129,41 +1245,140 @@ const WalletManagement: React.FC = () => {
                         required
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
+                        disabled={walletTransactionSubmitting}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         placeholder={`Reason for ${transactionType}`}
                     />
                   </div>
 
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+                      <div>
+                        <h4 className="font-semibold text-gray-900">Package Cap Test Stats</h4>
+                        <p className="text-sm text-gray-600">
+                          Add package-linked test income or increase used days for 5x, 2x, and 200-day validation.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Launch Package
+                      </label>
+                      <select
+                          value={selectedTestSubscriptionId}
+                          onChange={(e) => setSelectedTestSubscriptionId(e.target.value)}
+                          disabled={packageStatsLoading || packageStatsSubmitting || packageTestStats.length === 0}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white disabled:bg-gray-100"
+                      >
+                        {packageStatsLoading && <option value="">Loading packages...</option>}
+                        {!packageStatsLoading && packageTestStats.length === 0 && (
+                            <option value="">No launch packages found</option>
+                        )}
+                        {!packageStatsLoading && packageTestStats.map((pkg) => (
+                            <option key={pkg.subscriptionId} value={pkg.subscriptionId}>
+                              {pkg.planName} - {pkg.planAmount.toFixed(2)} USDT - {pkg.status} - {pkg.daysUsed} days used
+                            </option>
+                        ))}
+                      </select>
+                      {selectedPackageStats && (
+                          <div className="mt-2 text-xs text-gray-600">
+                            {selectedPackageStats.daysRemaining} days remaining
+                            {selectedPackageStats.exhaustionReason ? ` • ${selectedPackageStats.exhaustionReason}` : ''}
+                          </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Working Income
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={testWorkingAmount}
+                            onChange={(e) => setTestWorkingAmount(parseFloat(e.target.value) || 0)}
+                            disabled={packageTestDisabled}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent disabled:bg-gray-100"
+                            placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Non-working Income
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={testNonWorkingAmount}
+                            onChange={(e) => setTestNonWorkingAmount(parseFloat(e.target.value) || 0)}
+                            disabled={packageTestDisabled}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent disabled:bg-gray-100"
+                            placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Add Used Days
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={testDaysToAdd}
+                            onChange={(e) => setTestDaysToAdd(parseInt(e.target.value, 10) || 0)}
+                            disabled={packageTestDisabled}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent disabled:bg-gray-100"
+                            placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                          type="button"
+                          onClick={handleApplyPackageTestStats}
+                          disabled={packageTestDisabled || (testWorkingAmount <= 0 && testNonWorkingAmount <= 0 && testDaysToAdd <= 0)}
+                          className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                      >
+                        <TrendingUp className="h-4 w-4" />
+                        <span>{packageStatsSubmitting ? 'Applying...' : 'Apply Test Stats'}</span>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
                     <button
                         type="button"
-                        onClick={() => {
-                          setShowManageModal(false);
-                          setSelectedUserId('');
-                          setSelectedUser(null);
-                          setUserSearch('');
-                          setAmount(0);
-                          setDescription('');
-                          setTransactionType('credit');
-                        }}
-                        className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                        onClick={resetManageWalletModal}
+                        disabled={walletTransactionSubmitting || packageStatsSubmitting}
+                        className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                         type="submit"
+                        disabled={walletTransactionSubmitting}
                         className={`px-4 py-2 text-white rounded-lg transition-colors flex items-center space-x-2 ${
                             transactionType === 'credit'
                                 ? 'bg-green-600 hover:bg-green-700'
                                 : 'bg-red-600 hover:bg-red-700'
-                        }`}
+                        } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       {transactionType === 'credit' ? (
                           <Plus className="h-4 w-4" />
                       ) : (
                           <Minus className="h-4 w-4" />
                       )}
-                      <span>{transactionType === 'credit' ? 'Credit' : 'Debit'} Wallet</span>
+                      <span>
+                        {walletTransactionSubmitting
+                            ? 'Processing...'
+                            : `${transactionType === 'credit' ? 'Credit' : 'Debit'} Wallet`}
+                      </span>
                     </button>
                   </div>
                 </form>
