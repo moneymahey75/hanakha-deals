@@ -368,7 +368,7 @@ const EarningsDashboard: React.FC = () => {
             No launch packages found yet.
           </div>
         ) : (
-          <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="mt-5 space-y-4">
             {planEarnings.map((plan) => {
               const incomePercent = clampPercent(plan.income_progress_percent);
               const timePercent = clampPercent(plan.time_progress_percent);
@@ -393,52 +393,55 @@ const EarningsDashboard: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <p className="text-xs text-gray-500">Target</p>
-                      <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.target_income)}</p>
-                    </div>
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <p className="text-xs text-gray-500">Earned</p>
-                      <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.total_paid)}</p>
-                    </div>
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <p className="text-xs text-gray-500">Remaining</p>
-                      <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.remaining_income)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 space-y-4">
+                  <div className="mt-5 grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-5">
                     <div>
-                      <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span className="inline-flex items-center gap-1 font-medium">
-                          <TrendingUp className="h-3.5 w-3.5" />
-                          Earnings Progress
-                        </span>
-                        <span>{incomePercent.toFixed(2)}%</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                        <div className="rounded-lg bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Target</p>
+                          <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.target_income)}</p>
+                        </div>
+                        <div className="rounded-lg bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Earned</p>
+                          <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.total_paid)}</p>
+                        </div>
+                        <div className="rounded-lg bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Remaining</p>
+                          <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.remaining_income)}</p>
+                        </div>
                       </div>
-                      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
-                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${incomePercent}%` }} />
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-600">
+                        <div>Working: <span className="font-semibold text-gray-900">{formatAmount(plan.working_paid)}</span></div>
+                        <div>Non-working: <span className="font-semibold text-gray-900">{formatAmount(plan.non_working_paid)}</span></div>
                       </div>
                     </div>
 
-                    <div>
-                      <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span className="inline-flex items-center gap-1 font-medium">
-                          <Clock className="h-3.5 w-3.5" />
-                          200-Day Window
-                        </span>
-                        <span>{Number(plan.days_used || 0)} used • {Number(plan.days_remaining || 0)} left</span>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-gray-600">
+                          <span className="inline-flex items-center gap-1 font-medium">
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            Earnings Progress
+                          </span>
+                          <span>{incomePercent.toFixed(2)}%</span>
+                        </div>
+                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
+                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${incomePercent}%` }} />
+                        </div>
                       </div>
-                      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
-                        <div className="h-full rounded-full bg-amber-500" style={{ width: `${timePercent}%` }} />
+
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-gray-600">
+                          <span className="inline-flex items-center gap-1 font-medium">
+                            <Clock className="h-3.5 w-3.5" />
+                            200-Day Window
+                          </span>
+                          <span>{Number(plan.days_used || 0)} used • {Number(plan.days_remaining || 0)} left</span>
+                        </div>
+                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
+                          <div className="h-full rounded-full bg-amber-500" style={{ width: `${timePercent}%` }} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-600">
-                    <div>Working: <span className="font-semibold text-gray-900">{formatAmount(plan.working_paid)}</span></div>
-                    <div>Non-working: <span className="font-semibold text-gray-900">{formatAmount(plan.non_working_paid)}</span></div>
                   </div>
                 </div>
               );
