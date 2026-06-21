@@ -49,6 +49,28 @@ const SubscriptionManagement: React.FC = () => {
     mirror_to_upgrade: false
   });
 
+  const normalizeFeatures = (raw: any): string[] => {
+    if (Array.isArray(raw)) return raw.map((feature) => String(feature));
+    if (raw === null || raw === undefined) return [];
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) return [];
+      try {
+        const parsed = JSON.parse(trimmed);
+        return normalizeFeatures(parsed);
+      } catch {
+        return trimmed.split(/\r?\n+/).map((feature) => feature.trim()).filter(Boolean);
+      }
+    }
+    if (typeof raw === 'object') {
+      return Object.entries(raw).map(([key, value]) => {
+        if (typeof value === 'string' && value.trim()) return value;
+        return key.replace(/_/g, ' ');
+      });
+    }
+    return [String(raw)];
+  };
+
   useEffect(() => {
     loadPlans();
   }, [currentPlanType, planPhase]);
@@ -102,12 +124,7 @@ const SubscriptionManagement: React.FC = () => {
 
   const handleCreatePlan = async () => {
     try {
-      const features = formData.features.filter(f => f.trim() !== '');
-      const featuresObj: any = {};
-      features.forEach(feature => {
-        const key = feature.toLowerCase().replace(/\s+/g, '_');
-        featuresObj[key] = true;
-      });
+      const features = formData.features.map(f => f.trim()).filter(Boolean);
 
       const parentIncomeValue = currentPlanType === 'registration'
         ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
@@ -119,7 +136,7 @@ const SubscriptionManagement: React.FC = () => {
         price: parseFloat(formData.price),
         durationDays: parseInt(formData.duration_days),
         couponDays: parseInt(formData.coupon_days || '0'),
-        features: featuresObj,
+        features,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
         planType: currentPlanType,
@@ -140,12 +157,7 @@ const SubscriptionManagement: React.FC = () => {
     if (!selectedPlan) return;
 
     try {
-      const features = formData.features.filter(f => f.trim() !== '');
-      const featuresObj: any = {};
-      features.forEach(feature => {
-        const key = feature.toLowerCase().replace(/\s+/g, '_');
-        featuresObj[key] = true;
-      });
+      const features = formData.features.map(f => f.trim()).filter(Boolean);
 
       const parentIncomeValue = currentPlanType === 'registration'
         ? Math.max(0, Number.parseFloat(formData.parent_income || '0'))
@@ -158,7 +170,7 @@ const SubscriptionManagement: React.FC = () => {
         price: parseFloat(formData.price),
         durationDays: parseInt(formData.duration_days),
         couponDays: parseInt(formData.coupon_days || '0'),
-        features: featuresObj,
+        features,
         parentIncome: parentIncomeValue,
         isActive: formData.is_active,
         planType: currentPlanType,
@@ -213,9 +225,7 @@ const SubscriptionManagement: React.FC = () => {
 
   const openEditModal = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
-    const featuresArray = typeof plan.tsp_features === 'object'
-      ? Object.keys(plan.tsp_features).map(k => k.replace(/_/g, ' '))
-      : [''];
+    const featuresArray = normalizeFeatures(plan.tsp_features);
 
     setFormData({
       name: plan.tsp_name,
@@ -371,17 +381,17 @@ const SubscriptionManagement: React.FC = () => {
                 )}
                 <div className="flex items-center text-gray-600">
                   <Calendar className="h-5 w-5 mr-2" />
-                  <span>{plan.tsp_duration_days > 0 ? `${plan.tsp_duration_days} days` : 'Lifetime'}</span>
+                  <span>{(plan.tsp_plan_phase || 'prelaunch') === 'launch' ? 'Up to 200 earning days' : `${plan.tsp_duration_days} days`}</span>
                 </div>
               </div>
 
               <div className="mb-6">
                 <h4 className="text-sm font-medium text-gray-700 mb-2">Features:</h4>
                 <ul className="space-y-1">
-                  {typeof plan.tsp_features === 'object' && Object.keys(plan.tsp_features).map((key, idx) => (
+                  {normalizeFeatures(plan.tsp_features).map((feature, idx) => (
                     <li key={idx} className="flex items-center text-sm text-gray-600">
                       <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
-                      <span>{key.replace(/_/g, ' ')}</span>
+                      <span>{feature}</span>
                     </li>
                   ))}
                 </ul>

@@ -173,32 +173,32 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
         setShowDetailsModal(true);
     };
 
-    const getDaysRemaining = (endDate: string) => {
-        const end = new Date(endDate);
-        const now = new Date();
-        const diffTime = end.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays > 0 ? diffDays : 0;
-    };
+    const getEarningWindowDaysRemaining = (subscription: Payment['subscription']) => {
+        if (!subscription) return 0;
+        const start = new Date(subscription.tus_start_date);
+        if (!Number.isFinite(start.getTime())) return 0;
 
-    const isLifetimeSubscription = (subscription: Payment['subscription']) => {
-        if (!subscription) return false;
-        const durationDays = Number(subscription.plan?.tsp_duration_days);
-        if (Number.isFinite(durationDays) && durationDays <= 0) return true;
-
-        const end = new Date(subscription.tus_end_date);
-        return Number.isFinite(end.getTime()) && end.getUTCFullYear() >= 9999;
+        const today = new Date();
+        const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+        const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+        const daysUsed = Math.floor((todayDay - startDay) / 86400000) + 1;
+        return Math.max(0, 200 - Math.max(1, daysUsed));
     };
 
     const normalizePlanFeatures = (raw: any): string[] => {
         if (!raw) return [];
         if (Array.isArray(raw)) return raw.map(String);
-        if (typeof raw === 'object') return Object.keys(raw).map(String);
+        if (typeof raw === 'object') {
+            return Object.entries(raw).map(([key, value]) => {
+                if (typeof value === 'string' && value.trim()) return value;
+                return key.replace(/_/g, ' ');
+            });
+        }
         if (typeof raw === 'string') {
             try {
                 const parsed = JSON.parse(raw);
                 if (Array.isArray(parsed)) return parsed.map(String);
-                if (parsed && typeof parsed === 'object') return Object.keys(parsed).map(String);
+                if (parsed && typeof parsed === 'object') return normalizePlanFeatures(parsed);
             } catch {
                 return [raw];
             }
@@ -281,9 +281,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                     {payment.subscription.tus_status === 'active' && (
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       <Calendar className="h-3 w-3 mr-1" />
-                                            {isLifetimeSubscription(payment.subscription)
-                                                ? 'Lifetime'
-                                                : `${getDaysRemaining(payment.subscription.tus_end_date)} days left`}
+                                            {getEarningWindowDaysRemaining(payment.subscription)} earning days left
                     </span>
                                     )}
                                 </div>
@@ -418,7 +416,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Duration:</span>
-                                                <span>{selectedPayment.subscription.plan.tsp_duration_days > 0 ? `${selectedPayment.subscription.plan.tsp_duration_days} days` : 'Lifetime'}</span>
+                                                <span>Up to 200 earning days</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Status:</span>
@@ -431,20 +429,14 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ userId }) => {
                                                 <span>{formatDateShort(selectedPayment.subscription.tus_start_date)}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-gray-600">End Date:</span>
-                                                <span>
-                                                    {isLifetimeSubscription(selectedPayment.subscription)
-                                                        ? 'Lifetime'
-                                                        : formatDateShort(selectedPayment.subscription.tus_end_date)}
-                                                </span>
+                                                <span className="text-gray-600">Plan Cap:</span>
+                                                <span>5x total income or 200 days</span>
                                             </div>
                                             {selectedPayment.subscription.tus_status === 'active' && (
                                                 <div className="flex justify-between">
-                                                    <span className="text-gray-600">Days Remaining:</span>
+                                                    <span className="text-gray-600">Earning Days Remaining:</span>
                                                     <span className="font-medium text-green-600">
-                            {isLifetimeSubscription(selectedPayment.subscription)
-                                ? 'Lifetime'
-                                : `${getDaysRemaining(selectedPayment.subscription.tus_end_date)} days`}
+                            {getEarningWindowDaysRemaining(selectedPayment.subscription)} days
                           </span>
                                                 </div>
                                             )}

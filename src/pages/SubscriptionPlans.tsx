@@ -76,8 +76,10 @@ const SubscriptionPlans: React.FC = () => {
           return trimmed.split(/\r?\n+/).map((v) => v.trim()).filter(Boolean);
         }
         if (typeof raw === 'object') {
-          // Some rows store features as JSON object; best-effort string conversion.
-          return Object.values(raw).map((v) => String(v));
+          return Object.entries(raw).map(([key, value]) => {
+            if (typeof value === 'string' && value.trim()) return value;
+            return key.replace(/_/g, ' ');
+          });
         }
         return [String(raw)];
       };
@@ -404,7 +406,7 @@ const SubscriptionPlans: React.FC = () => {
                   
                   <div className="flex items-center justify-center space-x-2 text-gray-600">
                     <Calendar className="h-4 w-4" />
-                    <span>{plan.tsp_duration_days > 0 ? `${plan.tsp_duration_days} days subscription` : 'Lifetime subscription'}</span>
+                    <span>Up to 200 days earning window</span>
                   </div>
                   
                   <p className="text-gray-600 mt-3">{plan.tsp_description}</p>
@@ -434,8 +436,8 @@ const SubscriptionPlans: React.FC = () => {
                       <div className="text-xs text-gray-600">USDT Price</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-gray-900">{plan.tsp_duration_days > 0 ? plan.tsp_duration_days : '∞'}</div>
-                      <div className="text-xs text-gray-600">{plan.tsp_duration_days > 0 ? 'Days Access' : 'Lifetime'}</div>
+                      <div className="text-lg font-bold text-gray-900">200</div>
+                      <div className="text-xs text-gray-600">Earning Days</div>
                     </div>
                   </div>
                 </div>

@@ -47,6 +47,28 @@ html {
   display: none;  /* Chrome, Safari and Opera */
 }
 
+@keyframes maintenance-notice-scroll {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
+  .maintenance-notice-marquee {
+    animation: maintenance-notice-scroll 18s linear infinite;
+    padding-left: 1rem;
+  }
+}
+
+@media (max-width: 640px) and (prefers-reduced-motion: reduce) {
+  .maintenance-notice-marquee {
+    white-space: normal;
+  }
+}
+
 /* Responsive design for transaction hash */
 @media (max-width: 640px) {
   .transaction-hash-container {

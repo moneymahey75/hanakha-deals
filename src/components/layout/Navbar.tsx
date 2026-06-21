@@ -76,14 +76,16 @@ const Navbar: React.FC = () => {
           }
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 text-sm flex items-center justify-between gap-3">
-            <div className="truncate">
-              <span className="font-semibold">Maintenance Notice:</span>{' '}
-              {notice.message || 'Scheduled maintenance is planned.'}
-              {notice.startsAt ? (
-                <span className={notice.urgent ? 'ml-2 font-semibold' : 'ml-2 text-indigo-700'}>
-                  ({notice.startsAt.toLocaleString()})
-                </span>
-              ) : null}
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <div className="maintenance-notice-marquee inline-block whitespace-nowrap sm:whitespace-normal sm:break-words">
+                <span className="font-semibold">Maintenance Notice:</span>{' '}
+                {notice.message || 'Scheduled maintenance is planned.'}
+                {notice.startsAt ? (
+                  <span className={notice.urgent ? 'ml-2 font-semibold' : 'ml-2 text-indigo-700'}>
+                    ({notice.startsAt.toLocaleString()})
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className={notice.urgent ? 'text-white font-semibold whitespace-nowrap' : 'text-indigo-700 whitespace-nowrap'}>
               {notice.urgent ? 'Starting in few minutes' : 'Upcoming'}

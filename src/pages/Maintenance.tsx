@@ -11,7 +11,7 @@ const Maintenance: React.FC = () => {
     'We’re doing some maintenance right now. Please check back shortly.';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-gray-50 flex items-center justify-center px-4 py-10">
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-gray-50 flex items-center justify-center overflow-y-auto px-4 py-6 sm:py-10">
       <div className="w-full max-w-xl">
         <div className="rounded-3xl bg-white shadow-xl border border-gray-100 overflow-hidden">
           <div className="px-6 py-8 sm:px-10 sm:py-10">
@@ -33,7 +33,7 @@ const Maintenance: React.FC = () => {
             <h1 className="mt-6 text-2xl sm:text-3xl font-extrabold text-gray-900">
               We’ll be back soon
             </h1>
-            <p className="mt-3 text-gray-600 leading-relaxed">
+            <p className="mt-3 max-h-[45vh] overflow-y-auto whitespace-pre-wrap break-words text-gray-600 leading-relaxed">
               {String(message || '').trim() || 'We’re doing some maintenance right now. Please check back shortly.'}
             </p>
 
