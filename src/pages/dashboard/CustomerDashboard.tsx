@@ -158,7 +158,7 @@ const CustomerDashboard: React.FC = () => {
     };
 
     const loadSpinWheelVisibility = async () => {
-      if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'prelaunch') {
+      if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'launched') {
         if (mounted) setSpinWheelVisible(false);
         return;
       }
@@ -166,9 +166,9 @@ const CustomerDashboard: React.FC = () => {
       try {
         const { data, error } = await supabase.rpc('customer_get_spin_wheel_status');
         if (error) throw error;
-        const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean };
+        const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean; eligible?: boolean };
         if (mounted) {
-          setSpinWheelVisible(Boolean(spinStatus.active));
+          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || spinStatus.eligible === false));
         }
       } catch (error) {
         console.error('Failed to load spin wheel visibility:', error);

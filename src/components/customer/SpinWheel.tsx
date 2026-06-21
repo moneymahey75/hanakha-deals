@@ -6,6 +6,7 @@ import { useNotification } from '../ui/NotificationProvider';
 type SpinStatus = {
   active?: boolean;
   hasSpun?: boolean;
+  eligible?: boolean;
   campaignId?: string;
   campaignName?: string;
   prizeAmount?: number;
@@ -35,6 +36,7 @@ const baseSegments: Segment[] = [
   { label: '25 USDT', amount: 25, outcome: 'prize', color: '#ea580c' },
   { label: 'Better luck', amount: 0, outcome: 'better_luck', color: '#0891b2' },
   { label: '50 USDT', amount: 50, outcome: 'prize', color: '#be123c' },
+  { label: '100 USDT', amount: 100, outcome: 'prize', color: '#9333ea' },
 ];
 
 const findTargetIndex = (segments: Segment[], result: SpinResult) => {
@@ -106,7 +108,7 @@ const SpinWheel: React.FC = () => {
   }, [result, segments, spinning, status]);
 
   const handleSpin = async () => {
-    if (spinning || status?.hasSpun || !status?.active) return;
+    if (spinning || status?.hasSpun || !status?.active || status?.eligible === false) return;
 
     try {
       setSpinning(true);
@@ -160,7 +162,7 @@ const SpinWheel: React.FC = () => {
     );
   }
 
-  if (!status?.active && !status?.hasSpun) {
+  if (!status?.active && !status?.hasSpun && status?.eligible !== false) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
         <Gift className="mx-auto mb-3 h-10 w-10 text-gray-400" />
@@ -171,6 +173,8 @@ const SpinWheel: React.FC = () => {
   }
 
   const hasWon = Number((result || status)?.prizeAmount || 0) > 0;
+  const isEligible = status?.eligible !== false;
+  const spinDisabled = spinning || status?.hasSpun || !status?.active || !isEligible;
 
   return (
     <div className="space-y-6">
@@ -179,7 +183,11 @@ const SpinWheel: React.FC = () => {
           <div>
             <h3 className="text-xl font-bold text-gray-900">{status?.campaignName || 'Spin the Wheel'}</h3>
             <p className="text-sm text-gray-500">
-              {status?.hasSpun ? 'You have already used your spin.' : 'One spin is available for your account.'}
+              {!isEligible
+                ? status?.message || 'Spin wheel is not available for your account.'
+                : status?.hasSpun
+                  ? 'You have already used your spin.'
+                  : 'One spin is available for your account.'}
             </p>
           </div>
           <button
@@ -255,11 +263,11 @@ const SpinWheel: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSpin}
-                disabled={spinning || status?.hasSpun || !status?.active}
+                disabled={spinDisabled}
                 className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 text-sm font-black uppercase tracking-wide text-white shadow-inner transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:hover:scale-100 sm:text-base"
                 aria-label="Spin wheel"
               >
-                Spin
+                {!isEligible ? 'Locked' : 'Spin'}
               </button>
             </div>
           </div>
@@ -268,16 +276,23 @@ const SpinWheel: React.FC = () => {
             <div className="rounded-lg border border-teal-100 bg-white/80 p-5 shadow-sm">
               <p className="text-sm font-semibold text-teal-900">Spin Rule</p>
               <p className="mt-1 text-sm text-teal-700">
-                Each customer can spin only once. Prize rewards are added to reserved balance for upgrades and expire after 72 hours if unused.
+                Each eligible 5 USDT customer can spin only once. Prize rewards are added to reserved balance for launch upgrade and expire after 120 hours if unused.
               </p>
             </div>
 
-            {status?.hasSpun ? (
+            {!isEligible ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <p className="font-semibold text-amber-900">Spin wheel is locked.</p>
+                <p className="mt-1 text-sm text-amber-800">
+                  {status?.message || 'Only eligible 5 USDT customers can use this launch upgrade reward.'}
+                </p>
+              </div>
+            ) : status?.hasSpun ? (
               <div className="rounded-lg border border-gray-200 bg-white/80 p-5 shadow-sm">
                 <p className="font-semibold text-gray-900">You have already used your spin.</p>
                 <p className="mt-1 text-sm text-gray-600">
                   {Number(status.prizeAmount || 0) > 0
-                    ? `Your prize was ${Number(status.prizeAmount || 0).toFixed(2)} USDT reserved for upgrade. Unused reward expires after 72 hours.`
+                    ? `Your prize was ${Number(status.prizeAmount || 0).toFixed(2)} USDT reserved for launch upgrade. Unused reward expires after 120 hours.`
                     : 'Better luck next time.'}
                 </p>
               </div>
@@ -285,7 +300,7 @@ const SpinWheel: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSpin}
-                disabled={spinning || !status?.active}
+                disabled={spinDisabled}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-5 py-3 font-semibold text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-gray-300"
               >
                 {spinning ? <Loader2 className="h-5 w-5 animate-spin" /> : <Gift className="h-5 w-5" />}
@@ -316,7 +331,7 @@ const SpinWheel: React.FC = () => {
             </h3>
             <p className="mt-2 text-gray-600">
               {hasWon
-                ? `${Number(result.prizeAmount || 0).toFixed(2)} USDT has been added to your reserved wallet for upgrade. Use it within 72 hours.`
+                ? `${Number(result.prizeAmount || 0).toFixed(2)} USDT has been added to your reserved wallet for launch upgrade. Use it within 120 hours.`
                 : 'Your spin has been recorded.'}
             </p>
             <button

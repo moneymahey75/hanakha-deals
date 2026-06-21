@@ -242,9 +242,12 @@ AS $$
   LIMIT 1;
 $$;
 
+DROP FUNCTION IF EXISTS public.user_has_active_same_plan_package(uuid, uuid);
+
 CREATE OR REPLACE FUNCTION public.user_has_active_same_plan_package(
   p_user_id uuid,
-  p_plan_id uuid
+  p_plan_id uuid,
+  p_exclude_subscription_id uuid DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE sql
@@ -260,11 +263,12 @@ AS $$
       AND us.tus_status IN ('active', 'upgraded')
       AND us.tus_exhausted_at IS NULL
       AND (us.tus_end_date IS NULL OR us.tus_end_date > now())
+      AND (p_exclude_subscription_id IS NULL OR us.tus_id <> p_exclude_subscription_id)
   );
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.user_has_active_same_plan_package(uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.user_has_active_same_plan_package(uuid, uuid) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.user_has_active_same_plan_package(uuid, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_has_active_same_plan_package(uuid, uuid, uuid) TO authenticated, service_role;
 
 DO $patch_create_registration_payment$
 DECLARE
