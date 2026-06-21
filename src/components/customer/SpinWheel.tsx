@@ -83,6 +83,12 @@ const SpinWheel: React.FC = () => {
       .join(', ')})`;
   }, [segments]);
 
+  const separatorGradient = useMemo(() => {
+    const sliceDeg = 360 / segments.length;
+    const lineStart = Math.max(sliceDeg - 1, 0);
+    return `repeating-conic-gradient(from ${-sliceDeg / 2}deg, transparent 0deg ${lineStart}deg, rgba(255,255,255,0.55) ${lineStart}deg ${sliceDeg}deg)`;
+  }, [segments.length]);
+
   const loadStatus = async () => {
     try {
       setLoading(true);
@@ -224,8 +230,7 @@ const SpinWheel: React.FC = () => {
                 <div
                   className="absolute inset-0 rounded-full"
                   style={{
-                    background:
-                      'repeating-conic-gradient(from -22.5deg, transparent 0deg 44deg, rgba(255,255,255,0.55) 44deg 45deg)',
+                    background: separatorGradient,
                   }}
                 />
                 <div className="relative h-full w-full">
