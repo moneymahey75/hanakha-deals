@@ -22,6 +22,8 @@ interface ActivePackage {
   tus_payment_amount: number | null;
   tus_plan_phase?: string | null;
   tus_package_kind?: 'registration' | 'upgrade' | 'renew' | null;
+  tus_end_date?: string | null;
+  tus_start_date?: string | null;
   plan?: {
     tsp_id: string;
     tsp_price: number | null;
@@ -156,6 +158,8 @@ const SubscriptionPlans: React.FC = () => {
           tus_payment_amount,
           tus_plan_phase,
           tus_package_kind,
+          tus_end_date,
+          tus_start_date,
           plan:tus_plan_id(
             tsp_id,
             tsp_price,
@@ -173,6 +177,8 @@ const SubscriptionPlans: React.FC = () => {
         tus_payment_amount: row.tus_payment_amount == null ? null : Number(row.tus_payment_amount),
         tus_plan_phase: row.tus_plan_phase,
         tus_package_kind: row.tus_package_kind,
+        tus_end_date: row.tus_end_date,
+        tus_start_date: row.tus_start_date,
         plan: row.plan
           ? {
               tsp_id: row.plan.tsp_id,
@@ -189,15 +195,48 @@ const SubscriptionPlans: React.FC = () => {
 
   const normalizeAmount = (value: number | null | undefined) => Number(Number(value || 0).toFixed(6));
 
+  const isActivePackageUsable = (pkg: ActivePackage) => {
+    if (pkg.tus_end_date) {
+      const end = new Date(pkg.tus_end_date).getTime();
+      if (Number.isFinite(end) && end <= Date.now()) return false;
+    }
+
+    if (pkg.tus_start_date) {
+      const start = new Date(pkg.tus_start_date);
+      if (Number.isFinite(start.getTime())) {
+        const today = new Date();
+        const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+        const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+        const daysUsed = Math.floor((todayDay - startDay) / 86400000) + 1;
+        if (daysUsed > 200) return false;
+      }
+    }
+
+    return true;
+  };
+
   const hasActiveSamePackage = (plan: SubscriptionPlan) => {
     const planAmount = normalizeAmount(plan.tsp_price);
     const planPhase = String(plan.tsp_plan_phase || 'prelaunch');
 
     return activePackages.some((pkg) => {
+      if (!isActivePackageUsable(pkg)) return false;
       const packageAmount = normalizeAmount(pkg.tus_payment_amount ?? pkg.plan?.tsp_price ?? 0);
       const packagePhase = String(pkg.tus_plan_phase || pkg.plan?.tsp_plan_phase || 'prelaunch');
 
       return pkg.tus_plan_id === plan.tsp_id || (packagePhase === planPhase && packageAmount === planAmount);
+    });
+  };
+
+  const hasHigherActivePackage = (plan: SubscriptionPlan) => {
+    const planAmount = normalizeAmount(plan.tsp_price);
+    const planPhase = String(plan.tsp_plan_phase || 'prelaunch');
+
+    return activePackages.some((pkg) => {
+      if (!isActivePackageUsable(pkg)) return false;
+      const packageAmount = normalizeAmount(pkg.tus_payment_amount ?? pkg.plan?.tsp_price ?? 0);
+      const packagePhase = String(pkg.tus_plan_phase || pkg.plan?.tsp_plan_phase || 'prelaunch');
+      return packagePhase === planPhase && packageAmount > planAmount;
     });
   };
 
@@ -207,6 +246,11 @@ const SubscriptionPlans: React.FC = () => {
 
     if (selectedPlan && hasActiveSamePackage(selectedPlan)) {
       alert('You already have an active package for this plan. You can renew it after the current package is exhausted.');
+      return;
+    }
+
+    if (selectedPlan && hasHigherActivePackage(selectedPlan)) {
+      alert('You cannot buy a lower package while a higher package is still active. Choose a higher package, or wait until the higher package is exhausted.');
       return;
     }
     
@@ -310,12 +354,13 @@ const SubscriptionPlans: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {plans.map((plan, index) => {
               const alreadyActive = hasActiveSamePackage(plan);
+              const blockedByHigherPackage = hasHigherActivePackage(plan);
 
               return (
               <div
                 key={plan.tsp_id}
                 className={`bg-white rounded-2xl shadow-xl border-2 p-8 relative transform transition-all duration-300 ${
-                  alreadyActive
+                  alreadyActive || blockedByHigherPackage
                     ? 'border-emerald-300 opacity-75'
                     : index === 1
                       ? 'border-indigo-500 ring-4 ring-indigo-200 hover:scale-105 hover:shadow-2xl'
@@ -323,11 +368,11 @@ const SubscriptionPlans: React.FC = () => {
                 }`}
               >
                 {/* Popular Badge */}
-                {alreadyActive ? (
+                {alreadyActive || blockedByHigherPackage ? (
                   <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                     <div className="bg-emerald-600 text-white px-6 py-2 rounded-full text-sm font-bold flex items-center space-x-2 shadow-lg">
                       <CheckCircle className="h-4 w-4" />
-                      <span>Active Package</span>
+                      <span>{alreadyActive ? 'Active Package' : 'Lower Package'}</span>
                     </div>
                   </div>
                 ) : index === 1 && (
@@ -398,25 +443,27 @@ const SubscriptionPlans: React.FC = () => {
                 {/* Select Button */}
                 <button
                   onClick={() => handleSelectPlan(plan.tsp_id)}
-                  disabled={alreadyActive}
+                  disabled={alreadyActive || blockedByHigherPackage}
                   className={`w-full py-4 px-6 rounded-xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg ${
-                    alreadyActive
+                    alreadyActive || blockedByHigherPackage
                       ? 'cursor-not-allowed bg-emerald-100 text-emerald-800 shadow-none'
                       : index === 1
                       ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
                       : 'bg-gradient-to-r from-gray-800 to-gray-900 text-white hover:from-gray-900 hover:to-black'
                   }`}
                 >
-                  {alreadyActive ? <CheckCircle className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
+                  {alreadyActive || blockedByHigherPackage ? <CheckCircle className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
                   <span>
                     {alreadyActive
                       ? 'Already Active'
+                      : blockedByHigherPackage
+                      ? 'Lower Than Active Package'
                       : user 
                       ? `Pay ${plan.tsp_price} USDT - Select Plan`
                       : `Select ${plan.tsp_name} - ${plan.tsp_price} USDT`
                     }
                   </span>
-                  {!alreadyActive && <ArrowRight className="h-5 w-5" />}
+                  {!alreadyActive && !blockedByHigherPackage && <ArrowRight className="h-5 w-5" />}
                 </button>
 
                 {/* Plan Benefits */}
@@ -424,6 +471,8 @@ const SubscriptionPlans: React.FC = () => {
                   <p className="text-xs text-gray-500">
                     {alreadyActive
                       ? 'Renewal opens after this package is exhausted.'
+                      : blockedByHigherPackage
+                      ? 'Lower package purchases are blocked while a higher package is active.'
                       : '✓ Instant activation • ✓ 24/7 support • ✓ USDT payments'}
                   </p>
                 </div>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../ui/NotificationProvider';
-import { ArrowDownLeft, ArrowUpRight, Clock, RefreshCw } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Clock, Package, RefreshCw, Target, TrendingUp } from 'lucide-react';
 
 interface Transaction {
   twt_id: string;
@@ -12,6 +12,32 @@ interface Transaction {
   twt_reference_type?: string | null;
   twt_status: 'pending' | 'completed' | 'failed' | 'cancelled';
   twt_created_at: string;
+}
+
+interface PlanEarningsRow {
+  subscription_id: string;
+  plan_id: string;
+  plan_name: string;
+  package_kind?: string | null;
+  status: string;
+  start_date?: string | null;
+  exhausted_at?: string | null;
+  exhaustion_reason?: string | null;
+  plan_amount: number | string;
+  target_income: number | string;
+  working_paid: number | string;
+  non_working_paid: number | string;
+  total_paid: number | string;
+  remaining_income: number | string;
+  days_used: number | string;
+  days_remaining: number | string;
+  income_progress_percent: number | string;
+  time_progress_percent: number | string;
+  is_exhausted: boolean;
+  overall_target_income: number | string;
+  overall_total_paid: number | string;
+  overall_remaining_income: number | string;
+  overall_income_progress_percent: number | string;
 }
 
 const EARNING_EXCLUDED_REFERENCE_TYPES = new Set(['spin_wheel_prize']);
@@ -25,6 +51,7 @@ const EarningsDashboard: React.FC = () => {
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletReservedBalance, setWalletReservedBalance] = useState(0);
   const [reservedWithdrawals, setReservedWithdrawals] = useState(0);
+  const [planEarnings, setPlanEarnings] = useState<PlanEarningsRow[]>([]);
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -43,15 +70,18 @@ const EarningsDashboard: React.FC = () => {
       setWalletBalance(0);
       setWalletReservedBalance(0);
       setReservedWithdrawals(0);
+      setPlanEarnings([]);
       setLoading(true);
       loadTransactions();
       loadWalletBalance();
       loadReservedWithdrawals();
+      loadPlanEarnings();
     } else {
       setTransactions([]);
       setWalletBalance(0);
       setWalletReservedBalance(0);
       setReservedWithdrawals(0);
+      setPlanEarnings([]);
       setLoading(false);
       setRefreshing(false);
     }
@@ -122,14 +152,35 @@ const EarningsDashboard: React.FC = () => {
     }
   };
 
+  const loadPlanEarnings = async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase.rpc('get_user_plan_earnings_dashboard');
+      if (error) throw error;
+      setPlanEarnings((data || []) as PlanEarningsRow[]);
+    } catch (error) {
+      console.error('Failed to load plan earnings dashboard:', error);
+      setPlanEarnings([]);
+    }
+  };
+
   const withdrawableBalance = useMemo(() => {
     return Math.max(0, walletBalance - walletReservedBalance - reservedWithdrawals);
   }, [walletBalance, walletReservedBalance, reservedWithdrawals]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadTransactions(), loadWalletBalance(), loadReservedWithdrawals()]);
+    await Promise.all([loadTransactions(), loadWalletBalance(), loadReservedWithdrawals(), loadPlanEarnings()]);
   };
+
+  const formatAmount = (value: unknown) => `${toAmount(value).toFixed(2)} USDT`;
+  const formatDate = (value?: string | null) => {
+    if (!value) return 'N/A';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return 'N/A';
+    return date.toLocaleDateString();
+  };
+  const clampPercent = (value: unknown) => Math.min(100, Math.max(0, toAmount(value)));
 
   const filteredTransactions = useMemo(() => {
     const start = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
@@ -196,6 +247,17 @@ const EarningsDashboard: React.FC = () => {
       .filter(t => t.twt_transaction_type === 'debit')
       .reduce((sum, t) => sum + toAmount(t.twt_amount), 0);
   }, [filteredTransactions]);
+
+  const overallPlanProgress = useMemo(() => {
+    const first = planEarnings[0];
+    return {
+      target: toAmount(first?.overall_target_income),
+      earned: toAmount(first?.overall_total_paid),
+      remaining: toAmount(first?.overall_remaining_income),
+      percent: clampPercent(first?.overall_income_progress_percent),
+      activeCount: planEarnings.filter((plan) => !plan.is_exhausted).length
+    };
+  }, [planEarnings]);
 
   if (loading) {
     return (
@@ -264,6 +326,125 @@ const EarningsDashboard: React.FC = () => {
           </div>
           <p className="text-2xl font-bold text-indigo-600 mt-2">{withdrawableBalance.toFixed(2)} USDT</p>
         </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h4 className="text-lg font-semibold text-gray-900">Plan Earnings Progress</h4>
+            <p className="text-sm text-gray-500 mt-1">Working and non-working income tracked against each package&apos;s 5x target.</p>
+          </div>
+          <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+            <Target className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-indigo-100 bg-indigo-50 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-indigo-950">Overall Active Goal</p>
+              <p className="mt-1 text-sm text-indigo-800">
+                {formatAmount(overallPlanProgress.earned)} earned of {formatAmount(overallPlanProgress.target)}
+              </p>
+            </div>
+            <div className="text-sm font-semibold text-indigo-900">
+              {formatAmount(overallPlanProgress.remaining)} remaining
+            </div>
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-white">
+            <div
+              className="h-full rounded-full bg-indigo-600 transition-all"
+              style={{ width: `${overallPlanProgress.percent}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-indigo-700">
+            <span>{overallPlanProgress.percent.toFixed(2)}% complete</span>
+            <span>{overallPlanProgress.activeCount} active package{overallPlanProgress.activeCount === 1 ? '' : 's'}</span>
+          </div>
+        </div>
+
+        {planEarnings.length === 0 ? (
+          <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+            No launch packages found yet.
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {planEarnings.map((plan) => {
+              const incomePercent = clampPercent(plan.income_progress_percent);
+              const timePercent = clampPercent(plan.time_progress_percent);
+              const statusLabel = plan.is_exhausted ? 'Exhausted' : 'Active';
+
+              return (
+                <div key={plan.subscription_id} className="rounded-lg border border-gray-200 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-5 w-5 flex-shrink-0 text-indigo-600" />
+                        <h5 className="truncate text-base font-semibold text-gray-900">{plan.plan_name}</h5>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {formatAmount(plan.plan_amount)} package • Started {formatDate(plan.start_date)}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      plan.is_exhausted ? 'bg-gray-100 text-gray-700' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {statusLabel}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <p className="text-xs text-gray-500">Target</p>
+                      <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.target_income)}</p>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <p className="text-xs text-gray-500">Earned</p>
+                      <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.total_paid)}</p>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <p className="text-xs text-gray-500">Remaining</p>
+                      <p className="mt-1 font-semibold text-gray-900">{formatAmount(plan.remaining_income)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-gray-600">
+                        <span className="inline-flex items-center gap-1 font-medium">
+                          <TrendingUp className="h-3.5 w-3.5" />
+                          Earnings Progress
+                        </span>
+                        <span>{incomePercent.toFixed(2)}%</span>
+                      </div>
+                      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${incomePercent}%` }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-gray-600">
+                        <span className="inline-flex items-center gap-1 font-medium">
+                          <Clock className="h-3.5 w-3.5" />
+                          200-Day Window
+                        </span>
+                        <span>{Number(plan.days_used || 0)} used • {Number(plan.days_remaining || 0)} left</span>
+                      </div>
+                      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-amber-500" style={{ width: `${timePercent}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-600">
+                    <div>Working: <span className="font-semibold text-gray-900">{formatAmount(plan.working_paid)}</span></div>
+                    <div>Non-working: <span className="font-semibold text-gray-900">{formatAmount(plan.non_working_paid)}</span></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6">
