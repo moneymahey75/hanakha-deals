@@ -105,6 +105,7 @@ const CustomerDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [hasLaunchUpgrade, setHasLaunchUpgrade] = useState(false);
+  const [launchPackageName, setLaunchPackageName] = useState<string | null>(null);
   const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
@@ -135,6 +136,7 @@ const CustomerDashboard: React.FC = () => {
       if (!user?.id) {
         if (mounted) {
           setHasLaunchUpgrade(false);
+          setLaunchPackageName(null);
           setUpgradeStatusLoading(false);
         }
         return;
@@ -142,19 +144,47 @@ const CustomerDashboard: React.FC = () => {
 
       try {
         setUpgradeStatusLoading(true);
-        if (user.currentPlanPhase === 'launch') {
-          if (mounted) setHasLaunchUpgrade(true);
-          return;
-        }
+        const [upgradeResult, packageResult] = await Promise.all([
+          user.currentPlanPhase === 'launch'
+            ? Promise.resolve({ data: true, error: null })
+            : supabase.rpc('is_user_on_launch_plan', {
+                p_user_id: user.id,
+              }),
+          supabase
+            .from('tbl_user_subscriptions')
+            .select('tus_payment_amount, tus_start_date, tus_plan_phase, plan:tus_plan_id(tsp_name, tsp_price, tsp_plan_phase)')
+            .eq('tus_user_id', user.id)
+            .in('tus_status', ['active', 'upgraded'])
+            .is('tus_exhausted_at', null)
+            .or(`tus_end_date.is.null,tus_end_date.gt.${new Date().toISOString()}`)
+        ]);
 
-        const { data, error } = await supabase.rpc('is_user_on_launch_plan', {
-          p_user_id: user.id,
-        });
-        if (error) throw error;
-        if (mounted) setHasLaunchUpgrade(Boolean(data));
+        if (upgradeResult.error) throw upgradeResult.error;
+
+        const launchPackages = ((packageResult.data || []) as any[])
+          .filter((row) => String(row?.tus_plan_phase || row?.plan?.tsp_plan_phase || '').toLowerCase() === 'launch')
+          .sort((a, b) => {
+            const bAmount = Number(b?.tus_payment_amount ?? b?.plan?.tsp_price ?? 0);
+            const aAmount = Number(a?.tus_payment_amount ?? a?.plan?.tsp_price ?? 0);
+            if (bAmount !== aAmount) return bAmount - aAmount;
+            return String(b?.tus_start_date || '').localeCompare(String(a?.tus_start_date || ''));
+          });
+        const packageNames = Array.from(new Set(
+          launchPackages
+            .map((row) => String(row?.plan?.tsp_name || '').trim())
+            .filter(Boolean)
+        ));
+
+        if (mounted) {
+          setHasLaunchUpgrade(Boolean(upgradeResult.data) || launchPackages.length > 0);
+          setLaunchPackageName(packageNames.length > 0 ? packageNames.join(', ') : null);
+        }
       } catch (error) {
         console.error('Failed to load launch upgrade status:', error);
-        if (mounted) setHasLaunchUpgrade(false);
+        if (mounted) {
+          setHasLaunchUpgrade(false);
+          setLaunchPackageName(null);
+        }
       } finally {
         if (mounted) setUpgradeStatusLoading(false);
       }
@@ -583,7 +613,11 @@ const CustomerDashboard: React.FC = () => {
                     ) : (
                       <AlertCircle className="h-4 w-4" />
                     )}
-                    {upgradeStatusLoading ? 'Checking upgrade status...' : hasLaunchUpgrade ? 'Account Upgraded' : 'Not Upgraded Yet'}
+                    {upgradeStatusLoading
+                      ? 'Checking upgrade status...'
+                      : hasLaunchUpgrade
+                        ? `Account Upgraded${launchPackageName ? `: ${launchPackageName}` : ''}`
+                        : 'Not Upgraded Yet'}
                   </span>
                 </div>
               </div>

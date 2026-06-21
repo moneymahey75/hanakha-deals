@@ -23,6 +23,8 @@ type ReferralRow = {
   first_name?: string | null;
   last_name?: string | null;
   username?: string | null;
+  subscribed_package_name?: string | null;
+  subscribed_package_amount?: number | string | null;
   total_count?: number | null;
   direct_referrals?: number | null;
   max_depth?: number | null;
@@ -173,6 +175,26 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
     return node.parent_sponsorship_number || node.parent_user_id;
   };
 
+  const renderPackage = (node: ReferralRow) => {
+    const packageName = String(node.subscribed_package_name || '').trim();
+    const packageAmount = node.subscribed_package_amount == null ? null : Number(node.subscribed_package_amount);
+
+    if (!packageName) {
+      return <span className="text-xs text-gray-400">No Launch Package</span>;
+    }
+
+    return (
+      <div className="min-w-0">
+        <div className="max-w-[180px] truncate text-sm font-medium text-gray-800" title={packageName}>
+          {packageName}
+        </div>
+        {Number.isFinite(packageAmount) && packageAmount > 0 && (
+          <div className="text-xs text-gray-500">{packageAmount} USDT</div>
+        )}
+      </div>
+    );
+  };
+
   const totalNetwork = networkSummary.totalNetwork;
   const directReferrals = networkSummary.directReferrals;
   const maxDepth = networkSummary.maxDepth;
@@ -314,6 +336,9 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                   Level
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Package
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
               </tr>
@@ -321,19 +346,19 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
                     Loading referrals...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-red-600">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-red-600">
                     {error}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
                     No referrals yet.
                   </td>
                 </tr>
@@ -346,6 +371,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                     <td className="px-4 py-3 text-sm text-gray-700 font-mono">{ref.sponsorship_number}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">{renderParent(ref)}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">Level {ref.level}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{renderPackage(ref)}</td>
                     <td className="px-4 py-3 text-sm">
                       {renderStatus(ref)}
                     </td>
@@ -385,6 +411,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                       <div className="text-sm font-medium text-gray-900">{renderName(node)}</div>
                       <div className="text-xs text-gray-500">Under: {renderParent(node)}</div>
                       <div className="text-xs text-gray-500">{node.email || ''}</div>
+                      <div className="mt-1">{renderPackage(node)}</div>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-xs text-gray-500 font-mono">{node.sponsorship_number}</div>
