@@ -191,7 +191,7 @@ const CustomerDashboard: React.FC = () => {
     };
 
     const loadSpinWheelVisibility = async () => {
-      if (!user?.id || (settings?.launchPhase || 'prelaunch') !== 'launched') {
+      if (!user?.id) {
         if (mounted) setSpinWheelVisible(false);
         return;
       }
@@ -201,7 +201,7 @@ const CustomerDashboard: React.FC = () => {
         if (error) throw error;
         const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean; eligible?: boolean };
         if (mounted) {
-          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || spinStatus.eligible === true || spinStatus.eligible === false));
+          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || spinStatus.eligible === true));
         }
       } catch (error) {
         console.error('Failed to load spin wheel visibility:', error);
@@ -215,7 +215,7 @@ const CustomerDashboard: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [user?.id, user?.currentPlanPhase, settings?.launchPhase]);
+  }, [user?.id, user?.currentPlanPhase]);
 
   // FIXED: Load dashboard data with proper error handling
   useEffect(() => {
