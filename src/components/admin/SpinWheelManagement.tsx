@@ -26,6 +26,7 @@ type UserOption = {
   tu_user_type: 'customer' | 'company' | 'admin';
   tup_first_name?: string;
   tup_last_name?: string;
+  tup_sponsorship_number?: string;
   company_name?: string;
 };
 
@@ -233,7 +234,8 @@ const SpinWheelManagement: React.FC = () => {
   const selectUser = (user: UserOption) => {
     const displayName = `${user.tup_first_name || ''} ${user.tup_last_name || ''}`.trim();
     setSelectedUser(user);
-    setUserSearch(`${displayName || user.tu_email} (${user.tu_email})`);
+    const sponsorship = user.tup_sponsorship_number ? ` • ${user.tup_sponsorship_number}` : '';
+    setUserSearch(`${displayName || user.tu_email} (${user.tu_email}${sponsorship})`);
     setUsers([]);
   };
 
@@ -362,7 +364,7 @@ const SpinWheelManagement: React.FC = () => {
                   setSelectedUser(null);
                   setUserSearch(e.target.value);
                 }}
-                placeholder="Search customer by name or email"
+                placeholder="Search customer by name, email, or sponsorship ID"
                 className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               />
               {searching && <Loader2 className="absolute right-3 top-2.5 h-5 w-5 animate-spin text-gray-400" />}
@@ -380,6 +382,11 @@ const SpinWheelManagement: React.FC = () => {
                     >
                       <div className="font-medium text-gray-900">{displayName}</div>
                       <div className="text-sm text-gray-500">{user.tu_email}</div>
+                      {user.tup_sponsorship_number && (
+                        <div className="mt-1 text-xs font-semibold text-indigo-600">
+                          Sponsorship ID: {user.tup_sponsorship_number}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
