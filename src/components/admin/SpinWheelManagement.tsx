@@ -67,6 +67,15 @@ const toServerTimestamp = (value: string) => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
+const formatLocalDateTime = (date: Date) =>
+  date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
 const getUserName = (row?: { tbl_users?: Assignment['tbl_users'] }) => {
@@ -96,6 +105,34 @@ const SpinWheelManagement: React.FC = () => {
     () => assignments.reduce((sum, item) => sum + Number(item.tswa_prize_amount || 0), 0),
     [assignments]
   );
+
+  const campaignWindow = useMemo(() => {
+    const now = new Date();
+    const startDate = startAt ? new Date(startAt) : null;
+    const endDate = endAt ? new Date(endAt) : null;
+    const hasValidStart = startDate && !Number.isNaN(startDate.getTime());
+    const hasValidEnd = endDate && !Number.isNaN(endDate.getTime());
+
+    const startsInFuture = Boolean(hasValidStart && startDate.getTime() > now.getTime());
+    const ended = Boolean(hasValidEnd && endDate.getTime() < now.getTime());
+    const active = Boolean(isEnabled && !startsInFuture && !ended);
+
+    const label = !isEnabled
+      ? 'Disabled'
+      : startsInFuture
+        ? 'Scheduled'
+        : ended
+          ? 'Expired'
+          : 'Active now';
+
+    return {
+      active,
+      label,
+      nowLabel: formatLocalDateTime(now),
+      startUtc: hasValidStart ? startDate.toISOString().replace('.000', '') : 'Not set',
+      endUtc: hasValidEnd ? endDate.toISOString().replace('.000', '') : 'Not set',
+    };
+  }, [endAt, isEnabled, startAt]);
 
   const loadData = async () => {
     try {
@@ -334,6 +371,21 @@ const SpinWheelManagement: React.FC = () => {
                 onChange={(e) => setEndAt(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="font-semibold text-gray-800">Window status: </span>
+              <span className={campaignWindow.active ? 'font-semibold text-green-700' : 'font-semibold text-amber-700'}>
+                {campaignWindow.label}
+              </span>
+              <span className="ml-2 text-gray-500">Current local time: {campaignWindow.nowLabel}</span>
+            </div>
+            <div className="text-xs text-gray-500">
+              Saved as UTC: {campaignWindow.startUtc} to {campaignWindow.endUtc}
             </div>
           </div>
         </div>

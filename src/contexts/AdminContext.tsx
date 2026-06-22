@@ -172,7 +172,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     siteName: 'ShopClix',
     logoUrl: '/shopclix_logo.png',
     dateFormat: 'DD/MM/YYYY',
-    timezone: 'UTC',
+    timezone: 'Asia/Kolkata',
     maintenanceMode: false,
     maintenanceMessage: 'We’re doing some maintenance right now. Please check back shortly.',
     maintenanceNoticeEnabled: false,
