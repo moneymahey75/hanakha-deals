@@ -212,7 +212,7 @@ const CustomerDashboard: React.FC = () => {
 
         if (mounted) {
           const isCampaignActive = spinStatus.active === true;
-          const canSeeSpinWheel = isCampaignActive && (isEligible === true || spinStatus.hasSpun === true);
+          const canSeeSpinWheel = spinStatus.hasSpun === true || (isCampaignActive && isEligible === true);
           setSpinWheelVisible(canSeeSpinWheel);
         }
       } catch (error) {
