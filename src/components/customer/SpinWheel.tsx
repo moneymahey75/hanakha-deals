@@ -33,6 +33,8 @@ const baseSegments: Segment[] = [
   { label: 'Better luck', amount: 0, outcome: 'better_luck', color: '#dc2626' },
   { label: '10 USDT', amount: 10, outcome: 'prize', color: '#16a34a' },
   { label: 'Better luck', amount: 0, outcome: 'better_luck', color: '#7c3aed' },
+  { label: '15 USDT', amount: 15, outcome: 'prize', color: '#ca8a04' },
+  { label: 'Better luck', amount: 0, outcome: 'better_luck', color: '#0d9488' },
   { label: '25 USDT', amount: 25, outcome: 'prize', color: '#ea580c' },
   { label: 'Better luck', amount: 0, outcome: 'better_luck', color: '#0891b2' },
   { label: '50 USDT', amount: 50, outcome: 'prize', color: '#be123c' },

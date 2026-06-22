@@ -404,6 +404,22 @@ const SpinWheelManagement: React.FC = () => {
               placeholder="0.00"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[5, 10, 15, 25, 50, 100].map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => setPrizeAmount(String(amount))}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                    Number(prizeAmount || 0) === amount
+                      ? 'border-green-600 bg-green-50 text-green-700'
+                      : 'border-gray-200 text-gray-600 hover:border-green-300 hover:text-green-700'
+                  }`}
+                >
+                  {amount} USDT
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex items-end">
             <button
