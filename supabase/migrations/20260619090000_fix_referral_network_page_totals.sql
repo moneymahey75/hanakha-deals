@@ -1,6 +1,8 @@
 -- Ensure My Network pagination uses the full filtered network count, not the
 -- current page size, when deciding whether Next/Last should be enabled.
 
+DROP FUNCTION IF EXISTS public.get_referral_network_page_v1(uuid, int, int, text, int, int);
+
 CREATE OR REPLACE FUNCTION public.get_referral_network_page_v1(
   p_user_id uuid,
   p_max_levels int DEFAULT 10,
