@@ -202,7 +202,7 @@ const CustomerDashboard: React.FC = () => {
         const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean; eligible?: boolean };
         if (mounted) {
           console.log('--start--');
-          console.log(pinStatus.active);
+          console.log(spinStatus.active);
           console.log(spinStatus.hasSpun );
           console.log(spinStatus.eligible);
           console.log('---end---');
