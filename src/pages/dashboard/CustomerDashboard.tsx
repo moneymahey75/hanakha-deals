@@ -211,7 +211,9 @@ const CustomerDashboard: React.FC = () => {
         }
 
         if (mounted) {
-          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || isEligible === true));
+          const isCampaignActive = spinStatus.active === true;
+          const canSeeSpinWheel = isCampaignActive && (isEligible === true || spinStatus.hasSpun === true);
+          setSpinWheelVisible(canSeeSpinWheel);
         }
       } catch (error) {
         console.error('Failed to load spin wheel visibility:', error);

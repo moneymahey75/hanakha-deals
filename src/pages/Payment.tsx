@@ -743,6 +743,20 @@ const Payment: React.FC = () => {
         return;
       }
 
+      const { data: purchaseCheck, error: purchaseCheckError } = await supabase.rpc('can_purchase_subscription_plan', {
+        p_user_id: user.id,
+        p_plan_id: selectedPlan.tsp_id,
+      });
+
+      if (purchaseCheckError) throw purchaseCheckError;
+
+      const purchaseResult = (purchaseCheck || {}) as { allowed?: boolean; message?: string };
+      if (purchaseResult.allowed === false) {
+        notification.showError('Package Not Allowed', purchaseResult.message || 'This package cannot be purchased right now.');
+        navigate('/subscription-plans', { replace: true });
+        return;
+      }
+
       const planType = String(selectedPlan.tsp_type || '').toLowerCase();
       const isUpgradePlan = planType === 'upgrade' && Boolean(user.registrationPaid || user.hasActiveSubscription);
 

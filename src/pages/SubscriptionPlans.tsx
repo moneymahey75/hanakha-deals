@@ -40,6 +40,7 @@ const SubscriptionPlans: React.FC = () => {
   const [activePackages, setActivePackages] = useState<ActivePackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [checkingPlanId, setCheckingPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     loadPlans();
@@ -242,7 +243,7 @@ const SubscriptionPlans: React.FC = () => {
     });
   };
 
-  const handleSelectPlan = (planId: string) => {
+  const handleSelectPlan = async (planId: string) => {
     console.log('🎯 Plan selected:', planId);
     const selectedPlan = plans.find(p => p.tsp_id === planId);
 
@@ -266,6 +267,29 @@ const SubscriptionPlans: React.FC = () => {
         } 
       });
       return;
+    }
+
+    try {
+      setCheckingPlanId(planId);
+      const { data, error } = await supabase.rpc('can_purchase_subscription_plan', {
+        p_user_id: user.id,
+        p_plan_id: planId,
+      });
+
+      if (error) throw error;
+
+      const result = (data || {}) as { allowed?: boolean; message?: string };
+      if (result.allowed === false) {
+        alert(result.message || 'This package cannot be purchased right now.');
+        await loadActivePackages();
+        return;
+      }
+    } catch (error: any) {
+      console.error('Failed to validate plan purchase:', error);
+      alert(error?.message || 'Unable to validate this package purchase. Please try again.');
+      return;
+    } finally {
+      setCheckingPlanId(null);
     }
     
     console.log('💳 User logged in, proceeding to payment with plan:', planId);
@@ -445,9 +469,9 @@ const SubscriptionPlans: React.FC = () => {
                 {/* Select Button */}
                 <button
                   onClick={() => handleSelectPlan(plan.tsp_id)}
-                  disabled={alreadyActive || blockedByHigherPackage}
+                  disabled={alreadyActive || blockedByHigherPackage || checkingPlanId === plan.tsp_id}
                   className={`w-full py-4 px-6 rounded-xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg ${
-                    alreadyActive || blockedByHigherPackage
+                    alreadyActive || blockedByHigherPackage || checkingPlanId === plan.tsp_id
                       ? 'cursor-not-allowed bg-emerald-100 text-emerald-800 shadow-none'
                       : index === 1
                       ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
@@ -456,7 +480,9 @@ const SubscriptionPlans: React.FC = () => {
                 >
                   {alreadyActive || blockedByHigherPackage ? <CheckCircle className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
                   <span>
-                    {alreadyActive
+                    {checkingPlanId === plan.tsp_id
+                      ? 'Checking Package...'
+                      : alreadyActive
                       ? 'Already Active'
                       : blockedByHigherPackage
                       ? 'Lower Than Active Package'
