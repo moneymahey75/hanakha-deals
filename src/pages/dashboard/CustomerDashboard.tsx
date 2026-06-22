@@ -200,14 +200,18 @@ const CustomerDashboard: React.FC = () => {
         const { data, error } = await supabase.rpc('customer_get_spin_wheel_status');
         if (error) throw error;
         const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean; eligible?: boolean };
+        let isEligible = spinStatus.eligible;
+
+        if (typeof isEligible !== 'boolean') {
+          const { data: eligibleData, error: eligibleError } = await supabase.rpc('is_spin_wheel_launch_upgrade_eligible', {
+            p_user_id: user.id,
+          });
+          if (eligibleError) throw eligibleError;
+          isEligible = Boolean(eligibleData);
+        }
+
         if (mounted) {
-          console.log('--start--');
-          console.log(spinStatus.active);
-          console.log(spinStatus.hasSpun );
-          console.log(spinStatus.eligible);
-          console.log('---end---');
-          
-          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || spinStatus.eligible === true));
+          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || isEligible === true));
         }
       } catch (error) {
         console.error('Failed to load spin wheel visibility:', error);
