@@ -60,12 +60,6 @@ AS $$
     AND (c.tswc_start_at IS NULL OR c.tswc_start_at <= now())
     AND (c.tswc_end_at IS NULL OR c.tswc_end_at >= now())
     AND (c.tswc_start_at IS NULL OR c.tswc_end_at IS NULL OR c.tswc_end_at <= c.tswc_start_at + interval '2 days')
-    AND COALESCE((
-      SELECT lower(trim(both '"' from tss_setting_value::text))
-      FROM public.tbl_system_settings
-      WHERE tss_setting_key = 'launch_phase'
-      LIMIT 1
-    ), 'prelaunch') = 'launched'
   ORDER BY c.tswc_created_at DESC
   LIMIT 1;
 $$;

@@ -96,7 +96,23 @@ const SpinWheel: React.FC = () => {
       setLoading(true);
       const { data, error } = await supabase.rpc('customer_get_spin_wheel_status');
       if (error) throw error;
-      setStatus((data || {}) as SpinStatus);
+      const nextStatus = (data || {}) as SpinStatus;
+
+      if (!nextStatus.active && nextStatus.eligible !== false && !nextStatus.hasSpun) {
+        const { data: campaign, error: campaignError } = await supabase.rpc('get_active_spin_wheel_campaign');
+        if (campaignError) throw campaignError;
+        const activeCampaign = Array.isArray(campaign) ? campaign[0] : campaign;
+
+        if (activeCampaign?.tswc_id) {
+          nextStatus.active = true;
+          nextStatus.eligible = true;
+          nextStatus.campaignId = activeCampaign.tswc_id;
+          nextStatus.campaignName = activeCampaign.tswc_name;
+          nextStatus.message = 'Spin available.';
+        }
+      }
+
+      setStatus(nextStatus);
     } catch (error: any) {
       console.error('Failed to load spin wheel status:', error);
       notification.showError('Error', error?.message || 'Failed to load spin wheel status.');
