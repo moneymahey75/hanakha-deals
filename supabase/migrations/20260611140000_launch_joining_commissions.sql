@@ -51,6 +51,55 @@ CREATE TABLE IF NOT EXISTS public.tbl_joining_commissions (
     UNIQUE (tjc_payment_id, tjc_level, tjc_recipient_user_id)
 );
 
+ALTER TABLE public.tbl_joining_commissions
+  ADD COLUMN IF NOT EXISTS tjc_id uuid DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS tjc_payment_id uuid REFERENCES public.tbl_payments(tp_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tjc_subscription_id uuid REFERENCES public.tbl_user_subscriptions(tus_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS tjc_joined_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tjc_recipient_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tjc_level integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS tjc_plan_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tjc_percentage numeric(9, 6) NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS tjc_commission_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tjc_required_direct_joins integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tjc_direct_joins_at_award integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tjc_status text NOT NULL DEFAULT 'credited',
+  ADD COLUMN IF NOT EXISTS tjc_skip_reason text,
+  ADD COLUMN IF NOT EXISTS tjc_created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS tjc_wallet_transaction_id uuid REFERENCES public.tbl_wallet_transactions(twt_id) ON DELETE SET NULL;
+
+ALTER TABLE public.tbl_joining_commissions
+  DROP CONSTRAINT IF EXISTS tbl_joining_commissions_level_check;
+
+ALTER TABLE public.tbl_joining_commissions
+  ADD CONSTRAINT tbl_joining_commissions_level_check CHECK (tjc_level BETWEEN 1 AND 3);
+
+ALTER TABLE public.tbl_joining_commissions
+  DROP CONSTRAINT IF EXISTS tbl_joining_commissions_amounts_check;
+
+ALTER TABLE public.tbl_joining_commissions
+  ADD CONSTRAINT tbl_joining_commissions_amounts_check
+  CHECK (
+    tjc_plan_amount >= 0
+    AND tjc_percentage > 0
+    AND tjc_commission_amount >= 0
+    AND tjc_required_direct_joins >= 0
+    AND tjc_direct_joins_at_award >= 0
+  );
+
+ALTER TABLE public.tbl_joining_commissions
+  DROP CONSTRAINT IF EXISTS tbl_joining_commissions_status_check;
+
+ALTER TABLE public.tbl_joining_commissions
+  ADD CONSTRAINT tbl_joining_commissions_status_check CHECK (tjc_status IN ('credited', 'locked', 'skipped'));
+
+ALTER TABLE public.tbl_joining_commissions
+  DROP CONSTRAINT IF EXISTS tbl_joining_commissions_payment_level_recipient_unique;
+
+ALTER TABLE public.tbl_joining_commissions
+  ADD CONSTRAINT tbl_joining_commissions_payment_level_recipient_unique
+  UNIQUE (tjc_payment_id, tjc_level, tjc_recipient_user_id);
+
 CREATE INDEX IF NOT EXISTS idx_joining_commissions_recipient_created
   ON public.tbl_joining_commissions (tjc_recipient_user_id, tjc_created_at DESC);
 

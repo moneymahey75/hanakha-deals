@@ -127,6 +127,59 @@ CREATE TABLE IF NOT EXISTS public.tbl_user_reward_coupons (
 );
 
 ALTER TABLE public.tbl_user_reward_coupons
+  ADD COLUMN IF NOT EXISTS turc_id uuid DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS turc_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS turc_subscription_id uuid REFERENCES public.tbl_user_subscriptions(tus_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS turc_coupon_id uuid REFERENCES public.tbl_coupons(tc_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS turc_reward_date date NOT NULL DEFAULT CURRENT_DATE,
+  ADD COLUMN IF NOT EXISTS turc_day_number integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS turc_plan_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS turc_daily_target_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS turc_reward_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS turc_status text NOT NULL DEFAULT 'available',
+  ADD COLUMN IF NOT EXISTS turc_opened_at timestamptz,
+  ADD COLUMN IF NOT EXISTS turc_reaction_available_at timestamptz,
+  ADD COLUMN IF NOT EXISTS turc_reacted_at timestamptz,
+  ADD COLUMN IF NOT EXISTS turc_reaction text,
+  ADD COLUMN IF NOT EXISTS turc_feedback_text text,
+  ADD COLUMN IF NOT EXISTS turc_created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS turc_updated_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.tbl_user_reward_coupons
+  DROP CONSTRAINT IF EXISTS tbl_user_reward_coupons_status_check;
+
+ALTER TABLE public.tbl_user_reward_coupons
+  ADD CONSTRAINT tbl_user_reward_coupons_status_check
+  CHECK (turc_status IN ('available', 'opened', 'liked', 'disliked', 'expired'));
+
+ALTER TABLE public.tbl_user_reward_coupons
+  DROP CONSTRAINT IF EXISTS tbl_user_reward_coupons_reaction_check;
+
+ALTER TABLE public.tbl_user_reward_coupons
+  ADD CONSTRAINT tbl_user_reward_coupons_reaction_check
+  CHECK (turc_reaction IS NULL OR turc_reaction IN ('liked', 'disliked'));
+
+ALTER TABLE public.tbl_user_reward_coupons
+  DROP CONSTRAINT IF EXISTS tbl_user_reward_coupons_amount_check;
+
+ALTER TABLE public.tbl_user_reward_coupons
+  ADD CONSTRAINT tbl_user_reward_coupons_amount_check
+  CHECK (turc_reward_amount >= 0 AND turc_daily_target_amount >= 0 AND turc_plan_amount >= 0);
+
+ALTER TABLE public.tbl_user_reward_coupons
+  DROP CONSTRAINT IF EXISTS tbl_user_reward_coupons_day_check;
+
+ALTER TABLE public.tbl_user_reward_coupons
+  ADD CONSTRAINT tbl_user_reward_coupons_day_check
+  CHECK (turc_day_number BETWEEN 1 AND 200);
+
+ALTER TABLE public.tbl_user_reward_coupons
+  DROP CONSTRAINT IF EXISTS tbl_user_reward_coupons_once_per_day;
+
+ALTER TABLE public.tbl_user_reward_coupons
+  ADD CONSTRAINT tbl_user_reward_coupons_once_per_day UNIQUE (turc_user_id, turc_coupon_id, turc_reward_date);
+
+ALTER TABLE public.tbl_user_reward_coupons
   ALTER COLUMN turc_reward_date SET DEFAULT public.shopclick_business_date();
 
 CREATE INDEX IF NOT EXISTS idx_user_reward_coupons_user_date
@@ -375,6 +428,8 @@ BEGIN
   LIMIT 1;
 END;
 $$;
+
+DROP FUNCTION IF EXISTS public.get_user_reward_coupons();
 
 CREATE OR REPLACE FUNCTION public.get_user_reward_coupons()
 RETURNS TABLE (

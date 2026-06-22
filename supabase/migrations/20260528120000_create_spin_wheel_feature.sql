@@ -19,6 +19,23 @@ CREATE TABLE IF NOT EXISTS public.tbl_spin_wheel_campaigns (
     CHECK (tswc_end_at IS NULL OR tswc_start_at IS NULL OR tswc_end_at > tswc_start_at)
 );
 
+ALTER TABLE public.tbl_spin_wheel_campaigns
+  ADD COLUMN IF NOT EXISTS tswc_id uuid DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS tswc_name text NOT NULL DEFAULT 'Launch Spin Wheel',
+  ADD COLUMN IF NOT EXISTS tswc_is_enabled boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS tswc_start_at timestamptz,
+  ADD COLUMN IF NOT EXISTS tswc_end_at timestamptz,
+  ADD COLUMN IF NOT EXISTS tswc_created_by uuid REFERENCES public.tbl_admin_users(tau_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS tswc_created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS tswc_updated_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.tbl_spin_wheel_campaigns
+  DROP CONSTRAINT IF EXISTS tbl_spin_wheel_campaigns_date_check;
+
+ALTER TABLE public.tbl_spin_wheel_campaigns
+  ADD CONSTRAINT tbl_spin_wheel_campaigns_date_check
+  CHECK (tswc_end_at IS NULL OR tswc_start_at IS NULL OR tswc_end_at > tswc_start_at);
+
 CREATE TABLE IF NOT EXISTS public.tbl_spin_wheel_assignments (
   tswa_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tswa_campaign_id uuid NOT NULL REFERENCES public.tbl_spin_wheel_campaigns(tswc_id) ON DELETE CASCADE,
@@ -31,6 +48,27 @@ CREATE TABLE IF NOT EXISTS public.tbl_spin_wheel_assignments (
   CONSTRAINT tbl_spin_wheel_assignments_user_campaign_unique UNIQUE (tswa_campaign_id, tswa_user_id)
 );
 
+ALTER TABLE public.tbl_spin_wheel_assignments
+  ADD COLUMN IF NOT EXISTS tswa_id uuid DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS tswa_campaign_id uuid REFERENCES public.tbl_spin_wheel_campaigns(tswc_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tswa_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tswa_prize_amount numeric(18,8) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tswa_assigned_by uuid REFERENCES public.tbl_admin_users(tau_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS tswa_created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS tswa_updated_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.tbl_spin_wheel_assignments
+  DROP CONSTRAINT IF EXISTS tbl_spin_wheel_assignments_amount_check;
+
+ALTER TABLE public.tbl_spin_wheel_assignments
+  ADD CONSTRAINT tbl_spin_wheel_assignments_amount_check CHECK (tswa_prize_amount >= 0);
+
+ALTER TABLE public.tbl_spin_wheel_assignments
+  DROP CONSTRAINT IF EXISTS tbl_spin_wheel_assignments_user_campaign_unique;
+
+ALTER TABLE public.tbl_spin_wheel_assignments
+  ADD CONSTRAINT tbl_spin_wheel_assignments_user_campaign_unique UNIQUE (tswa_campaign_id, tswa_user_id);
+
 CREATE TABLE IF NOT EXISTS public.tbl_spin_wheel_spins (
   tsws_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tsws_campaign_id uuid NOT NULL REFERENCES public.tbl_spin_wheel_campaigns(tswc_id) ON DELETE RESTRICT,
@@ -42,6 +80,32 @@ CREATE TABLE IF NOT EXISTS public.tbl_spin_wheel_spins (
   CONSTRAINT tbl_spin_wheel_spins_outcome_check CHECK (tsws_outcome IN ('prize', 'better_luck')),
   CONSTRAINT tbl_spin_wheel_spins_user_lifetime_unique UNIQUE (tsws_user_id)
 );
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  ADD COLUMN IF NOT EXISTS tsws_id uuid DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS tsws_campaign_id uuid REFERENCES public.tbl_spin_wheel_campaigns(tswc_id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS tsws_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tsws_prize_amount numeric(18,8) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tsws_outcome text NOT NULL DEFAULT 'better_luck',
+  ADD COLUMN IF NOT EXISTS tsws_created_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  DROP CONSTRAINT IF EXISTS tbl_spin_wheel_spins_amount_check;
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  ADD CONSTRAINT tbl_spin_wheel_spins_amount_check CHECK (tsws_prize_amount >= 0);
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  DROP CONSTRAINT IF EXISTS tbl_spin_wheel_spins_outcome_check;
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  ADD CONSTRAINT tbl_spin_wheel_spins_outcome_check CHECK (tsws_outcome IN ('prize', 'better_luck'));
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  DROP CONSTRAINT IF EXISTS tbl_spin_wheel_spins_user_lifetime_unique;
+
+ALTER TABLE public.tbl_spin_wheel_spins
+  ADD CONSTRAINT tbl_spin_wheel_spins_user_lifetime_unique UNIQUE (tsws_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_tbl_spin_wheel_campaigns_active
   ON public.tbl_spin_wheel_campaigns (tswc_is_enabled, tswc_start_at, tswc_end_at);

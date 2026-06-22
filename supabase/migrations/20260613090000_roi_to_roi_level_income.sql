@@ -51,6 +51,56 @@ CREATE TABLE IF NOT EXISTS public.tbl_roi_level_incomes (
     UNIQUE (trli_assignment_id, trli_level, trli_recipient_user_id)
 );
 
+ALTER TABLE public.tbl_roi_level_incomes
+  ADD COLUMN IF NOT EXISTS trli_id uuid DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS trli_assignment_id uuid REFERENCES public.tbl_user_reward_coupons(turc_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS trli_source_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS trli_recipient_user_id uuid REFERENCES public.tbl_users(tu_id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS trli_level integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS trli_source_reward_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS trli_percentage numeric(9, 6) NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS trli_income_amount numeric(18, 6) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS trli_required_directs integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS trli_directs_at_award integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS trli_max_eligible_level integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS trli_status text NOT NULL DEFAULT 'credited',
+  ADD COLUMN IF NOT EXISTS trli_skip_reason text,
+  ADD COLUMN IF NOT EXISTS trli_wallet_transaction_id uuid REFERENCES public.tbl_wallet_transactions(twt_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS trli_created_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.tbl_roi_level_incomes
+  DROP CONSTRAINT IF EXISTS tbl_roi_level_incomes_level_check;
+
+ALTER TABLE public.tbl_roi_level_incomes
+  ADD CONSTRAINT tbl_roi_level_incomes_level_check CHECK (trli_level BETWEEN 1 AND 15);
+
+ALTER TABLE public.tbl_roi_level_incomes
+  DROP CONSTRAINT IF EXISTS tbl_roi_level_incomes_amounts_check;
+
+ALTER TABLE public.tbl_roi_level_incomes
+  ADD CONSTRAINT tbl_roi_level_incomes_amounts_check
+  CHECK (
+    trli_source_reward_amount >= 0
+    AND trli_percentage > 0
+    AND trli_income_amount >= 0
+    AND trli_required_directs >= 0
+    AND trli_directs_at_award >= 0
+    AND trli_max_eligible_level >= 0
+  );
+
+ALTER TABLE public.tbl_roi_level_incomes
+  DROP CONSTRAINT IF EXISTS tbl_roi_level_incomes_status_check;
+
+ALTER TABLE public.tbl_roi_level_incomes
+  ADD CONSTRAINT tbl_roi_level_incomes_status_check CHECK (trli_status IN ('credited', 'locked', 'skipped'));
+
+ALTER TABLE public.tbl_roi_level_incomes
+  DROP CONSTRAINT IF EXISTS tbl_roi_level_incomes_assignment_level_recipient_unique;
+
+ALTER TABLE public.tbl_roi_level_incomes
+  ADD CONSTRAINT tbl_roi_level_incomes_assignment_level_recipient_unique
+  UNIQUE (trli_assignment_id, trli_level, trli_recipient_user_id);
+
 CREATE INDEX IF NOT EXISTS idx_roi_level_incomes_recipient_created
   ON public.tbl_roi_level_incomes (trli_recipient_user_id, trli_created_at DESC);
 

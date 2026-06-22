@@ -201,7 +201,7 @@ const CustomerDashboard: React.FC = () => {
         if (error) throw error;
         const spinStatus = (data || {}) as { active?: boolean; hasSpun?: boolean; eligible?: boolean };
         if (mounted) {
-          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || spinStatus.eligible === false));
+          setSpinWheelVisible(Boolean(spinStatus.active || spinStatus.hasSpun || spinStatus.eligible === true || spinStatus.eligible === false));
         }
       } catch (error) {
         console.error('Failed to load spin wheel visibility:', error);
