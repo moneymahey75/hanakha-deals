@@ -31,11 +31,15 @@ import {
   CreditCard,
   CheckCircle,
   AlertCircle,
+  Crown,
   Ticket,
   Share2,
   Wallet as WalletIcon,
   User,
   Gift,
+  Gem,
+  Medal,
+  ShieldCheck,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
@@ -84,6 +88,56 @@ type EarningsRow = {
 };
 
 const EARNING_EXCLUDED_REFERENCE_TYPES = new Set(['spin_wheel_prize']);
+
+const getPackageBadgeConfig = (packageName: string) => {
+  const normalized = packageName.toLowerCase();
+
+  if (normalized.includes('diamond')) {
+    return {
+      Icon: Gem,
+      className: 'border-cyan-200 bg-cyan-50 text-cyan-800 shadow-cyan-100',
+      iconClassName: 'bg-cyan-100 text-cyan-700',
+    };
+  }
+
+  if (normalized.includes('platinum')) {
+    return {
+      Icon: Gem,
+      className: 'border-violet-200 bg-violet-50 text-violet-800 shadow-violet-100',
+      iconClassName: 'bg-violet-100 text-violet-700',
+    };
+  }
+
+  if (normalized.includes('gold')) {
+    return {
+      Icon: Crown,
+      className: 'border-amber-200 bg-amber-50 text-amber-800 shadow-amber-100',
+      iconClassName: 'bg-amber-100 text-amber-700',
+    };
+  }
+
+  if (normalized.includes('silver')) {
+    return {
+      Icon: Medal,
+      className: 'border-slate-300 bg-slate-50 text-slate-800 shadow-slate-100',
+      iconClassName: 'bg-slate-200 text-slate-700',
+    };
+  }
+
+  if (normalized.includes('bronze')) {
+    return {
+      Icon: ShieldCheck,
+      className: 'border-orange-200 bg-orange-50 text-orange-800 shadow-orange-100',
+      iconClassName: 'bg-orange-100 text-orange-700',
+    };
+  }
+
+  return {
+    Icon: Award,
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-800 shadow-emerald-100',
+    iconClassName: 'bg-emerald-100 text-emerald-700',
+  };
+};
 
 
 const CustomerDashboard: React.FC = () => {
@@ -620,7 +674,7 @@ const CustomerDashboard: React.FC = () => {
                 </p>
                 <div className="mt-3">
                   <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold ${
+                    className={`inline-flex max-w-full flex-wrap items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold ${
                       hasLaunchUpgrade
                         ? 'border-green-200 bg-green-50 text-green-700'
                         : 'border-gray-200 bg-gray-50 text-gray-600'
@@ -635,7 +689,38 @@ const CustomerDashboard: React.FC = () => {
                     {upgradeStatusLoading
                       ? 'Checking upgrade status...'
                       : hasLaunchUpgrade
-                        ? `Account Upgraded${launchPackageName ? `: ${launchPackageName}` : ''}`
+                        ? (
+                            <>
+                              <span>Account Upgraded</span>
+                              {launchPackageName ? (
+                                <span className="inline-flex flex-wrap items-center gap-1.5">
+                                  {launchPackageName.split(',').map((packageName) => {
+                                    const trimmedName = packageName.trim();
+                                    if (!trimmedName) return null;
+                                    const badge = getPackageBadgeConfig(trimmedName);
+                                    const PackageIcon = badge.Icon;
+
+                                    return (
+                                      <span
+                                        key={trimmedName}
+                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold shadow-sm ${badge.className}`}
+                                      >
+                                        <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${badge.iconClassName}`}>
+                                          <PackageIcon className="h-3.5 w-3.5" />
+                                        </span>
+                                        {trimmedName}
+                                      </span>
+                                    );
+                                  })}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800 shadow-sm shadow-emerald-100">
+                                  <Award className="h-3.5 w-3.5" />
+                                  Launch Active
+                                </span>
+                              )}
+                            </>
+                          )
                         : 'Not Upgraded Yet'}
                   </span>
                 </div>
