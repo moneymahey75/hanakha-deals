@@ -98,17 +98,19 @@ const SpinWheel: React.FC = () => {
       if (error) throw error;
       const nextStatus = (data || {}) as SpinStatus;
 
-      if (!nextStatus.active && nextStatus.eligible !== false && !nextStatus.hasSpun) {
+      if (!nextStatus.active && !nextStatus.hasSpun) {
         const { data: campaign, error: campaignError } = await supabase.rpc('get_active_spin_wheel_campaign');
         if (campaignError) throw campaignError;
         const activeCampaign = Array.isArray(campaign) ? campaign[0] : campaign;
 
         if (activeCampaign?.tswc_id) {
           nextStatus.active = true;
-          nextStatus.eligible = true;
+          nextStatus.eligible = nextStatus.eligible === false ? false : true;
           nextStatus.campaignId = activeCampaign.tswc_id;
           nextStatus.campaignName = activeCampaign.tswc_name;
-          nextStatus.message = 'Spin available.';
+          nextStatus.message = nextStatus.eligible === false
+            ? nextStatus.message || 'Spin wheel is locked for your account.'
+            : 'Spin available.';
         }
       }
 

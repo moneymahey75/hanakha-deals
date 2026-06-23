@@ -210,16 +210,16 @@ const CustomerDashboard: React.FC = () => {
           isEligible = Boolean(eligibleData);
         }
 
-        if (mounted) {
-          const isCampaignActive = spinStatus.active === true;
-          const canSeeSpinWheel = spinStatus.hasSpun === true || (isCampaignActive && isEligible === true);
+        let isCampaignActive = spinStatus.active === true;
+        if (!isCampaignActive && spinStatus.hasSpun !== true) {
+          const { data: campaign, error: campaignError } = await supabase.rpc('get_active_spin_wheel_campaign');
+          if (campaignError) throw campaignError;
+          const activeCampaign = Array.isArray(campaign) ? campaign[0] : campaign;
+          isCampaignActive = Boolean(activeCampaign?.tswc_id);
+        }
 
-          console.log('--start--');
-          console.log(isCampaignActive);
-          console.log(spinStatus.hasSpun);
-          console.log(isEligible);
-          console.log('--end--');
-          
+        if (mounted) {
+          const canSeeSpinWheel = spinStatus.hasSpun === true || isCampaignActive;
           setSpinWheelVisible(canSeeSpinWheel);
         }
       } catch (error) {
