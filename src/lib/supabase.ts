@@ -4,16 +4,6 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key'
 
-// Only log in development
-if (import.meta.env.DEV) {
-  console.log('Environment check:', {
-    VITE_SUPABASE_URL: supabaseUrl,
-    VITE_SUPABASE_ANON_KEY: supabaseAnonKey ? 'Present' : 'Missing',
-    NODE_ENV: import.meta.env.NODE_ENV,
-    MODE: import.meta.env.MODE
-  })
-}
-
 // Create optimized Supabase client with connection pooling
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -62,12 +52,6 @@ export const sessionManager = {
   saveSession: (session: any) => {
     if (typeof window !== 'undefined' && session?.user?.id) {
       try {
-        console.log('💾 Saving session to localStorage:', {
-          user_id: session.user.id,
-          expires_at: session.expires_at,
-          token_type: session.token_type
-        });
-
         const sessionKey = `supabase-session-${session.user.id}`;
         const sessionData = {
           access_token: session.access_token,
@@ -80,10 +64,7 @@ export const sessionManager = {
 
         localStorage.setItem(sessionKey, JSON.stringify(sessionData));
         localStorage.setItem('current-user-id', session.user.id);
-
-        console.log('✅ Session saved successfully');
       } catch (error) {
-        console.error('❌ Failed to save session to localStorage:', error);
       }
     }
   },
@@ -94,7 +75,6 @@ export const sessionManager = {
       try {
         const currentUserId = userId || localStorage.getItem('current-user-id');
         if (!currentUserId) {
-          console.log('ℹ️ No current user ID found');
           return null;
         }
 
@@ -102,7 +82,6 @@ export const sessionManager = {
         const sessionData = localStorage.getItem(sessionKey);
 
         if (!sessionData) {
-          console.log('ℹ️ No session data found for user:', currentUserId);
           return null;
         }
 
@@ -113,7 +92,6 @@ export const sessionManager = {
           const now = Math.floor(Date.now() / 1000);
           const graceSeconds = 90;
           if (Number(session.expires_at) <= now - graceSeconds) {
-            console.log('⏰ Session expired, removing from localStorage');
             sessionManager.removeSession(currentUserId);
             return null;
           }
@@ -121,7 +99,6 @@ export const sessionManager = {
 
         return session;
       } catch (error) {
-        console.error('❌ Failed to get session from localStorage:', error);
         // Clear corrupted session data
         sessionManager.removeSession(userId);
         return null;
@@ -135,7 +112,6 @@ export const sessionManager = {
     if (typeof window !== 'undefined') {
       try {
         if (userId) {
-          console.log('🗑️ Removing session for specific user:', userId);
           const sessionKey = `supabase-session-${userId}`;
           localStorage.removeItem(sessionKey);
 
@@ -145,8 +121,6 @@ export const sessionManager = {
             localStorage.removeItem('current-user-id');
           }
         } else {
-          console.log('🗑️ Removing all session data from localStorage');
-
           // Remove current user session
           const currentUserId = localStorage.getItem('current-user-id');
           if (currentUserId) {
@@ -162,9 +136,7 @@ export const sessionManager = {
             }
           });
         }
-        console.log('✅ Session removal completed');
       } catch (error) {
-        console.error('❌ Failed to remove session from localStorage:', error);
       }
     }
   },
@@ -184,11 +156,8 @@ export const sessionManager = {
       const session = sessionManager.getSession(currentUserId);
 
       if (!session) {
-        console.log('ℹ️ No session to restore');
         return null;
       }
-
-      console.log('🔄 Attempting to restore session to Supabase client');
 
       // Set the session in Supabase client
       const { data, error } = await supabase.auth.setSession({
@@ -197,29 +166,23 @@ export const sessionManager = {
       });
 
       if (error) {
-        console.error('❌ Failed to restore session:', error);
         // Remove invalid session
         sessionManager.removeSession(currentUserId);
         return null;
       }
 
       if (!data.session) {
-        console.warn('⚠️ Session restored but no session data returned');
         sessionManager.removeSession(currentUserId);
         return null;
       }
 
-      console.log('✅ Session restored successfully');
-
       // Update localStorage with refreshed session if needed
       if (data.session.access_token !== session.access_token) {
-        console.log('🔄 Session was refreshed during restore, updating storage');
         sessionManager.saveSession(data.session);
       }
 
       return data.session;
     } catch (error) {
-      console.error('❌ Error during session restoration:', error);
       const currentUserId = localStorage.getItem('current-user-id');
       sessionManager.removeSession(currentUserId);
       return null;
@@ -228,8 +191,6 @@ export const sessionManager = {
   clearAllSessions: () => {
     if (typeof window !== 'undefined') {
       try {
-        console.log('🧹 Clearing all session data');
-
         // Get all localStorage keys
         const keys = Object.keys(localStorage);
 
@@ -239,10 +200,7 @@ export const sessionManager = {
             localStorage.removeItem(key);
           }
         });
-
-        console.log('✅ All session data cleared');
       } catch (error) {
-        console.error('❌ Failed to clear all sessions:', error);
       }
     }
   }
@@ -334,8 +292,6 @@ export interface OTPVerification {
 
 // API functions
 export const sendOTP = async (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => {
-  console.log('📤 Sending OTP via Supabase edge function:', { userId, contactInfo, otpType })
-
   // Validate inputs before sending
   if (!userId || !contactInfo || !otpType) {
     throw new Error('Missing required parameters for OTP sending');
@@ -365,7 +321,6 @@ export const sendOTP = async (userId: string, contactInfo: string, otpType: 'ema
     })
 
     if (error) {
-      console.error('❌ Send OTP error:', error)
       throw new Error(error.message || 'Failed to send OTP')
     }
 
@@ -373,17 +328,8 @@ export const sendOTP = async (userId: string, contactInfo: string, otpType: 'ema
       throw new Error('No response data from OTP service')
     }
 
-    console.log('✅ OTP sent successfully:', data)
-    
-    // For mobile OTP in development, show the debug info
-    if (data.debug_info && otpType === 'mobile') {
-      console.log('📱 Mobile OTP Debug Info:', data.debug_info);
-    }
-    
     return data
   } catch (error: any) {
-    console.error('❌ OTP sending failed:', error);
-    
     // For mobile OTP, provide more helpful error message
     if (otpType === 'mobile') {
       throw new Error(error.message || 'Mobile OTP is currently in development mode. Check console for test OTP code.');
@@ -394,8 +340,6 @@ export const sendOTP = async (userId: string, contactInfo: string, otpType: 'ema
 }
 
 export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email' | 'mobile') => {
-  console.log('🔍 Verifying OTP via Supabase edge function:', { userId, otpCode, otpType })
-
   // Validate inputs before verifying
   if (!userId || !otpCode || !otpType) {
     throw new Error('Missing required parameters for OTP verification');
@@ -410,8 +354,6 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
   }
 
   try {
-    console.log('📡 Calling verify-otp edge function...');
-    
     const { data, error } = await supabase.functions.invoke('verify-otp', {
       body: {
         user_id: userId,
@@ -420,10 +362,7 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
       }
     });
 
-    console.log('📡 Edge function response:', { data, error });
     if (error) {
-      console.error('❌ Verify OTP error:', error)
-      
       // Handle specific error types
       if (error.message?.includes('Invalid or expired')) {
         throw new Error('Invalid or expired OTP. Please request a new code.');
@@ -444,8 +383,6 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
 
     // Handle error responses from the function
     if (!data.success) {
-      console.error('❌ OTP verification failed:', data.error);
-      
       // Handle specific error codes from the edge function
       if (data.code === 'INVALID_OTP') {
         throw new Error('Invalid or expired OTP. Please request a new code.');
@@ -457,12 +394,9 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
         throw new Error(data.error || 'OTP verification failed');
       }
     }
-    
-    console.log('✅ OTP verified successfully:', data)
+
     return data
   } catch (error: any) {
-    console.error('❌ OTP verification failed:', error);
-    
     // Provide more specific error messages
     if (error.message?.includes('Invalid or expired')) {
       throw new Error('Invalid or expired OTP. Please request a new code.');
@@ -479,8 +413,6 @@ export const verifyOTP = async (userId: string, otpCode: string, otpType: 'email
 }
 
 export const getSubscriptionPlans = async () => {
-  console.log('🔍 Fetching subscription plans from database...');
-  
   try {
     const { data, error } = await supabase
         .from('tbl_subscription_plans')
@@ -491,7 +423,6 @@ export const getSubscriptionPlans = async () => {
     if (error) throw error
     return data
   } catch (error) {
-    console.error('❌ Failed to fetch subscription plans:', error);
     throw error;
   }
 }
@@ -515,15 +446,11 @@ export const getMLMTreeNode = async (userId: string) => {
       .order('tsp_created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ Database error fetching plans:', error);
       throw error;
     }
-    
-    console.log('✅ Subscription plans fetched:', data?.length || 0, 'plans');
-    console.log('Plans data:', data);
+
     return data
   } catch (error) {
-    console.error('❌ Failed to fetch subscription plans:', error);
     throw error;
   }
 }
@@ -536,13 +463,11 @@ export const getReferralNetwork = async (userId: string, maxLevels: number = 10)
     });
 
     if (error) {
-      console.warn('Failed to get referral network:', error);
       return [];
     }
 
     return data;
   } catch (error) {
-    console.warn('Failed to get referral network:', error);
     return [];
   }
 };
@@ -567,13 +492,11 @@ export const getReferralNetworkPage = async (params: {
     });
 
     if (error) {
-      console.warn('Failed to get referral network page:', error);
       return [];
     }
 
     return data;
   } catch (error) {
-    console.warn('Failed to get referral network page:', error);
     return [];
   }
 };
@@ -586,13 +509,11 @@ export const getReferralNetworkStats = async (userId: string, maxLevels: number 
     });
 
     if (error) {
-      console.warn('Failed to get referral network stats:', error);
       return null;
     }
 
     return Array.isArray(data) ? data[0] : data;
   } catch (error) {
-    console.warn('Failed to get referral network stats:', error);
     return null;
   }
 };
@@ -605,13 +526,11 @@ export const checkSponsorshipNumberExists = async (sponsorshipNumber: string) =>
         });
 
     if (error) {
-      console.error('RPC Error checking sponsorship number:', error);
       return false;
     }
 
     return data && data.length > 0;
   } catch (error) {
-    console.error('Failed to check sponsorship number:', error);
     return false;
   }
 };
@@ -652,7 +571,6 @@ export const getSponsorStatusBySponsorshipNumber = async (sponsorshipNumber: str
         });
 
       if (error) {
-        console.error('RPC Error checking sponsor status:', error);
         continue;
       }
 
@@ -661,7 +579,6 @@ export const getSponsorStatusBySponsorshipNumber = async (sponsorshipNumber: str
 
     return null;
   } catch (error) {
-    console.error('Failed to check sponsor status:', error);
     return null;
   }
 };

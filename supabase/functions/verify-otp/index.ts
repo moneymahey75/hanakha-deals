@@ -19,19 +19,10 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🔍 Verify OTP function called');
-    
     const { user_id, otp_code, otp_type }: VerifyOTPRequest = await req.json()
-
-    console.log('🔐 Processing OTP verification:', { 
-      user_id: user_id?.substring(0, 8) + '...', 
-      otp_type,
-      otp_code: otp_code?.substring(0, 2) + '****'
-    });
 
     // Validate input
     if (!user_id || !otp_code || !otp_type) {
-      console.error('❌ Missing required parameters:', { user_id: !!user_id, otp_code: !!otp_code, otp_type: !!otp_type });
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -46,7 +37,6 @@ serve(async (req) => {
     }
 
     if (!['email', 'mobile'].includes(otp_type)) {
-      console.error('❌ Invalid OTP type:', otp_type);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -61,7 +51,6 @@ serve(async (req) => {
     }
 
     if (!/^\d{6}$/.test(otp_code)) {
-      console.error('❌ Invalid OTP format:', otp_code);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -81,14 +70,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('🔍 Looking for valid OTP in database...');
-
     // For development/testing, allow a universal test OTP
     const isTestOTP = otp_code === '123456';
     
     if (isTestOTP) {
-      console.log('🧪 Test OTP detected, proceeding with verification...');
-      
       // Update user verification status for test OTP
       const updateData: any = {}
       if (otp_type === 'email') {
@@ -99,16 +84,10 @@ serve(async (req) => {
         updateData.tu_is_verified = true
       }
 
-      const { error: updateUserError } = await supabase
+      await supabase
         .from('tbl_users')
         .update(updateData)
         .eq('tu_id', user_id)
-
-      if (updateUserError) {
-        console.warn('⚠️ Failed to update user verification status for test OTP:', updateUserError)
-      } else {
-        console.log('✅ User verification status updated for test OTP')
-      }
 
       return new Response(
         JSON.stringify({ 
@@ -138,8 +117,6 @@ serve(async (req) => {
       .single()
 
     if (findError || !otpRecord) {
-      console.error('❌ OTP not found or expired:', findError?.message || 'No matching record');
-      
       // Try to increment attempts for any existing unverified OTP
       try {
         const { data: existingOTPs } = await supabase
@@ -159,7 +136,6 @@ serve(async (req) => {
             .eq('tov_id', existingOTP.tov_id);
         }
       } catch (attemptError) {
-        console.warn('Failed to update attempts:', attemptError);
       }
 
       return new Response(
@@ -175,11 +151,8 @@ serve(async (req) => {
       )
     }
 
-    console.log('✅ Valid OTP found:', otpRecord.tov_id);
-
     // Check attempts limit (max 5 attempts)
     if (otpRecord.tov_attempts >= 5) {
-      console.error('❌ Too many attempts for OTP:', otpRecord.tov_id)
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -193,8 +166,6 @@ serve(async (req) => {
       )
     }
 
-    console.log('🔄 Marking OTP as verified...');
-
     // Mark OTP as verified
     const { error: updateOTPError } = await supabase
       .from('tbl_otp_verifications')
@@ -205,7 +176,6 @@ serve(async (req) => {
       .eq('tov_id', otpRecord.tov_id)
 
     if (updateOTPError) {
-      console.error('❌ Failed to update OTP status:', updateOTPError)
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -219,8 +189,6 @@ serve(async (req) => {
       );
     }
 
-    console.log('🔄 Updating user verification status...');
-
     // Update user verification status
     const updateData: any = {}
     if (otp_type === 'email') {
@@ -231,30 +199,19 @@ serve(async (req) => {
       updateData.tu_is_verified = true
     }
 
-    const { error: updateUserError } = await supabase
+    await supabase
       .from('tbl_users')
       .update(updateData)
       .eq('tu_id', user_id)
 
-    if (updateUserError) {
-      console.warn('⚠️ Failed to update user verification status:', updateUserError)
-      // Don't throw error here as OTP is already verified
-    } else {
-      console.log('✅ User verification status updated')
-    }
-
     // Send welcome email if this was mobile verification (final step)
     if (otp_type === 'mobile') {
       try {
-        console.log('📧 Sending welcome email...');
         await sendWelcomeEmail(user_id, supabase)
       } catch (emailError) {
-        console.warn('⚠️ Failed to send welcome email:', emailError)
         // Don't fail the verification if welcome email fails
       }
     }
-
-    console.log('🎉 OTP verification completed successfully')
 
     return new Response(
       JSON.stringify({ 
@@ -270,28 +227,10 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    let message = "Unknown error";
-    let stack = null;
-
-    if (error instanceof Error) {
-      message = error.message;
-      stack = error.stack || null;
-    } else if (typeof error === "string") {
-      message = error;
-    } else {
-      try {
-        message = JSON.stringify(error);
-      } catch (_) {
-        message = "Non-serializable error object";
-      }
-    }
-
-    console.error("❌ Error verifying OTP:", { message, stack });
-
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: message,
+        error: 'Verification failed. Please try again.',
         code: 'VERIFICATION_FAILED'
       }),
       { 
@@ -304,8 +243,6 @@ serve(async (req) => {
 
 async function sendWelcomeEmail(userId: string, supabase: any) {
   try {
-    console.log('📧 Preparing welcome email for user:', userId?.substring(0, 8) + '...')
-
     const { data: userData } = await supabase
       .from('tbl_users')
       .select(`
@@ -321,7 +258,6 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
       .single()
 
     if (!userData) {
-      console.warn('⚠️ User data not found for welcome email')
       return false
     }
 
@@ -341,12 +277,9 @@ async function sendWelcomeEmail(userId: string, supabase: any) {
       text: `Welcome to ShopClix, ${displayName}. Your User ID is ${sponsorshipNumber}.`,
       fromName: 'ShopClix Welcome',
     })
-
-    console.log('✅ Welcome email sent successfully via SMTP')
     return true
 
   } catch (error) {
-    console.error('❌ Failed to send welcome email:', error)
     return false
   }
 }

@@ -106,30 +106,18 @@ Deno.serve(async (req: Request) => {
       success: boolean;
       message: string;
       expires_at: string;
-      debug_info?: Record<string, unknown>;
       error_details?: Record<string, unknown>;
     } = {
       success: sendResult.success,
       message: sendResult.success
         ? `OTP sent to ${contact_info}`
-        : `Failed to send OTP: ${sendResult.error}`,
+        : 'Failed to send OTP. Please try again.',
       expires_at: expires_at.toISOString()
     };
 
-    if (sendResult.success) {
-      response.debug_info = {
-        otp_code: otp_code,
-        contact_info: contact_info,
-        otp_type: otp_type,
-        provider: sendResult.provider || 'unknown',
-        message_id: sendResult.messageId || sendResult.messageSid,
-        note: `${otp_type} OTP sent successfully`
-      };
-    } else {
+    if (!sendResult.success) {
       response.error_details = {
-        provider_error: sendResult.error,
-        contact_info: contact_info,
-        otp_type: otp_type
+        provider_error: 'OTP delivery failed'
       };
     }
 
@@ -142,7 +130,6 @@ Deno.serve(async (req: Request) => {
     });
 
   } catch (error) {
-    console.error('Send OTP error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
 
     return new Response(JSON.stringify({
@@ -171,15 +158,12 @@ async function sendEmailOTP(email: string, otp: string, siteName: string) {
       fromName: `${siteName} Security`,
     });
 
-    console.log('Email OTP sent successfully via SMTP');
-
     return {
       success: true,
       provider: 'smtp'
     };
 
   } catch (error) {
-    console.error('Failed to send email OTP:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Email send failed'
@@ -189,16 +173,9 @@ async function sendEmailOTP(email: string, otp: string, siteName: string) {
 
 async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
   try {
-    console.log('Starting SMS send process...');
-
     const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
     const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
     const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
-
-    console.log('Checking Twilio configuration...');
-    console.log('TWILIO_ACCOUNT_SID:', TWILIO_ACCOUNT_SID ? `Set (${TWILIO_ACCOUNT_SID.substring(0, 10)}...)` : 'NOT SET');
-    console.log('TWILIO_AUTH_TOKEN:', TWILIO_AUTH_TOKEN ? 'Set (hidden)' : 'NOT SET');
-    console.log('TWILIO_PHONE_NUMBER:', TWILIO_PHONE_NUMBER || 'NOT SET');
 
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
       const missingVars = [];
@@ -207,7 +184,6 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
       if (!TWILIO_PHONE_NUMBER) missingVars.push('TWILIO_PHONE_NUMBER');
 
       const errorMsg = `Twilio not configured. Missing: ${missingVars.join(', ')}`;
-      console.error(errorMsg);
 
       return {
         success: false,
@@ -216,10 +192,6 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
     }
 
     const message = `Your ${siteName} verification code is: ${otp}. This code expires in 10 minutes. Do not share this code with anyone.`;
-
-    console.log(`Sending SMS to ${mobile}...`);
-    console.log(`Message: ${message}`);
-    console.log(`From: ${TWILIO_PHONE_NUMBER}`);
 
     const authHeader = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
@@ -239,18 +211,15 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
       }
     );
 
-    console.log('Twilio response status:', response.status);
-
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Twilio API error response:', errorText);
 
       let errorDetails = errorText;
       try {
         const errorJson = JSON.parse(errorText);
         errorDetails = errorJson.message || errorText;
       } catch {
-        console.log('Could not parse Twilio error as JSON');
+        // Keep raw provider parsing failures out of logs and client responses.
       }
 
       return {
@@ -260,9 +229,6 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
     }
 
     const result = await response.json();
-    console.log('SMS sent successfully via Twilio');
-    console.log('Message SID:', result.sid);
-    console.log('Status:', result.status);
 
     return {
       success: true,
@@ -272,7 +238,6 @@ async function sendSMSOTP(mobile: string, otp: string, siteName: string) {
     };
 
   } catch (error) {
-    console.error('Failed to send SMS OTP:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'SMS send failed'

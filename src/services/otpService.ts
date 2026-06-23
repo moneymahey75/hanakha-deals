@@ -26,7 +26,6 @@ interface OTPResponse {
   error?: string;
   otpId?: string;
   expiresAt?: string;
-  debug_info?: any;
 }
 
 interface VerifyResponse {
@@ -105,7 +104,6 @@ export class OTPService {
           .in('tss_setting_key', ['test_otp_enabled', 'test_otp_code']);
 
       if (error) {
-        console.warn('Failed to fetch test OTP settings, using cached values:', error);
         return { enabled: testOTPCache.enabled, code: testOTPCache.code };
       }
 
@@ -113,7 +111,6 @@ export class OTPService {
         try {
           acc[setting.tss_setting_key] = JSON.parse(setting.tss_setting_value);
         } catch (parseError) {
-          console.warn('Failed to parse test OTP setting:', setting.tss_setting_key, parseError);
           acc[setting.tss_setting_key] = setting.tss_setting_key === 'test_otp_enabled' ? false : '123456';
         }
         return acc;
@@ -126,7 +123,6 @@ export class OTPService {
 
       return { enabled: testOTPCache.enabled, code: testOTPCache.code };
     } catch (error) {
-      console.warn('Error fetching test OTP settings:', error);
       return { enabled: testOTPCache.enabled, code: testOTPCache.code };
     }
   }
@@ -159,13 +155,11 @@ export class OTPService {
 
       // Check for active request to prevent duplicates
       if (activeRequests.has(cacheKey)) {
-        console.log('Waiting for active OTP request to complete...');
         try {
           return await this.withTimeout(activeRequests.get(cacheKey)!, REQUEST_TIMEOUT, 'Active OTP request');
         } catch (error) {
           // If active request times out, remove it and continue
           activeRequests.delete(cacheKey);
-          console.log('Active request timed out, proceeding with new request');
         }
       }
 
@@ -182,14 +176,7 @@ export class OTPService {
 
             return {
               success: true,
-              message: `OTP already sent to ${contactInfo}. Please wait ${waitTime} seconds before requesting again.`,
-              debug_info: {
-                otp_code: cachedOTP.otp,
-                cached: true,
-                expires_in: remainingTime,
-                wait_time: waitTime,
-                rate_limited: true
-              }
+              message: `OTP already sent to ${contactInfo}. Please wait ${waitTime} seconds before requesting again.`
             };
           }
         }
@@ -202,12 +189,7 @@ export class OTPService {
           const remainingTime = Math.ceil((cachedOTP.expires - now) / 1000);
           return {
             success: true,
-            message: `OTP already sent to ${contactInfo}. Valid for ${remainingTime} seconds.`,
-            debug_info: {
-              otp_code: cachedOTP.otp,
-              cached: true,
-              expires_in: remainingTime
-            }
+            message: `OTP already sent to ${contactInfo}. Valid for ${remainingTime} seconds.`
           };
         }
       }
@@ -225,7 +207,6 @@ export class OTPService {
       return result;
 
     } catch (error: any) {
-      console.error('OTP send error:', error);
       // Ensure cleanup on error
       activeRequests.delete(cacheKey);
       return {
@@ -246,8 +227,6 @@ export class OTPService {
     const now = Date.now();
 
     try {
-      console.log(`Sending new ${otpType} OTP to: ${contactInfo}`);
-
       // Try to invalidate existing OTPs using RPC, but don't fail if it times out
       try {
         await this.withTimeout(
@@ -258,9 +237,7 @@ export class OTPService {
             3000,
             'Database cleanup'
         );
-        console.log('Database cleanup completed');
       } catch (cleanupError) {
-        console.warn('Database cleanup failed, continuing with OTP creation:', cleanupError);
         // Continue with OTP creation even if cleanup fails
       }
 
@@ -281,8 +258,6 @@ export class OTPService {
         throw new Error(`Failed to store OTP: ${otpError?.message || 'Unknown error'}`);
       }
 
-      console.log('OTP record created:', otpResult.otp_id);
-
       // Send OTP based on type with timeout
       let sendResult = false;
       let sendError: string | null = null;
@@ -295,7 +270,6 @@ export class OTPService {
               'Email OTP send'
           );
         } else {
-          console.log('Sending mobile OTP...');
           sendResult = await this.withTimeout(
               this.sendMobileOTP(userId, contactInfo, otpCode),
               SEND_OPERATION_TIMEOUT,
@@ -304,7 +278,6 @@ export class OTPService {
         }
       } catch (sendErr: any) {
         sendError = sendErr.message;
-        console.error(`${otpType} OTP send failed:`, sendError);
         throw new Error(sendError || `Failed to send ${otpType} OTP`);
       }
 
@@ -322,23 +295,13 @@ export class OTPService {
         lastSentAt: now
       });
 
-      console.log(`OTP sent successfully for ${otpType}: ${contactInfo}`);
-
       return {
         success: true,
         message: `OTP sent to ${contactInfo}`,
-        expiresAt: expiresAt.toISOString(),
-        debug_info: {
-          otp_code: otpCode,
-          contact_info: contactInfo,
-          otp_type: otpType,
-          note: `${otpType === 'mobile' ? 'SMS' : 'Email'} OTP sent successfully`
-        }
+        expiresAt: expiresAt.toISOString()
       };
 
     } catch (error: any) {
-      console.error(`Failed to execute ${otpType} OTP send:`, error);
-
       // Update cache with error status
       otpCache.set(cacheKey, {
         otp: '',
@@ -367,29 +330,11 @@ export class OTPService {
       const cacheKey = this.getCacheKey(userId, otpType);
       const cachedOTP = otpCache.get(cacheKey);
 
-      // Detailed logging for debugging
       const now = Date.now();
-      console.log('=== OTP Verification Debug ===');
-      console.log('Current time:', now);
-      console.log('User ID:', userId);
-      console.log('OTP Type:', otpType);
-      console.log('Entered OTP:', otpCode);
-      console.log('Cached OTP found:', !!cachedOTP);
-      if (cachedOTP) {
-        console.log('Cached OTP code:', cachedOTP.otp);
-        console.log('Cached OTP status:', cachedOTP.status);
-        console.log('Cached OTP expires:', cachedOTP.expires);
-        console.log('Time until expiry (seconds):', Math.floor((cachedOTP.expires - now) / 1000));
-        console.log('OTP match:', cachedOTP.otp === otpCode);
-        console.log('Status is sent:', cachedOTP.status === 'sent');
-        console.log('Not expired:', now < cachedOTP.expires);
-      }
-      console.log('=== End Debug ===');
 
       // Check for configurable test OTP
       const testOTPSettings = await this.getTestOTPSettings();
       if (testOTPSettings.enabled && otpCode === testOTPSettings.code) {
-        console.log('Test OTP verification successful');
         await this.updateUserVerificationStatus(userId, otpType);
         if (cachedOTP) {
           otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
@@ -404,14 +349,11 @@ export class OTPService {
 
       // Check cache first for performance
       if (cachedOTP && cachedOTP.otp === otpCode && cachedOTP.status === 'sent' && now < cachedOTP.expires) {
-        console.log('Cache OTP verification successful');
         await this.updateUserVerificationStatus(userId, otpType);
         otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
         
         // Clean up any database records for this user/type after successful cache verification
-        this.cleanupOTPRecords(userId, otpType).catch(error => 
-          console.warn('Failed to cleanup OTP records after cache verification:', error)
-        );
+        this.cleanupOTPRecords(userId, otpType).catch(() => {});
         
         return {
           success: true,
@@ -439,7 +381,6 @@ export class OTPService {
             5000,
             'OTP verification lookup'
         );
-        console.log('Email verification 1: ', otpRecord, findError);
         if (!findError && otpRecord) {
           if (otpRecord.tov_attempts >= MAX_ATTEMPTS) {
             return {
@@ -460,24 +401,16 @@ export class OTPService {
               8000,
               'OTP verification procedure'
           );
-          console.log('Email verification 2: ', verifyError);
 
           if (!verifyError) {
-            console.log('Database OTP verification successful');
-            
             // Update cache status
             if (cachedOTP) {
               otpCache.set(cacheKey, { ...cachedOTP, status: 'verified' });
             }
-            console.log('Email verification 3: ', cachedOTP);
             // Delete the OTP record after successful verification
             await this.deleteOTPRecord(otpRecordId);
-            console.log('Email verification 4: ', otpRecordId);
             // Also cleanup any other OTP records for this user/type
-            this.cleanupOTPRecords(userId, otpType).catch(error => 
-              console.warn('Failed to cleanup additional OTP records:', error)
-            );
-            console.log('Email verification 5: ', userId, otpType);
+            this.cleanupOTPRecords(userId, otpType).catch(() => {});
 
             return {
               success: true,
@@ -488,7 +421,6 @@ export class OTPService {
           }
         }
       } catch (dbError) {
-        console.warn('Database verification failed, but cache/test OTP already checked:', dbError);
       }
 
       // Update cache attempts if exists
@@ -509,7 +441,6 @@ export class OTPService {
       };
 
     } catch (error: any) {
-      console.error('OTP verification error:', error);
       return {
         success: false,
         error: error.message || 'Verification failed'
@@ -520,7 +451,7 @@ export class OTPService {
   // Delete specific OTP record after successful verification
   private async deleteOTPRecord(otpRecordId: string): Promise<void> {
     try {
-      const { data, error } = await this.withTimeout(
+      const { error } = await this.withTimeout(
         supabaseBatch.rpc('delete_otp_record', {
           p_otp_id: otpRecordId
         }),
@@ -529,12 +460,9 @@ export class OTPService {
       );
 
       if (error) {
-        console.error('Failed to delete OTP record:', error);
-      } else {
-        console.log('OTP record deleted successfully:', data);
+        return;
       }
-    } catch (error) {
-      console.error('Error deleting OTP record:', error);
+    } catch {
     }
   }
 
@@ -551,12 +479,9 @@ export class OTPService {
       );
 
       if (error) {
-        console.error('Failed to cleanup OTP records:', error);
-      } else {
-        console.log(`Cleaned up ${data?.deleted || 0} ${otpType} OTP records for user:`, userId);
+        return;
       }
     } catch (error) {
-      console.error('Error cleaning up OTP records:', error);
     }
   }
 
@@ -582,8 +507,6 @@ export class OTPService {
       );
 
       if (authUpdateError) {
-        console.warn('Auth update failed, retrying with batch client:', authUpdateError.message);
-
         const { error: batchError } = await this.withTimeout(
           supabaseBatch
             .from('tbl_users')
@@ -598,7 +521,6 @@ export class OTPService {
         }
       }
     } catch (error) {
-      console.warn('Failed to update user verification status in database:', error);
       // Don't throw error - verification can still proceed
     }
   }
@@ -613,8 +535,6 @@ export class OTPService {
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-
-      console.log(`Sending Email OTP to ${email} via Edge Function...`);
 
       const response = await fetch(`${supabaseUrl}/functions/v1/send-otp`, {
         method: 'POST',
@@ -634,26 +554,21 @@ export class OTPService {
       clearTimeout(timeoutId);
 
       const result = await response.json();
-      console.log('Email OTP response:', result);
 
       if (!response.ok || !result.success) {
         const errorMessage = result.error_details?.provider_error ||
                            result.error ||
                            result.message ||
                            `HTTP ${response.status}`;
-        console.error('Email Edge function error:', errorMessage);
         throw new Error(errorMessage);
       }
 
-      console.log('Email OTP sent successfully via Edge Function');
       return true;
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.error('Email OTP send timeout');
         throw new Error('Email sending timed out. Please try again.');
       }
-      console.error('Failed to send email OTP:', error);
       throw error;
     }
   }
@@ -669,8 +584,6 @@ export class OTPService {
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-
-      console.log(`Sending SMS OTP to ${mobile} via Edge Function...`);
 
       const response = await fetch(`${supabaseUrl}/functions/v1/send-otp`, {
         method: 'POST',
@@ -690,25 +603,20 @@ export class OTPService {
       clearTimeout(timeoutId);
 
       const result = await response.json();
-      console.log('SMS OTP response:', result);
 
       if (!response.ok || !result.success) {
         const errorMessage = result.error_details?.provider_error ||
                            result.error ||
                            result.message ||
                            `HTTP ${response.status}`;
-        console.error('Edge function error:', errorMessage);
         throw new Error(errorMessage);
       }
 
-      console.log('SMS OTP sent successfully via Edge Function');
       return true;
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.error('SMS OTP send timeout');
         throw new Error('SMS sending timed out. Please try again.');
       }
-      console.error('Failed to send mobile OTP:', error);
       throw error;
     }
   }
@@ -718,7 +626,6 @@ export class OTPService {
     const cacheKey = this.getCacheKey(userId, otpType);
     otpCache.delete(cacheKey);
     activeRequests.delete(cacheKey);
-    console.log(`Cleared cache for ${cacheKey}`);
   }
 
   // Get cache status for debugging
@@ -731,20 +638,16 @@ export class OTPService {
   clearAllCache(): void {
     otpCache.clear();
     activeRequests.clear();
-    console.log('Cleared all OTP cache');
   }
 
   // Clear test OTP cache to force refresh
   clearTestOTPCache(): void {
     testOTPCache.lastFetched = 0;
-    console.log('Cleared test OTP settings cache');
   }
 
   // Clean up expired OTP records from database (periodic maintenance)
   async cleanupExpiredOTPs(): Promise<{ deleted: number; error?: string }> {
     try {
-      console.log('Starting cleanup of expired OTP records...');
-
       const { data, error } = await this.withTimeout(
         supabaseBatch.rpc('delete_expired_otps'),
         10000,
@@ -752,16 +655,13 @@ export class OTPService {
       );
 
       if (error) {
-        console.error('Failed to cleanup expired OTPs:', error);
         return { deleted: 0, error: error.message };
       }
 
       const deletedCount = data?.deleted || 0;
-      console.log(`Cleanup completed: ${deletedCount} expired OTP records deleted`);
 
       return { deleted: deletedCount };
     } catch (error: any) {
-      console.error('Error during expired OTP cleanup:', error);
       return { deleted: 0, error: error.message };
     }
   }
@@ -769,8 +669,6 @@ export class OTPService {
   // Clean up all OTP records for a specific user (useful for user deletion)
   async cleanupUserOTPs(userId: string): Promise<{ deleted: number; error?: string }> {
     try {
-      console.log('Cleaning up all OTP records for user:', userId);
-
       const { data, error } = await this.withTimeout(
         supabaseBatch.rpc('delete_user_otps', {
           p_user_id: userId,
@@ -781,16 +679,13 @@ export class OTPService {
       );
 
       if (error) {
-        console.error('Failed to cleanup user OTPs:', error);
         return { deleted: 0, error: error.message };
       }
 
       const deletedCount = data?.deleted || 0;
-      console.log(`User OTP cleanup completed: ${deletedCount} records deleted for user ${userId}`);
 
       return { deleted: deletedCount };
     } catch (error: any) {
-      console.error('Error during user OTP cleanup:', error);
       return { deleted: 0, error: error.message };
     }
   }

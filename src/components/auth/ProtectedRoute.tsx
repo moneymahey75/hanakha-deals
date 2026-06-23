@@ -50,7 +50,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           setHasValidSession(true);
         } else if (!user) {
           // Only do the expensive live check when we have no cached session AND no user.
-          console.log('🔍 Cached session is invalid and no user, checking live Supabase session');
           try {
             const sessionResult = await Promise.race([
               supabase.auth.getSession(),
@@ -62,7 +61,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             let liveSession = sessionResult.data.session;
 
             if (!liveSession) {
-              console.log('🔄 No live session, attempting restore');
               liveSession = await Promise.race([
                 import('../../lib/supabase').then(({ sessionManager }) => sessionManager.restoreSession()),
                 new Promise<never>((_, reject) => {
@@ -73,7 +71,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
             setHasValidSession(!!liveSession);
           } catch (error) {
-            console.error('❌ Live session check failed in ProtectedRoute:', error);
             setHasValidSession(false);
           }
         } else {
@@ -91,7 +88,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         );
 
         if (user && requiresVerification && !isSkipPage) {
-          console.log('🔍 Checking verification status for user:', user.id);
           const status = await Promise.race([
             checkVerificationStatus(user.id),
             new Promise<{ needsVerification: boolean; settings: any }>((resolve) => {
@@ -99,10 +95,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             })
           ]);
           setVerificationStatus(status);
-          console.log('📋 Verification status:', status);
         }
       } catch (error) {
-        console.error('❌ Error checking session in ProtectedRoute:', error);
       } finally {
         setIsChecking(false);
       }
@@ -137,19 +131,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       );
     }
 
-    console.log('🔒 No user found, redirecting to login');
     return <Navigate to={`/${userType}/login`} replace state={{ from: location }} />;
   }
 
   // Check if user type matches the required type
   if (user.userType !== userType) {
-    console.log('🔒 User type mismatch, redirecting to home');
     return <Navigate to="/" replace />;
   }
 
   // Use the result of the route-level live session check instead of relying only on local cache.
   if (!hasValidSession) {
-    console.log('🔒 Invalid session detected, redirecting to login');
     sessionUtils.clearAllSessions();
     return <Navigate to={`/${userType}/login`} replace state={{ from: location }} />;
   }
@@ -158,8 +149,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   if (requiresVerification && verificationStatus?.needsVerification) {
     // Allow access to verification page itself
     if (!location.pathname.startsWith('/verify-otp')) {
-      console.log('🔐 User needs verification, redirecting to verify-otp');
-
       // Get user mobile number for verification
       const getUserMobile = async () => {
         try {
@@ -171,7 +160,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
           return profileData?.tup_mobile || '';
         } catch (error) {
-          console.warn('Could not fetch user mobile:', error);
           return '';
         }
       };
@@ -245,7 +233,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
 
     if (!isAllowedPage) {
-      console.log('🔒 No active subscription, redirecting to subscription plans');
       const launchPhase = (settings?.launchPhase || 'prelaunch') as 'prelaunch' | 'launched';
       const customerDestination = launchPhase === 'launched' ? '/subscription-plans' : '/registration-payment';
       return (

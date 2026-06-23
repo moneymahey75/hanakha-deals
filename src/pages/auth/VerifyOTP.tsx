@@ -184,7 +184,6 @@ const VerifyOTP: React.FC = () => {
         setCompletedVerifications(existingCompleted);
         setOtpType(requiredSettings.mobileRequired && !requiredSettings.emailRequired ? 'mobile' : 'email');
         updateVerificationProgress(requiredSettings, existingCompleted);
-        console.log('Initialized for existing user with email verification');
       }
     };
 
@@ -201,7 +200,6 @@ const VerifyOTP: React.FC = () => {
   // Monitor for logout - redirect if user gets logged out while on verify page
   useEffect(() => {
     if (componentInitialized.current && currentUserId && !user) {
-      console.log('User logged out during verification, redirecting to login');
       redirectToLoginForMissingSession('Session expired. Please login again.');
     }
   }, [user, currentUserId, redirectToLoginForMissingSession]);
@@ -315,21 +313,13 @@ const VerifyOTP: React.FC = () => {
   const handleSendOTP = useCallback(async () => {
     // Check if user is still logged in
     if (!user) {
-      console.log('User logged out, redirecting to login');
       redirectToLoginForMissingSession('Please login to continue verification');
       return;
     }
 
     if (!currentUserId || !contactInfo[otpType] || sendingInProgress.current) {
-      console.log('Send OTP blocked:', {
-        userId: !!currentUserId,
-        contact: !!contactInfo[otpType],
-        sending: sendingInProgress.current
-      });
       return;
     }
-
-    console.log(`Sending ${otpType} OTP to:`, contactInfo[otpType]);
 
     setError('');
     setIsResending(true);
@@ -354,16 +344,10 @@ const VerifyOTP: React.FC = () => {
 
       notification.showSuccess('OTP Sent', `Verification code sent to ${contactDisplay}`);
 
-      // Show debug info in development
-      if (result.debug_info && import.meta.env.DEV) {
-        notification.showInfo('Development Mode', `Test OTP: ${result.debug_info.otp_code}`);
-      }
-
     } catch (error: any) {
       if (!mountedRef.current) return; // Component unmounted
 
       const errorMessage = error?.message || 'Failed to send OTP';
-      console.error('OTP send error:', errorMessage);
       setError(errorMessage);
       notification.showError('Send Failed', errorMessage);
       setOtpSent(false);
@@ -381,7 +365,6 @@ const VerifyOTP: React.FC = () => {
 
     // Check if user is still logged in
     if (!user) {
-      console.log('User logged out, redirecting to login');
       redirectToLoginForMissingSession('Please login to continue verification');
       return;
     }
@@ -484,8 +467,6 @@ const VerifyOTP: React.FC = () => {
   const handleResend = useCallback(async () => {
     if (resendTimer > 0 || isResending || sendingInProgress.current) return;
 
-    console.log(`Resending ${otpType} OTP`);
-
     // Clear cache to force new OTP
     otpService.clearCache(currentUserId, otpType);
 
@@ -512,8 +493,6 @@ const VerifyOTP: React.FC = () => {
     const isAlreadyVerified = completedVerifications[newType];
 
     if (isAllowed && hasContactInfo && !isAlreadyVerified) {
-      console.log(`Switching OTP type from ${otpType} to ${newType}`);
-
       // Reset states for new type
       setOtp(['', '', '', '', '', '']);
       setError('');

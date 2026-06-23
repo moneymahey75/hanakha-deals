@@ -18,10 +18,6 @@ const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
   const { admin, loading, hasPermission } = useAdminAuth();
 
   if (loading) {
-    console.log('⏳ AdminProtectedRoute loading', {
-      has_admin_session: adminSessionManager.hasValidSession(),
-      admin_present: !!admin
-    });
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
@@ -37,14 +33,8 @@ const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
 
   // Redirect if no valid session
   if (!admin) {
-    console.log('🔒 No admin found, checking session:', {
-      hasAdminSession,
-      path: typeof window !== 'undefined' ? window.location.pathname : 'unknown'
-    });
-
     // If no session, redirect to login
     if (!hasAdminSession) {
-      console.log('🔒 No valid admin session, redirecting to login');
       return <Navigate to="/backpanel/login" replace />;
     }
 
