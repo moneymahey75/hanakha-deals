@@ -32,6 +32,64 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid email address' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: existingUser, error: existingUserError } = await supabase
+      .from('tbl_users')
+      .select('tu_id, tu_email')
+      .eq('tu_id', userId)
+      .eq('tu_user_type', 'customer')
+      .maybeSingle();
+
+    if (existingUserError) throw existingUserError;
+    if (!existingUser) {
+      return new Response(JSON.stringify({ success: false, error: 'Customer not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: duplicateUser, error: duplicateUserError } = await supabase
+      .from('tbl_users')
+      .select('tu_id')
+      .ilike('tu_email', normalizedEmail)
+      .neq('tu_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (duplicateUserError) throw duplicateUserError;
+    if (duplicateUser) {
+      return new Response(JSON.stringify({ success: false, error: 'Email is already used by another customer' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: authUserData, error: authUserError } = await supabase.auth.admin.getUserById(userId);
+    if (authUserError || !authUserData?.user) {
+      throw authUserError || new Error('Customer auth account not found');
+    }
+
+    const previousAuthEmail = String(authUserData.user.email || '').trim().toLowerCase();
+    const emailChangedInAuth = previousAuthEmail !== normalizedEmail;
+
+    if (emailChangedInAuth) {
+      const { error: updateAuthError } = await supabase.auth.admin.updateUserById(userId, {
+        email: normalizedEmail,
+        email_confirm: Boolean(emailVerified),
+      });
+
+      if (updateAuthError) {
+        throw updateAuthError;
+      }
+    }
+
     const updatePayload: Partial<{
       tu_email: string;
       tu_is_verified: boolean;
@@ -41,7 +99,7 @@ Deno.serve(async (req: Request) => {
       tu_is_dummy: boolean;
       tu_updated_at: string;
     }> = {
-      tu_email: email,
+      tu_email: normalizedEmail,
       tu_is_verified: isVerified,
       tu_email_verified: emailVerified,
       tu_mobile_verified: mobileVerified,
@@ -59,12 +117,19 @@ Deno.serve(async (req: Request) => {
       .eq('tu_id', userId);
 
     if (error) {
+      if (emailChangedInAuth && previousAuthEmail) {
+        await supabase.auth.admin.updateUserById(userId, {
+          email: previousAuthEmail,
+        });
+      }
       throw error;
     }
 
     await logAdminAction(supabase, admin.tau_id, 'update_customer_user', 'customers', {
       user_id: userId,
-      email,
+      email: normalizedEmail,
+      previous_email: existingUser.tu_email,
+      auth_email_changed: emailChangedInAuth,
       is_verified: isVerified,
       email_verified: emailVerified,
       mobile_verified: mobileVerified,

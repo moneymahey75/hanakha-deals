@@ -53,6 +53,10 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+[functions.admin-impersonate-customer]
+enabled = true
+verify_jwt = false
+
 [functions.admin-update-customer-profile]
 enabled = true
 verify_jwt = false

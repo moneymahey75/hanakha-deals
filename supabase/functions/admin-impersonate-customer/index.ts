@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: customer, error: customerError } = await adminClient
       .from('tbl_users')
-      .select('tu_id, tu_email, tu_user_type, tu_is_active')
+      .select('tu_id, tu_email, tu_user_type, tu_is_active, tu_email_verified')
       .eq('tu_id', userId)
       .eq('tu_user_type', 'customer')
       .maybeSingle();
@@ -73,10 +73,35 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const customerEmail = String(customer.tu_email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+      return new Response(JSON.stringify({ success: false, error: 'Customer email is invalid' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: authUserData, error: authUserError } = await adminClient.auth.admin.getUserById(customer.tu_id);
+    if (authUserError || !authUserData?.user) {
+      throw authUserError || new Error('Customer auth account not found');
+    }
+
+    const authEmail = String(authUserData.user.email || '').trim().toLowerCase();
+    if (authEmail !== customerEmail) {
+      const { error: syncAuthEmailError } = await adminClient.auth.admin.updateUserById(customer.tu_id, {
+        email: customerEmail,
+        email_confirm: Boolean(customer.tu_email_verified),
+      });
+
+      if (syncAuthEmailError) {
+        throw syncAuthEmailError;
+      }
+    }
+
     // Step 1: Generate magic link server-side to get the hashed_token
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: 'magiclink',
-      email: customer.tu_email,
+      email: customerEmail,
     });
 
     if (linkError) throw linkError;
@@ -114,7 +139,8 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(adminClient, admin.tau_id, 'impersonate_customer', 'customers', {
       customer_id: customer.tu_id,
-      customer_email: customer.tu_email,
+      customer_email: customerEmail,
+      auth_email_synced: authEmail !== customerEmail,
     });
 
     return new Response(
@@ -122,7 +148,7 @@ Deno.serve(async (req: Request) => {
         success: true,
         data: {
           customerId: customer.tu_id,
-          customerEmail: customer.tu_email,
+          customerEmail,
           accessToken: session.access_token,
           refreshToken: session.refresh_token,
           expiresAt: session.expires_at,
