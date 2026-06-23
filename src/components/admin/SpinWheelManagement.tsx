@@ -53,24 +53,50 @@ type Spin = {
   };
 };
 
+const IST_TIME_ZONE = 'Asia/Kolkata';
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+
+const getIstParts = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: IST_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  return Object.fromEntries(parts.map((part) => [part.type, part.value])) as Record<string, string>;
+};
+
 const toInputDateTime = (value?: string | null) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  const parts = getIstParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 };
 
-const toServerTimestamp = (value: string) => {
+const parseIstInputDate = (value: string) => {
   if (!value) return null;
-  const date = new Date(value);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const utcMs =
+    Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)) -
+    IST_OFFSET_MINUTES * 60 * 1000;
+  const date = new Date(utcMs);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-const formatLocalDateTime = (date: Date) =>
-  date.toLocaleString(undefined, {
+const toServerTimestamp = (value: string) => parseIstInputDate(value);
+
+const formatIstDateTime = (date: Date) =>
+  date.toLocaleString('en-GB', {
+    timeZone: IST_TIME_ZONE,
     year: 'numeric',
-    month: 'short',
+    month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
@@ -108,8 +134,10 @@ const SpinWheelManagement: React.FC = () => {
 
   const campaignWindow = useMemo(() => {
     const now = new Date();
-    const startDate = startAt ? new Date(startAt) : null;
-    const endDate = endAt ? new Date(endAt) : null;
+    const startDateIso = startAt ? parseIstInputDate(startAt) : null;
+    const endDateIso = endAt ? parseIstInputDate(endAt) : null;
+    const startDate = startDateIso ? new Date(startDateIso) : null;
+    const endDate = endDateIso ? new Date(endDateIso) : null;
     const hasValidStart = startDate && !Number.isNaN(startDate.getTime());
     const hasValidEnd = endDate && !Number.isNaN(endDate.getTime());
 
@@ -128,9 +156,9 @@ const SpinWheelManagement: React.FC = () => {
     return {
       active,
       label,
-      nowLabel: formatLocalDateTime(now),
-      startUtc: hasValidStart ? startDate.toISOString().replace('.000', '') : 'Not set',
-      endUtc: hasValidEnd ? endDate.toISOString().replace('.000', '') : 'Not set',
+      nowLabel: formatIstDateTime(now),
+      startIst: hasValidStart ? formatIstDateTime(startDate) : 'Not set',
+      endIst: hasValidEnd ? formatIstDateTime(endDate) : 'Not set',
     };
   }, [endAt, isEnabled, startAt]);
 
@@ -194,8 +222,10 @@ const SpinWheelManagement: React.FC = () => {
 
   const handleSaveCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
-    const startDate = startAt ? new Date(startAt) : null;
-    const endDate = endAt ? new Date(endAt) : null;
+    const startDateIso = startAt ? parseIstInputDate(startAt) : null;
+    const endDateIso = endAt ? parseIstInputDate(endAt) : null;
+    const startDate = startDateIso ? new Date(startDateIso) : null;
+    const endDate = endDateIso ? new Date(endDateIso) : null;
 
     if (startDate && endDate) {
       if (endDate.getTime() <= startDate.getTime()) {
@@ -382,10 +412,10 @@ const SpinWheelManagement: React.FC = () => {
               <span className={campaignWindow.active ? 'font-semibold text-green-700' : 'font-semibold text-amber-700'}>
                 {campaignWindow.label}
               </span>
-              <span className="ml-2 text-gray-500">Current local time: {campaignWindow.nowLabel}</span>
+              <span className="ml-2 text-gray-500">Current IST time: {campaignWindow.nowLabel}</span>
             </div>
             <div className="text-xs text-gray-500">
-              Saved as UTC: {campaignWindow.startUtc} to {campaignWindow.endUtc}
+              IST window: {campaignWindow.startIst} to {campaignWindow.endIst}
             </div>
           </div>
         </div>
