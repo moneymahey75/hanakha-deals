@@ -28,11 +28,31 @@ const buildOrIlike = (column: string, values: string[]) => {
   return parts.join(',');
 };
 
+const buildSearchOrIlike = (columns: string[], values: string[]) => {
+  const patterns = values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => value.replace(/[%*]/g, '').replace(/,/g, ' '));
+
+  return columns
+    .flatMap((column) => patterns.map((pattern) => `${column}.ilike.*${pattern}*`))
+    .join(',');
+};
+
 const applySearchTerm = (value: string, searchTerm: string | null) => {
   if (!searchTerm) return true;
   const haystack = value.toLowerCase();
   const needle = searchTerm.toLowerCase();
   return haystack.includes(needle);
+};
+
+const matchesCustomerSearch = (searchBlob: string, sponsorshipNumber: unknown, searchTerm: string | null) => {
+  if (applySearchTerm(searchBlob, searchTerm)) return true;
+  if (!searchTerm) return true;
+
+  const sponsorKey = normalizeSponsorshipKey(sponsorshipNumber);
+  const searchKey = normalizeSponsorshipKey(searchTerm);
+  return Boolean(sponsorKey && searchKey && sponsorKey.includes(searchKey));
 };
 
 const meetsVerificationRules = (
@@ -221,6 +241,25 @@ const normalizeSponsorshipKey = (value: unknown) => {
     return raw.slice(2).trim().toLowerCase();
   }
   return raw.toLowerCase();
+};
+
+const expandSearchTerms = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  const variants = [trimmed];
+  if (trimmed.toLowerCase().startsWith('sp')) {
+    const withoutPrefix = trimmed.slice(2).trim();
+    if (withoutPrefix) variants.push(withoutPrefix);
+  } else if (/^\d+$/.test(trimmed)) {
+    variants.push(`SP${trimmed}`);
+  }
+
+  for (const token of trimmed.split(/\s+/)) {
+    if (token && token !== trimmed) variants.push(token);
+  }
+
+  return Array.from(new Set(variants));
 };
 
 const getAdminBySession = async (supabase: ReturnType<typeof createClient>, token: string) => {
@@ -485,7 +524,7 @@ Deno.serve(async (req: Request) => {
             pSponsorship
           ].filter(Boolean).join(' ');
 
-          if (!applySearchTerm(searchBlob, searchTerm)) return null;
+          if (!matchesCustomerSearch(searchBlob, pSponsorship, searchTerm)) return null;
 
           const isEnabled = u.tu_is_active === true;
           const verificationComplete = meetsVerificationRules(u);
@@ -546,6 +585,192 @@ Deno.serve(async (req: Request) => {
       const page = combined.slice(offset, offset + limit).map((row) => ({
         ...row,
         total_count: totalCount
+      }));
+
+      return new Response(JSON.stringify({ success: true, data: page }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (searchTerm) {
+      const searchValues = expandSearchTerms(searchTerm);
+      const matchedUserIds = new Set<string>();
+
+      const { data: emailMatches, error: emailSearchError } = await supabase
+        .from('tbl_users')
+        .select('tu_id')
+        .eq('tu_user_type', 'customer')
+        .ilike('tu_email', `%${searchTerm.replace(/[%*]/g, '')}%`);
+      if (emailSearchError) throw emailSearchError;
+      for (const row of emailMatches || []) {
+        const userId = String((row as any).tu_id || '').trim();
+        if (userId) matchedUserIds.add(userId);
+      }
+
+      if (isUuid(searchTerm)) matchedUserIds.add(searchTerm);
+
+      const profileSearchOr = buildSearchOrIlike(
+        ['tup_first_name', 'tup_last_name', 'tup_username', 'tup_sponsorship_number'],
+        searchValues
+      );
+
+      if (profileSearchOr) {
+        const { data: profileMatches, error: profileSearchError } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_user_id')
+          .or(profileSearchOr);
+        if (profileSearchError) throw profileSearchError;
+        for (const row of profileMatches || []) {
+          const userId = String((row as any).tup_user_id || '').trim();
+          if (userId) matchedUserIds.add(userId);
+        }
+      }
+
+      const matchedIds = Array.from(matchedUserIds);
+      if (matchedIds.length === 0) {
+        return new Response(JSON.stringify({ success: true, data: [] }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const users: any[] = [];
+      for (const ids of chunk(matchedIds, 500)) {
+        let usersQuery = supabase
+          .from('tbl_users')
+          .select('tu_id, tu_email, tu_user_type, tu_is_verified, tu_email_verified, tu_mobile_verified, tu_registration_paid, tu_is_active, tu_is_dummy, tu_current_plan_phase, tu_launch_plan_activated_at, tu_created_at, tu_updated_at')
+          .in('tu_id', ids)
+          .eq('tu_user_type', 'customer');
+
+        if (verificationFilter === 'verified') {
+          usersQuery = usersQuery.or('tu_email_verified.eq.true,tu_mobile_verified.eq.true');
+        }
+        if (verificationFilter === 'unverified') {
+          usersQuery = usersQuery.eq('tu_email_verified', false).eq('tu_mobile_verified', false);
+        }
+        if (dummyFilter === 'real') usersQuery = usersQuery.eq('tu_is_dummy', false);
+        if (dummyFilter === 'dummy') usersQuery = usersQuery.eq('tu_is_dummy', true);
+
+        const { data: batch, error: usersError } = await usersQuery;
+        if (usersError) throw usersError;
+        users.push(...(batch || []));
+      }
+
+      const userIds = Array.from(new Set((users || []).map((u: any) => String(u?.tu_id || '').trim()).filter(Boolean)));
+      const profiles: any[] = [];
+      for (const ids of chunk(userIds, 500)) {
+        const { data: batch, error: profilesError } = await supabase
+          .from('tbl_user_profiles')
+          .select('tup_id, tup_user_id, tup_first_name, tup_last_name, tup_username, tup_mobile, tup_gender, tup_sponsorship_number, tup_parent_account, tup_created_at, tup_updated_at')
+          .in('tup_user_id', ids);
+        if (profilesError) throw profilesError;
+        profiles.push(...(batch || []));
+      }
+
+      const parentAccountKeys = Array.from(new Set(
+        (profiles || [])
+          .map((p: any) => normalizeString(p?.tup_parent_account))
+          .filter(Boolean)
+      ));
+
+      const parentProfiles: any[] = [];
+      if (parentAccountKeys.length > 0) {
+        const expanded = Array.from(new Set(parentAccountKeys.flatMap(expandCaseVariants))).filter(Boolean);
+        for (const keyChunk of chunk(expanded, 50)) {
+          const or = buildOrIlike('tup_sponsorship_number', keyChunk);
+          if (!or) continue;
+          const { data: batch, error: parentError } = await supabase
+            .from('tbl_user_profiles')
+            .select('tup_user_id, tup_first_name, tup_last_name, tup_username, tup_sponsorship_number')
+            .or(or);
+          if (parentError) throw parentError;
+          parentProfiles.push(...(batch || []));
+        }
+      }
+
+      const parentProfileByKey = new Map<string, any>();
+      for (const p of parentProfiles || []) {
+        const key = normalizeSponsorshipKey((p as any).tup_sponsorship_number);
+        if (!key) continue;
+        if (!parentProfileByKey.has(key)) parentProfileByKey.set(key, p);
+      }
+
+      const profileMap = new Map((profiles || []).map((p: any) => [p.tup_user_id, p]));
+      const launchSubscriptionByUserId = await getLaunchSubscriptionMap(
+        supabase,
+        (users || []).map((u: any) => u.tu_id)
+      );
+
+      const combined = (users || [])
+        .map((u: any) => {
+          const p = profileMap.get(u.tu_id) || null;
+          const parentKey = normalizeSponsorshipKey(p?.tup_parent_account);
+          const parentProfile = parentKey ? (parentProfileByKey.get(parentKey) || null) : null;
+          const searchBlob = [
+            u.tu_email,
+            p?.tup_first_name,
+            p?.tup_last_name,
+            p?.tup_username,
+            p?.tup_sponsorship_number,
+          ].filter(Boolean).join(' ');
+
+          if (!matchesCustomerSearch(searchBlob, p?.tup_sponsorship_number, searchTerm)) return null;
+
+          const isEnabled = u.tu_is_active === true;
+          const verificationComplete = meetsVerificationRules(u);
+          const isMemberActive = isEnabled && (u.tu_registration_paid === true) && verificationComplete;
+          const isPending = isEnabled && !isMemberActive;
+          const isDisabled = !isEnabled;
+
+          if (statusFilter === 'active' && !isMemberActive) return null;
+          if (statusFilter === 'pending' && !isPending) return null;
+          if ((statusFilter === 'disabled' || statusFilter === 'inactive') && !isDisabled) return null;
+
+          return applyLaunchSubscriptionFields({
+            tu_id: u.tu_id,
+            tu_email: u.tu_email,
+            tu_user_type: u.tu_user_type,
+            tu_is_verified: u.tu_is_verified,
+            tu_email_verified: u.tu_email_verified,
+            tu_mobile_verified: u.tu_mobile_verified,
+            tu_registration_paid: u.tu_registration_paid ?? false,
+            tu_is_active: u.tu_is_active,
+            is_active_member: isMemberActive,
+            verification_complete: verificationComplete,
+            tu_is_dummy: !!u.tu_is_dummy,
+            tu_current_plan_phase: u.tu_current_plan_phase || null,
+            tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
+            tu_created_at: u.tu_created_at,
+            tu_updated_at: u.tu_updated_at,
+            profile_data: p ? {
+              tup_id: p.tup_id,
+              tup_first_name: p.tup_first_name,
+              tup_last_name: p.tup_last_name,
+              tup_username: p.tup_username,
+              tup_mobile: p.tup_mobile,
+              tup_gender: p.tup_gender,
+              tup_sponsorship_number: p.tup_sponsorship_number,
+              tup_parent_account: p.tup_parent_account,
+              tup_parent_name: parentProfile
+                ? String(`${parentProfile.tup_first_name || ''} ${parentProfile.tup_last_name || ''}`).trim() || null
+                : null,
+              tup_parent_username: parentProfile?.tup_username || null,
+              tup_parent_sponsorship_number: parentProfile?.tup_sponsorship_number || null,
+              tup_created_at: p.tup_created_at,
+              tup_updated_at: p.tup_updated_at,
+            } : null,
+            downline_level: null,
+          }, launchSubscriptionByUserId);
+        })
+        .filter(Boolean) as any[];
+
+      combined.sort((a, b) => String(b.tu_created_at || '').localeCompare(String(a.tu_created_at || '')));
+
+      const totalCount = combined.length;
+      const page = combined.slice(offset, offset + limit).map((row) => ({
+        ...row,
+        total_count: totalCount,
       }));
 
       return new Response(JSON.stringify({ success: true, data: page }), {

@@ -577,7 +577,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                placeholder="Search by name, email, username, or user ID..."
+                                placeholder="Search by first name, last name, email, username, or sponsor ID..."
                             />
                         </div>
                     </div>
