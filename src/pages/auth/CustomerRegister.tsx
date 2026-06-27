@@ -80,21 +80,17 @@ const isLikelyEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email
 
 const checkUsernameExists = async (username: string): Promise<boolean> => {
   try {
-    console.log('🔍 Checking username availability via RPC:', username);
     const { data, error } = await supabase
         .rpc('check_username_exists', {
           p_username: username
         });
 
     if (error) {
-      console.error('❌ Error checking username via RPC:', error);
       return false;
     }
 
-    console.log('✅ Username check result:', data);
     return data === true;
-  } catch (error) {
-    console.error('❌ Error checking username uniqueness:', error);
+  } catch {
     return false;
   }
 };
@@ -273,8 +269,7 @@ const CustomerRegister: React.FC = () => {
         setEmailAvailable(true);
         setEmailWillAlias(existsAny === true);
       }
-    } catch (checkError) {
-      console.warn('Email uniqueness check failed:', checkError);
+    } catch {
       if (seq !== emailCheckSeq.current) return;
       setEmailAvailable(null);
       setEmailWillAlias(false);
@@ -327,8 +322,7 @@ const CustomerRegister: React.FC = () => {
 
       if (seq !== mobileCheckSeq.current) return;
       setMobileAvailable(exists !== true);
-    } catch (checkError) {
-      console.warn('Mobile uniqueness check failed:', checkError);
+    } catch {
       if (seq !== mobileCheckSeq.current) return;
       setMobileAvailable(null);
     } finally {
@@ -510,8 +504,7 @@ const CustomerRegister: React.FC = () => {
           } else {
             setUsernameAvailable(true);
           }
-        } catch (error) {
-          console.error('Error checking username uniqueness:', error);
+        } catch {
           errors.push('Unable to check username availability');
           setUsernameAvailable(null);
         }
@@ -1232,10 +1225,10 @@ const CustomerRegister: React.FC = () => {
                       )}
 
                       {usernameValidation.isValid && usernameAvailable === null && settings.usernameUniqueRequired && (
-                          <p className="text-xs text-yellow-600 flex items-center">
+                          <div className="text-xs text-yellow-600 flex items-center">
                             <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600 mr-1"></div>
                             Checking availability...
-                          </p>
+                          </div>
                       )}
 
                       {/* Character count */}
@@ -1280,10 +1273,10 @@ const CustomerRegister: React.FC = () => {
                     />
                   </div>
                   {checkingEmail && formData.email.trim() && isLikelyEmail(formData.email) && (
-                    <p className="text-xs text-yellow-600 flex items-center mt-1">
+                    <div className="text-xs text-yellow-600 flex items-center mt-1">
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600 mr-1"></div>
                       Checking email...
-                    </p>
+                    </div>
                   )}
                   {!checkingEmail && settings.customerEmailUnique && emailAvailable === true && formData.email.trim() && isLikelyEmail(formData.email) && (
                     <p className="text-xs text-green-600 flex items-center mt-1">
@@ -1366,10 +1359,10 @@ const CustomerRegister: React.FC = () => {
                   <div className="mt-1 space-y-1">
                     <p className="text-xs text-gray-500">Enter 10-digit mobile number</p>
                     {settings.customerMobileUnique && checkingMobile && formData.mobile.trim().length === 10 && (
-                      <p className="text-xs text-yellow-600 flex items-center">
+                      <div className="text-xs text-yellow-600 flex items-center">
                         <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600 mr-1"></div>
                         Checking mobile...
-                      </p>
+                      </div>
                     )}
                     {settings.customerMobileUnique && !checkingMobile && mobileAvailable === true && formData.mobile.trim().length === 10 && (
                       <p className="text-xs text-green-600 flex items-center">

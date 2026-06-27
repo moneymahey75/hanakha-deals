@@ -332,7 +332,7 @@ export const sendOTP = async (userId: string, contactInfo: string, otpType: 'ema
   } catch (error: any) {
     // For mobile OTP, provide more helpful error message
     if (otpType === 'mobile') {
-      throw new Error(error.message || 'Mobile OTP is currently in development mode. Check console for test OTP code.');
+      throw new Error(error.message || 'Failed to send mobile OTP. Please try again.');
     }
     
     throw new Error(error.message || 'Failed to send OTP. Please try again.');
