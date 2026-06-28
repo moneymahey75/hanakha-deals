@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../lib/adminApi';
+import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useNotification } from '../ui/NotificationProvider';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 import {
@@ -28,6 +29,8 @@ import {
   ChevronRight,
   MoreHorizontal
 } from 'lucide-react';
+
+type WalletTransactionType = 'credit' | 'debit' | 'recover_reserved';
 
 let inFlightWalletsRequest: { key: string; promise: Promise<WalletData[]> } | null = null;
 let inFlightWalletTransactionsRequest: {
@@ -183,7 +186,7 @@ const WalletManagement: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState('');
-  const [transactionType, setTransactionType] = useState<'credit' | 'debit'>('credit');
+  const [transactionType, setTransactionType] = useState<WalletTransactionType>('credit');
   const [walletTransactionSubmitting, setWalletTransactionSubmitting] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [users, setUsers] = useState<User[]>([]);
@@ -200,8 +203,10 @@ const WalletManagement: React.FC = () => {
   const [testDaysToAdd, setTestDaysToAdd] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const { hasPermission } = useAdminAuth();
   const notification = useNotification();
   const topRef = useScrollToTopOnChange([activeTab, currentPage], { smooth: true });
+  const canWriteWallets = hasPermission('wallets', 'write');
 
   useEffect(() => {
     if (activeTab === 'wallets') {
@@ -372,6 +377,16 @@ const WalletManagement: React.FC = () => {
     setTestDaysToAdd(0);
   };
 
+  const getWalletActionLabel = (type: WalletTransactionType) => {
+    if (type === 'recover_reserved') return 'Recover Reserved';
+    return type === 'credit' ? 'Credit' : 'Debit';
+  };
+
+  const getWalletActionPastLabel = (type: WalletTransactionType) => {
+    if (type === 'recover_reserved') return 'recovered expired reserved balance';
+    return type === 'credit' ? 'credited' : 'debited';
+  };
+
   const resetManageWalletModal = () => {
     setShowManageModal(false);
     setSelectedUserId('');
@@ -485,6 +500,10 @@ const WalletManagement: React.FC = () => {
   const handleWalletTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (walletTransactionSubmitting) return;
+    if (!canWriteWallets) {
+      notification.showError('Permission Denied', 'Wallet write permission is required');
+      return;
+    }
     setWalletTransactionSubmitting(true);
 
     // Check if we have a selected user ID OR if we need to validate the search field
@@ -534,17 +553,23 @@ const WalletManagement: React.FC = () => {
     // Rest of your function remains the same...
     try {
       await ensureWalletExists(selectedUserId);
-      const result = await adminApi.post<{ newBalance: number }>('admin-wallet-transaction', {
+      const result = await adminApi.post<{ newBalance: number; newReservedBalance?: number }>('admin-wallet-transaction', {
         userId: selectedUserId,
         amount,
         transactionType,
-        description
+        description: description.trim() || (
+          transactionType === 'recover_reserved'
+            ? 'Admin recovered expired reserved balance'
+            : description
+        )
       });
       const newBalance = result.newBalance;
 
       notification.showSuccess(
           'Wallet Updated',
-          `Successfully ${transactionType === 'credit' ? 'credited' : 'debited'} ${amount} USDT. New balance: ${newBalance.toFixed(2)} USDT`
+          transactionType === 'recover_reserved'
+            ? `Successfully recovered ${amount} USDT reserved balance. New reserved balance: ${(result.newReservedBalance || 0).toFixed(2)} USDT`
+            : `Successfully ${getWalletActionPastLabel(transactionType)} ${amount} USDT. New balance: ${newBalance.toFixed(2)} USDT`
       );
 
       resetManageWalletModal();
@@ -686,20 +711,24 @@ const WalletManagement: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                  onClick={() => setShowManageModal(true)}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
-              >
-                <Wallet className="h-4 w-4" />
-                <span>Manage Wallet</span>
-              </button>
-              <button
-                  onClick={handleCreateWalletForAllUsers}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Create Missing Wallets</span>
-              </button>
+              {canWriteWallets && (
+                <button
+                    onClick={() => setShowManageModal(true)}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+                >
+                  <Wallet className="h-4 w-4" />
+                  <span>Manage Wallet</span>
+                </button>
+              )}
+              {canWriteWallets && (
+                <button
+                    onClick={handleCreateWalletForAllUsers}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Create Missing Wallets</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -909,26 +938,28 @@ const WalletManagement: React.FC = () => {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                 <div className="flex space-x-2">
-                                  <button
-                                      onClick={() => {
-                                        // Set the selected user ID and user object
-                                        setSelectedUserId(wallet.user_id);
-                                        setSelectedUser({
-                                          tu_id: wallet.user_id,
-                                          tu_email: wallet.user_email,
-                                          tu_user_type: wallet.user_type,
-                                          tup_first_name: wallet.user_name.split(' ')[0],
-                                          tup_last_name: wallet.user_name.split(' ')[1],
-                                          company_name: wallet.company_name
-                                        });
-                                        setUserSearch(`${wallet.user_name} (${wallet.user_email})`);
-                                        setShowManageModal(true);
-                                      }}
-                                      className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
-                                      title="Manage Wallet"
-                                  >
-                                    <Wallet className="h-4 w-4" />
-                                  </button>
+                                  {canWriteWallets && (
+                                    <button
+                                        onClick={() => {
+                                          // Set the selected user ID and user object
+                                          setSelectedUserId(wallet.user_id);
+                                          setSelectedUser({
+                                            tu_id: wallet.user_id,
+                                            tu_email: wallet.user_email,
+                                            tu_user_type: wallet.user_type,
+                                            tup_first_name: wallet.user_name.split(' ')[0],
+                                            tup_last_name: wallet.user_name.split(' ')[1],
+                                            company_name: wallet.company_name
+                                          });
+                                          setUserSearch(`${wallet.user_name} (${wallet.user_email})`);
+                                          setShowManageModal(true);
+                                        }}
+                                        className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                                        title="Manage Wallet"
+                                    >
+                                      <Wallet className="h-4 w-4" />
+                                    </button>
+                                  )}
                                   <button
                                       onClick={() => loadWalletTransactions(wallet.user_id, wallet.user_email, wallet.user_name)}
                                       className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
@@ -1189,7 +1220,7 @@ const WalletManagement: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Transaction Type *
                     </label>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <button
                           type="button"
                           onClick={() => setTransactionType('credit')}
@@ -1216,7 +1247,25 @@ const WalletManagement: React.FC = () => {
                         <Minus className="h-4 w-4 inline mr-2" />
                         Debit
                       </button>
+                      <button
+                          type="button"
+                          onClick={() => setTransactionType('recover_reserved')}
+                          disabled={walletTransactionSubmitting}
+                          className={`px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
+                              transactionType === 'recover_reserved'
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                  : 'border-gray-300 text-gray-700 hover:border-blue-300'
+                          } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <RefreshCw className="h-4 w-4 inline mr-2" />
+                        Recover Reserved
+                      </button>
                     </div>
+                    {transactionType === 'recover_reserved' && (
+                        <p className="mt-2 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                          Adds the amount back to both wallet balance and reserved balance for an admin-approved expired reserve recovery.
+                        </p>
+                    )}
                   </div>
 
                   <div>
@@ -1247,7 +1296,11 @@ const WalletManagement: React.FC = () => {
                         onChange={(e) => setDescription(e.target.value)}
                         disabled={walletTransactionSubmitting}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder={`Reason for ${transactionType}`}
+                        placeholder={
+                          transactionType === 'recover_reserved'
+                              ? 'Reason for reserved balance recovery'
+                              : `Reason for ${transactionType}`
+                        }
                     />
                   </div>
 
@@ -1366,18 +1419,22 @@ const WalletManagement: React.FC = () => {
                         className={`px-4 py-2 text-white rounded-lg transition-colors flex items-center space-x-2 ${
                             transactionType === 'credit'
                                 ? 'bg-green-600 hover:bg-green-700'
+                                : transactionType === 'recover_reserved'
+                                    ? 'bg-blue-600 hover:bg-blue-700'
                                 : 'bg-red-600 hover:bg-red-700'
                         } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       {transactionType === 'credit' ? (
                           <Plus className="h-4 w-4" />
+                      ) : transactionType === 'recover_reserved' ? (
+                          <RefreshCw className="h-4 w-4" />
                       ) : (
                           <Minus className="h-4 w-4" />
                       )}
                       <span>
                         {walletTransactionSubmitting
                             ? 'Processing...'
-                            : `${transactionType === 'credit' ? 'Credit' : 'Debit'} Wallet`}
+                            : `${getWalletActionLabel(transactionType)} Wallet`}
                       </span>
                     </button>
                   </div>
