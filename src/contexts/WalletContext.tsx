@@ -14,8 +14,6 @@ interface WalletContextType {
   refreshDailyTasks: () => Promise<void>;
   completeTask: (taskId: string, shareUrl: string, platform: string, screenshotUrl?: string) => Promise<void>;
   getWalletSummary: () => Promise<any>;
-  creditWallet: (amount: number, description: string, referenceType?: string, referenceId?: string) => Promise<void>;
-  debitWallet: (amount: number, description: string, referenceType?: string, referenceId?: string) => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -78,8 +76,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           updatedAt: data.tw_updated_at
         });
       }
-    } catch (error) {
-      console.error('Failed to load wallet:', error);
+    } catch {
     } finally {
       setLoading(false);
     }
@@ -114,8 +111,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       setTransactions(formattedTransactions);
-    } catch (error) {
-      console.error('Failed to load transactions:', error);
+    } catch {
     }
   };
 
@@ -160,8 +156,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       setDailyTasks(formattedTasks);
-    } catch (error) {
-      console.error('Failed to load daily tasks:', error);
+    } catch {
     }
   };
 
@@ -192,7 +187,6 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ]);
 
     } catch (error: any) {
-      console.error('Failed to complete task:', error);
       notification.showError('Task Failed', error.message || 'Failed to complete task');
       throw error;
     }
@@ -208,59 +202,8 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (error) throw error;
       return data;
-    } catch (error) {
-      console.error('Failed to get wallet summary:', error);
+    } catch {
       return null;
-    }
-  };
-
-  const creditWallet = async (amount: number, description: string, referenceType?: string, referenceId?: string) => {
-    if (!user?.id) return;
-
-    try {
-      const { data, error } = await supabase.rpc('update_wallet_balance', {
-        p_user_id: user.id,
-        p_amount: amount,
-        p_transaction_type: 'credit',
-        p_description: description,
-        p_reference_type: referenceType,
-        p_reference_id: referenceId
-      });
-
-      if (error) throw error;
-
-      notification.showSuccess('Wallet Credited', `${amount} USDT added to your wallet`);
-      await refreshWallet();
-      await refreshTransactions();
-    } catch (error: any) {
-      console.error('Failed to credit wallet:', error);
-      notification.showError('Credit Failed', error.message || 'Failed to credit wallet');
-      throw error;
-    }
-  };
-
-  const debitWallet = async (amount: number, description: string, referenceType?: string, referenceId?: string) => {
-    if (!user?.id) return;
-
-    try {
-      const { data, error } = await supabase.rpc('update_wallet_balance', {
-        p_user_id: user.id,
-        p_amount: amount,
-        p_transaction_type: 'debit',
-        p_description: description,
-        p_reference_type: referenceType,
-        p_reference_id: referenceId
-      });
-
-      if (error) throw error;
-
-      notification.showSuccess('Wallet Debited', `${amount} USDT deducted from your wallet`);
-      await refreshWallet();
-      await refreshTransactions();
-    } catch (error: any) {
-      console.error('Failed to debit wallet:', error);
-      notification.showError('Debit Failed', error.message || 'Failed to debit wallet');
-      throw error;
     }
   };
 
@@ -273,9 +216,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     refreshTransactions,
     refreshDailyTasks,
     completeTask,
-    getWalletSummary,
-    creditWallet,
-    debitWallet
+    getWalletSummary
   };
 
   return (
