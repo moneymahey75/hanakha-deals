@@ -4,6 +4,7 @@ export type AdminUser = {
   tau_id: string;
   tau_email: string;
   tau_role?: string | null;
+  tau_permissions?: Record<string, any> | null;
   tau_is_active: boolean;
 };
 
@@ -25,6 +26,7 @@ export const requireAdminSession = async (
         tau_id,
         tau_email,
         tau_role,
+        tau_permissions,
         tau_is_active
       )
     `
@@ -38,6 +40,18 @@ export const requireAdminSession = async (
   }
 
   return data.admin as AdminUser;
+};
+
+export const adminHasPermission = (
+  admin: AdminUser,
+  module: string,
+  action: 'read' | 'write' | 'delete'
+): boolean => {
+  if (admin.tau_role === 'super_admin') {
+    return true;
+  }
+
+  return Boolean(admin.tau_permissions?.[module]?.[action]);
 };
 
 export const logAdminAction = async (
