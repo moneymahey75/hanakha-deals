@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { requireAdminSession, logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, requireAdminSession, logAdminAction } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +38,9 @@ Deno.serve(async (req: Request) => {
 
     if (!hasValidSecret) {
       const admin = await requireAdminSession(supabase, req.headers.get('X-Admin-Session'));
+      if (!adminHasPermission(admin, 'coupons', 'write')) {
+        return jsonResponse({ success: false, error: 'Permission denied: coupons.write' }, 403);
+      }
       adminId = admin.tau_id;
     }
 
@@ -78,7 +81,7 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error: any) {
     const message = error?.message || 'Failed';
-    const status = message.includes('admin session') ? 401 : 500;
+    const status = message.includes('admin session') ? 401 : message.includes('Permission denied') ? 403 : 500;
     return jsonResponse({ success: false, error: message }, status);
   }
 });

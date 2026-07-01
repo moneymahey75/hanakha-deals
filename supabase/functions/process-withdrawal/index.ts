@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction } from '../_shared/adminSession.ts';
 import { ethers } from 'npm:ethers@6.10.0';
 import { formatWithdrawalAdminDebug, formatWithdrawalFailureReason } from '../_shared/withdrawalFailureReason.ts';
 import { brandedEmailShell, detailTable, sendSmtpMail } from '../_shared/email.ts';
@@ -322,6 +322,7 @@ Deno.serve(async (req: Request) => {
           tau_email,
           tau_full_name,
           tau_role,
+          tau_permissions,
           tau_is_active
         )
       `)
@@ -335,6 +336,16 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ success: false, error: 'Invalid admin session' }),
         {
           status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (!adminHasPermission(adminUser, 'withdrawals', 'write')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Permission denied: withdrawals.write' }),
+        {
+          status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );

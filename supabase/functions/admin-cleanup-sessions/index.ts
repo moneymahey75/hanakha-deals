@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { requireAdminSession, logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, requireAdminSession, logAdminAction } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,6 +23,12 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const adminSessionToken = req.headers.get('X-Admin-Session');
     const admin = await requireAdminSession(supabase, adminSessionToken);
+    if (!adminHasPermission(admin, 'admins', 'write')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: admins.write' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const nowIso = new Date().toISOString();
     const { data, error } = await supabase

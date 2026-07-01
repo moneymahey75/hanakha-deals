@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +18,7 @@ const getAdminBySession = async (supabase: ReturnType<typeof createClient>, toke
         tau_id,
         tau_email,
         tau_role,
+        tau_permissions,
         tau_is_active
       )
     `
@@ -76,6 +77,10 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'get');
+    const requiredPermission = action === 'get' ? 'read' : 'write';
+    if (!adminHasPermission(admin, 'settings', requiredPermission)) {
+      return jsonResponse({ success: false, error: `Permission denied: settings.${requiredPermission}` }, 403);
+    }
 
     if (action === 'get') {
       const campaign = await getCampaign(supabase);

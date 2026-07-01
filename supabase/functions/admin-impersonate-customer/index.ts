@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,6 +31,12 @@ Deno.serve(async (req: Request) => {
     });
 
     const admin = await requireAdminSession(adminClient, req.headers.get('X-Admin-Session'));
+    if (!adminHasPermission(admin, 'customers', 'write')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: customers.write' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Only super_admin can impersonate customers — sub-admins must not have this power
     if (admin.tau_role !== 'super_admin') {
