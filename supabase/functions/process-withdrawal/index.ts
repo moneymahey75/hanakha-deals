@@ -35,7 +35,7 @@ const sendEmail = async (to: string, subject: string, html: string, text: string
       fromName: 'ShopClix Payments',
     });
   } catch (error) {
-    console.error('Failed to send email notification:', error);
+    console.warn('Failed to send withdrawal email notification');
   }
 };
 
@@ -47,7 +47,7 @@ const sendSms = async (baseUrl: string, to: string, body: string) => {
       body: JSON.stringify({ to, body })
     });
   } catch (error) {
-    console.error('Failed to send SMS notification:', error);
+    console.warn('Failed to send withdrawal SMS notification');
   }
 };
 
@@ -63,6 +63,9 @@ const parseSetting = (raw: any) => {
 
 const normalizeAddress = (address?: string | null) =>
   (address || '').trim().toLowerCase();
+
+const isUuid = (value?: string | null) =>
+  Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 
 const processTransfer = async (params: {
   supabase: any;
@@ -95,89 +98,28 @@ const processTransfer = async (params: {
     adminInfo
   } = params;
 
-  const { data: wallet, error: walletError } = await supabase
-    .from('tbl_wallets')
-    .select('tw_id, tw_balance')
-    .eq('tw_user_id', userId)
-    .eq('tw_currency', 'USDT')
-    .eq('tw_wallet_type', walletType)
-    .maybeSingle();
-
-  if (walletError || !wallet) {
-    throw new Error('Wallet not found for withdrawal');
+  if (!isUuid(requestId) || !isUuid(userId)) {
+    throw new Error('Invalid withdrawal request');
   }
 
-  const { data: existingDebit, error: existingDebitError } = await supabase
-    .from('tbl_wallet_transactions')
-    .select('twt_id, twt_status, twt_amount')
-    .eq('twt_reference_type', 'withdrawal')
-    .eq('twt_reference_id', requestId)
-    .eq('twt_transaction_type', 'debit')
-    .order('twt_created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existingDebitError) {
-    throw new Error('Failed to check existing withdrawal debit');
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(netAmount) || netAmount <= 0 || netAmount > amount) {
+    throw new Error('Invalid withdrawal amount');
   }
 
-  let walletTx = existingDebit;
-  const existingDebitStatus = String(existingDebit?.twt_status || '').toLowerCase();
-  const canReuseDebit = Boolean(existingDebit?.twt_id) && ['pending', 'failed'].includes(existingDebitStatus);
-
-  if (canReuseDebit) {
-    const { error: reuseError } = await supabase
-      .from('tbl_wallet_transactions')
-      .update({ twt_status: 'pending' })
-      .eq('twt_id', existingDebit.twt_id);
-
-    if (reuseError) {
-      throw new Error('Failed to reopen existing withdrawal debit');
-    }
-  } else {
-    const currentBalance = Number(wallet.tw_balance || 0);
-    if (currentBalance < amount) {
-      throw new Error('Insufficient wallet balance');
-    }
-
-    const newBalance = currentBalance - amount;
-
-    const { error: balanceError } = await supabase
-      .from('tbl_wallets')
-      .update({
-        tw_balance: newBalance,
-        tw_updated_at: new Date().toISOString()
-      })
-      .eq('tw_id', wallet.tw_id);
-
-    if (balanceError) {
-      throw new Error('Failed to update wallet balance');
-    }
-
-    const { data: insertedWalletTx, error: txError } = await supabase
-      .from('tbl_wallet_transactions')
-      .insert({
-        twt_wallet_id: wallet.tw_id,
-        twt_user_id: userId,
-        twt_transaction_type: 'debit',
-        twt_amount: amount,
-        twt_description: 'Withdrawal approved',
-        twt_reference_type: 'withdrawal',
-        twt_reference_id: requestId,
-        twt_status: 'pending',
-        twt_created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (txError) {
-      throw new Error('Failed to record withdrawal transaction');
-    }
-
-    walletTx = insertedWalletTx;
+  if (!ethers.isAddress(destinationAddress)) {
+    throw new Error('Invalid withdrawal destination');
   }
 
-  if (!walletTx?.twt_id) {
+  const { data: debitResult, error: debitError } = await supabase.rpc('debit_wallet_for_withdrawal', {
+    p_withdrawal_id: requestId
+  });
+
+  if (debitError) {
+    throw new Error(debitError.message || 'Unable to reserve withdrawal balance');
+  }
+
+  const walletTxId = debitResult?.wallet_transaction_id;
+  if (!walletTxId) {
     throw new Error('Withdrawal debit transaction not found');
   }
 
@@ -213,7 +155,7 @@ const processTransfer = async (params: {
       .update({
         twt_blockchain_hash: tx.hash
       })
-      .eq('twt_id', walletTx.twt_id);
+      .eq('twt_id', walletTxId);
 
     await tx.wait(MIN_CONFIRMATIONS_DEFAULT);
 
@@ -223,10 +165,10 @@ const processTransfer = async (params: {
         twt_status: 'completed',
         twt_blockchain_hash: tx.hash
       })
-      .eq('twt_id', walletTx.twt_id);
+      .eq('twt_id', walletTxId);
 
     if (txUpdateError) {
-      console.error('Failed to update wallet transaction status:', txUpdateError);
+      console.warn('Failed to update withdrawal wallet transaction status');
     }
 
     return tx.hash as string;
@@ -240,7 +182,7 @@ const processTransfer = async (params: {
           twt_status: 'pending',
           twt_blockchain_hash: submittedTxHash
         })
-        .eq('twt_id', walletTx.twt_id);
+        .eq('twt_id', walletTxId);
 
       await supabase
         .from('tbl_withdrawal_requests')
@@ -265,7 +207,7 @@ const processTransfer = async (params: {
     await supabase
       .from('tbl_wallet_transactions')
       .update({ twt_status: 'failed' })
-      .eq('twt_id', walletTx.twt_id);
+      .eq('twt_id', walletTxId);
 
     await supabase
       .from('tbl_withdrawal_requests')
@@ -354,9 +296,9 @@ Deno.serve(async (req: Request) => {
     const { withdrawalId } = await req.json();
     requestedWithdrawalId = withdrawalId || null;
 
-    if (!withdrawalId) {
+    if (!isUuid(withdrawalId)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing withdrawal ID' }),
+        JSON.stringify({ success: false, error: 'Invalid withdrawal ID' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -386,6 +328,19 @@ Deno.serve(async (req: Request) => {
     if (!['pending', 'failed'].includes(withdrawal.twr_status) && !isProcessingWithTx) {
       return new Response(
         JSON.stringify({ success: false, error: 'Withdrawal already processed' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (!Number.isFinite(Number(withdrawal.twr_amount)) || Number(withdrawal.twr_amount) <= 0 ||
+        !Number.isFinite(Number(withdrawal.twr_net_amount)) || Number(withdrawal.twr_net_amount) <= 0 ||
+        Number(withdrawal.twr_net_amount) > Number(withdrawal.twr_amount) ||
+        !ethers.isAddress(String(withdrawal.twr_destination_address || ''))) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Withdrawal request is invalid' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -534,10 +489,22 @@ Deno.serve(async (req: Request) => {
         twr_admin_debug: null
       })
       .eq('twr_id', withdrawalId)
-      .in('twr_status', ['pending', 'failed']);
+      .in('twr_status', ['pending', 'failed'])
+      .is('twr_blockchain_tx', null)
+      .select('twr_id')
+      .maybeSingle();
 
     if (updateResult.error) {
       throw updateResult.error;
+    }
+    if (!updateResult.data?.twr_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Withdrawal status changed. Please refresh and try again.' }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const adminInfo = {
@@ -623,7 +590,8 @@ Deno.serve(async (req: Request) => {
         twr_blockchain_tx: txHash,
         twr_admin_debug: `Transfer completed. tx=${txHash}`
       })
-      .eq('twr_id', withdrawalId);
+      .eq('twr_id', withdrawalId)
+      .eq('twr_status', 'processing');
 
     if (userEmail) {
       await sendEmail(
@@ -679,15 +647,13 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error: any) {
-    console.error('Error processing withdrawal:', error);
-
     if (error?.status === 'submitted_pending_confirmation' && error?.txHash) {
       return new Response(
         JSON.stringify({
           success: false,
           status: 'processing',
           txHash: error.txHash,
-          error: error.message || 'Withdrawal transfer submitted but confirmation is pending',
+          error: 'Withdrawal transfer submitted but confirmation is pending',
         }),
         {
           status: 202,
@@ -723,13 +689,13 @@ Deno.serve(async (req: Request) => {
         }
       }
     } catch (persistError) {
-      console.error('Failed to persist withdrawal admin debug info:', persistError);
+      console.warn('Failed to persist withdrawal admin debug info');
     }
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: formatWithdrawalFailureReason(error),
       }),
       {
         status: 500,

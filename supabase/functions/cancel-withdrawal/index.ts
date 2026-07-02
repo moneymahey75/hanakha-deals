@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
+const isUuid = (value?: string | null) =>
+  Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -40,8 +43,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const { withdrawalId } = await req.json();
-    if (!withdrawalId) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing withdrawal ID' }), {
+    if (!isUuid(withdrawalId)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid withdrawal ID' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -74,27 +77,35 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('tbl_withdrawal_requests')
       .update({
         twr_status: 'cancelled',
         twr_processed_at: new Date().toISOString()
       })
       .eq('twr_id', withdrawalId)
-      .eq('twr_status', 'pending');
+      .eq('twr_user_id', authData.user.id)
+      .eq('twr_status', 'pending')
+      .select('twr_id')
+      .maybeSingle();
 
     if (updateError) {
       throw updateError;
+    }
+    if (!updated?.twr_id) {
+      return new Response(JSON.stringify({ success: false, error: 'Withdrawal status changed. Please refresh and try again.' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    console.error('Cancel withdrawal error:', error);
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Internal server error',
+      error: 'Unable to cancel withdrawal',
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
