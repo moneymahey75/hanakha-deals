@@ -39,9 +39,19 @@ interface UpgradePaymentRecoveryAttempt {
 const PAYMENT_SUCCESS_KEY = 'payment_success_state';
 const PAYMENT_SELECTED_PLAN_KEY = 'payment_selected_plan_state';
 
-const saveSelectedPlanState = (plan: SubscriptionPlan) => {
+const saveSelectedPlanState = (plan: SubscriptionPlan, planId = plan.tsp_id) => {
   try {
-    const value = JSON.stringify({ plan, savedAt: Date.now() });
+    const value = JSON.stringify({ plan, planId, savedAt: Date.now() });
+    sessionStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+    localStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+  } catch {
+    // Storage can be unavailable in some embedded wallet browsers.
+  }
+};
+
+const saveSelectedPlanIdState = (planId: string) => {
+  try {
+    const value = JSON.stringify({ planId, savedAt: Date.now() });
     sessionStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
     localStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
   } catch {
@@ -55,6 +65,17 @@ const loadSelectedPlanState = (): SubscriptionPlan | null => {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed?.plan || null;
+  } catch {
+    return null;
+  }
+};
+
+const loadSelectedPlanIdState = (): string | null => {
+  try {
+    const raw = sessionStorage.getItem(PAYMENT_SELECTED_PLAN_KEY) || localStorage.getItem(PAYMENT_SELECTED_PLAN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.planId === 'string' ? parsed.planId : parsed?.plan?.tsp_id || null;
   } catch {
     return null;
   }
@@ -301,35 +322,67 @@ const Payment: React.FC = () => {
   }, [settings, walletService, notification]);
 
   useEffect(() => {
+    let isCancelled = false;
     sessionStorage.removeItem(PAYMENT_SUCCESS_KEY);
 
     // Validate and get selected plan from navigation state, then fall back to
     // durable storage because mobile wallet confirmation can reload this route.
-    const planFromState = location.state?.selectedPlan || loadSelectedPlanState();
+    const resolveSelectedPlan = async () => {
+      const planFromState = location.state?.selectedPlan || loadSelectedPlanState();
+      const selectedPlanId = location.state?.selectedPlanId || planFromState?.tsp_id || loadSelectedPlanIdState();
 
-    if (planFromState) {
+      let resolvedPlan = planFromState as SubscriptionPlan | null;
+
+      if (!resolvedPlan && selectedPlanId) {
+        saveSelectedPlanIdState(selectedPlanId);
+        const { data, error } = await supabase
+          .from('tbl_subscription_plans')
+          .select('*')
+          .eq('tsp_id', selectedPlanId)
+          .eq('tsp_is_active', true)
+          .maybeSingle();
+
+        if (error) throw error;
+        resolvedPlan = data as SubscriptionPlan | null;
+      }
+
+      if (isCancelled) return;
+
+      if (resolvedPlan) {
       // Input validation functions
-      const validatePrice = (price: number): boolean => price > 0 && price < 1000000;
+        const validatePrice = (price: number): boolean => price > 0 && price < 1000000;
 
       // Validate plan data
-      if (!planFromState.tsp_id || !planFromState.tsp_name ||
-          !validatePrice(planFromState.tsp_price)) {
-        notification.showError('Invalid Plan', 'The selected plan contains invalid data.');
-        navigate('/subscription-plans', { replace: true });
+        if (!resolvedPlan.tsp_id || !resolvedPlan.tsp_name ||
+            !validatePrice(Number(resolvedPlan.tsp_price))) {
+          notification.showError('Invalid Plan', 'The selected plan contains invalid data.');
+          navigate('/subscription-plans', { replace: true });
+          return;
+        }
+
+        setSelectedPlan(resolvedPlan);
+        saveSelectedPlanState(resolvedPlan, selectedPlanId || resolvedPlan.tsp_id);
         return;
       }
 
-      setSelectedPlan(planFromState);
-      saveSelectedPlanState(planFromState);
-    } else {
       // No plan selected, redirect to subscription plans
       notification.showError('No Plan Selected', 'Please select a subscription plan first.');
       navigate('/subscription-plans', { replace: true });
-    }
+    };
+
+    resolveSelectedPlan().catch((error: any) => {
+      if (isCancelled) return;
+      notification.showError('Plan Load Failed', error?.message || 'Unable to load selected plan.');
+      navigate('/subscription-plans', { replace: true });
+    });
 
     // Detect available wallets
     const wallets = walletService.detectWallets();
     setAvailableWallets(wallets);
+
+    return () => {
+      isCancelled = true;
+    };
   }, [location.state, navigate, notification, walletService]);
 
   useEffect(() => {

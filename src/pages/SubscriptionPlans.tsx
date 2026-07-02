@@ -31,6 +31,18 @@ interface ActivePackage {
   } | null;
 }
 
+const PAYMENT_SELECTED_PLAN_KEY = 'payment_selected_plan_state';
+
+const savePaymentPlanSelection = (planId: string, plan?: SubscriptionPlan | null) => {
+  try {
+    const value = JSON.stringify({ planId, plan: plan || null, savedAt: Date.now() });
+    sessionStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+    localStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+  } catch {
+    // Storage can be unavailable in embedded wallet browsers.
+  }
+};
+
 const SubscriptionPlans: React.FC = () => {
   const { user } = useAuth();
   const { settings } = useAdmin();
@@ -258,7 +270,7 @@ const SubscriptionPlans: React.FC = () => {
     }
     
     if (!user) {
-      console.log('👤 User not logged in, redirecting to login with plan selection');
+      savePaymentPlanSelection(planId, selectedPlan);
       navigate('/customer/login', { 
         state: { 
           from: '/payment', 
@@ -292,7 +304,7 @@ const SubscriptionPlans: React.FC = () => {
       setCheckingPlanId(null);
     }
     
-    console.log('💳 User logged in, proceeding to payment with plan:', planId);
+    savePaymentPlanSelection(planId, selectedPlan);
     navigate('/payment', { 
       state: { 
         selectedPlanId: planId, 
