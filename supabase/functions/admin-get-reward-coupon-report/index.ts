@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,6 +39,12 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const admin = await requireAdminSession(supabase, req.headers.get('X-Admin-Session'));
+    if (!adminHasPermission(admin, 'coupons', 'read')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: coupons.read' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const { startDate, endDate } = await req.json().catch(() => ({}));
     const today = getBusinessDate();
     const requestedStartDate = isIsoDate(startDate) ? String(startDate) : today;

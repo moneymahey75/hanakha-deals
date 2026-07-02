@@ -51,7 +51,49 @@ export const adminHasPermission = (
     return true;
   }
 
-  return Boolean(admin.tau_permissions?.[module]?.[action]);
+  const permissions = admin.tau_permissions ?? {};
+  let modulePermissions = permissions[module];
+
+  // Keep server-side permission behavior aligned with AdminAuthContext's
+  // backward compatibility for older sub-admin permission records.
+  if (module === 'withdrawals' && permissions.withdrawals == null) {
+    modulePermissions = permissions.payments;
+  }
+  if (module === 'mlm' && permissions.mlm == null) {
+    modulePermissions = permissions.settings;
+  }
+
+  return Boolean(modulePermissions?.[action]);
+};
+
+export const adminHasAnyPermission = (
+  admin: AdminUser,
+  permissions: Array<[string, 'read' | 'write' | 'delete']>
+): boolean => permissions.some(([module, action]) => adminHasPermission(admin, module, action));
+
+export const requireAdminPermission = async (
+  supabase: ReturnType<typeof createClient>,
+  token: string | null,
+  module: string,
+  action: 'read' | 'write' | 'delete'
+): Promise<AdminUser> => {
+  const admin = await requireAdminSession(supabase, token);
+  if (!adminHasPermission(admin, module, action)) {
+    throw new Error(`Permission denied: ${module}.${action}`);
+  }
+  return admin;
+};
+
+export const requireAdminAnyPermission = async (
+  supabase: ReturnType<typeof createClient>,
+  token: string | null,
+  permissions: Array<[string, 'read' | 'write' | 'delete']>
+): Promise<AdminUser> => {
+  const admin = await requireAdminSession(supabase, token);
+  if (!adminHasAnyPermission(admin, permissions)) {
+    throw new Error('Permission denied');
+  }
+  return admin;
 };
 
 export const logAdminAction = async (

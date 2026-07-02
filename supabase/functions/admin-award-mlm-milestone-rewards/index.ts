@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,6 +102,12 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const admin = await requireAdminSession(supabase, req.headers.get('X-Admin-Session'));
+    if (!adminHasPermission(admin, 'mlm', 'write')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: mlm.write' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const body = await req.json().catch(() => ({}));
     const sponsorshipNumber = String(body?.sponsorshipNumber || '').trim();

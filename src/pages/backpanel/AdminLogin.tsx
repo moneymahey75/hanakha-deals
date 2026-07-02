@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
-import { useAdmin } from '../../contexts/AdminContext';
 import { sessionUtils } from '../../utils/sessionUtils';
 import { Eye, EyeOff, Mail, Lock, Shield, AlertTriangle } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
@@ -9,7 +8,6 @@ import { verifyTurnstileToken } from '../../lib/turnstile';
 
 const AdminLogin: React.FC = () => {
   const { login } = useAdminAuth();
-  const { settings } = useAdmin();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -35,7 +33,7 @@ const AdminLogin: React.FC = () => {
     try {
       await verifyTurnstileToken({
         token: recaptchaToken,
-        siteMode: settings.siteMode,
+        siteMode: 'live',
         action: 'admin_login',
       });
     } catch (err: any) {
