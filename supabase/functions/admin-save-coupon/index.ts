@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +19,7 @@ const getAdminBySession = async (supabase: ReturnType<typeof createClient>, toke
         tau_auth_uid,
         tau_email,
         tau_role,
+        tau_permissions,
         tau_is_active
       )
     `
@@ -69,6 +70,13 @@ Deno.serve(async (req: Request) => {
     if (!admin) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid admin session' }), {
         status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!adminHasPermission(admin, 'coupons', 'write')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: coupons.write' }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

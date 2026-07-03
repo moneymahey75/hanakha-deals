@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +18,7 @@ const getAdminBySession = async (supabase: ReturnType<typeof createClient>, toke
         tau_id,
         tau_email,
         tau_role,
+        tau_permissions,
         tau_is_active
       )
     `
@@ -30,85 +31,8 @@ const getAdminBySession = async (supabase: ReturnType<typeof createClient>, toke
   return data.admin;
 };
 
-const refundIfDebited = async (supabase: any, withdrawal: any) => {
-  const amount = Number(withdrawal?.twr_amount || 0);
-  if (!Number.isFinite(amount) || amount <= 0) return { refunded: false, reason: 'invalid_amount' };
-
-  const walletTypeRaw = String(withdrawal?.twr_wallet_type || 'working');
-  const walletType = walletTypeRaw === 'reward' ? 'reward' : walletTypeRaw === 'non_working' ? 'non_working' : 'working';
-  const { data: wallet, error: walletError } = await supabase
-    .from('tbl_wallets')
-    .select('tw_id, tw_balance')
-    .eq('tw_user_id', withdrawal.twr_user_id)
-    .eq('tw_currency', 'USDT')
-    .eq('tw_wallet_type', walletType)
-    .maybeSingle();
-  if (walletError || !wallet?.tw_id) return { refunded: false, reason: 'wallet_not_found' };
-
-  const { data: existingRefund, error: existingRefundError } = await supabase
-    .from('tbl_wallet_transactions')
-    .select('twt_id')
-    .eq('twt_reference_type', 'withdrawal')
-    .eq('twt_reference_id', withdrawal.twr_id)
-    .eq('twt_transaction_type', 'credit')
-    .in('twt_status', ['completed', 'pending'])
-    .limit(1)
-    .maybeSingle();
-
-  if (existingRefundError) return { refunded: false, reason: 'refund_lookup_failed' };
-  if (existingRefund?.twt_id) return { refunded: false, reason: 'already_refunded' };
-
-  const { data: debitTx, error: txError } = await supabase
-    .from('tbl_wallet_transactions')
-    .select('twt_id, twt_status, twt_amount')
-    .eq('twt_reference_type', 'withdrawal')
-    .eq('twt_reference_id', withdrawal.twr_id)
-    .eq('twt_transaction_type', 'debit')
-    .order('twt_created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (txError) return { refunded: false, reason: 'tx_lookup_failed' };
-  if (!debitTx?.twt_id) return { refunded: false, reason: 'no_debit_tx' };
-
-  const debitStatus = String(debitTx.twt_status || '').toLowerCase();
-  if (!['pending', 'failed'].includes(debitStatus)) {
-    return { refunded: false, reason: `debit_tx_status_${debitStatus || 'unknown'}` };
-  }
-
-  const currentBalance = Number(wallet.tw_balance || 0);
-  const refundAmount = Number(debitTx.twt_amount || amount);
-  const newBalance = currentBalance + refundAmount;
-
-  const { error: balanceError } = await supabase
-    .from('tbl_wallets')
-    .update({ tw_balance: newBalance, tw_updated_at: new Date().toISOString() })
-    .eq('tw_id', wallet.tw_id);
-  if (balanceError) return { refunded: false, reason: 'balance_update_failed' };
-
-  const { error: cancelError } = await supabase
-    .from('tbl_wallet_transactions')
-    .update({ twt_status: 'cancelled' })
-    .eq('twt_id', debitTx.twt_id);
-  if (cancelError) return { refunded: false, reason: 'debit_cancel_failed' };
-
-  const { error: creditError } = await supabase
-    .from('tbl_wallet_transactions')
-    .insert({
-      twt_wallet_id: wallet.tw_id,
-      twt_user_id: withdrawal.twr_user_id,
-      twt_transaction_type: 'credit',
-      twt_amount: refundAmount,
-      twt_description: 'Withdrawal reverted by admin',
-      twt_reference_type: 'withdrawal',
-      twt_reference_id: withdrawal.twr_id,
-      twt_status: 'completed',
-      twt_created_at: new Date().toISOString()
-    });
-  if (creditError) return { refunded: false, reason: 'credit_insert_failed' };
-
-  return { refunded: true, reason: 'ok' };
-};
+const isUuid = (value?: string | null) =>
+  Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -140,9 +64,16 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (!adminHasPermission(admin, 'withdrawals', 'write')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: withdrawals.write' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { withdrawalId, note, refundAttemptedAmount } = await req.json();
-    if (!withdrawalId) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing withdrawalId' }), {
+    if (!isUuid(withdrawalId)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid withdrawalId' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -171,13 +102,20 @@ Deno.serve(async (req: Request) => {
 
     const shouldRefund = refundAttemptedAmount === true;
     const refundResult = shouldRefund && ['processing', 'failed', 'pending'].includes(status)
-      ? await refundIfDebited(supabase, withdrawal)
+      ? await supabase
+          .rpc('refund_withdrawal_if_debited', { p_withdrawal_id: withdrawalId })
+          .then(({ data, error }: any) => error
+            ? { refunded: false, reason: 'refund_failed' }
+            : {
+                refunded: Boolean(data?.refunded),
+                reason: String(data?.reason || (data?.refunded ? 'ok' : 'not_refunded')),
+              })
       : {
           refunded: false,
           reason: shouldRefund ? `not_refundable_status_${status || 'unknown'}` : 'admin_declined_refund'
         };
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from('tbl_withdrawal_requests')
       .update({
         twr_status: 'failed',
@@ -187,9 +125,19 @@ Deno.serve(async (req: Request) => {
         twr_processed_by_admin_name: admin.tau_email,
         twr_failure_reason: note || 'Marked failed by admin'
       })
-      .eq('twr_id', withdrawalId);
+      .eq('twr_id', withdrawalId)
+      .eq('twr_status', status)
+      .is('twr_blockchain_tx', null)
+      .select('twr_id')
+      .maybeSingle();
 
     if (error) throw error;
+    if (!updated?.twr_id) {
+      return new Response(JSON.stringify({ success: false, error: 'Withdrawal status changed. Please refresh and try again.' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     await logAdminAction(supabase, admin.tau_id, 'fail_withdrawal', 'withdrawals', {
       withdrawal_id: withdrawalId,
@@ -205,7 +153,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    return new Response(JSON.stringify({ success: false, error: error?.message || 'Failed' }), {
+    return new Response(JSON.stringify({ success: false, error: 'Failed to mark withdrawal failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,12 +34,20 @@ Deno.serve(async (req: Request) => {
 
     const { data: userRow, error: userError } = await supabase
       .from('tbl_users')
-      .select('tu_email')
+      .select('tu_email, tu_user_type')
       .eq('tu_id', userId)
       .maybeSingle();
 
     if (userError || !userRow) {
       throw new Error('User not found');
+    }
+
+    const permissionModule = userRow.tu_user_type === 'company' ? 'companies' : 'customers';
+    if (!adminHasPermission(admin, permissionModule, 'write')) {
+      return new Response(JSON.stringify({ success: false, error: `Permission denied: ${permissionModule}.write` }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
@@ -67,7 +75,7 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error: any) {
     const message = error?.message || 'Failed';
-    const status = message.includes('admin session') ? 401 : 500;
+    const status = message.includes('admin session') ? 401 : message.includes('Permission denied') ? 403 : 500;
     return new Response(JSON.stringify({ success: false, error: message }), {
       status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -1,33 +1,10 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Session',
-};
-
-const getAdminBySession = async (supabase: ReturnType<typeof createClient>, token: string) => {
-  const nowIso = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('tbl_admin_sessions')
-    .select(
-      `
-      tas_admin_id,
-      admin:tas_admin_id(
-        tau_id,
-        tau_email,
-        tau_role,
-        tau_is_active
-      )
-    `
-    )
-    .eq('tas_session_token', token)
-    .gt('tas_expires_at', nowIso)
-    .maybeSingle();
-
-  if (error || !data?.admin || !data.admin.tau_is_active) return null;
-  return data.admin;
 };
 
 Deno.serve(async (req: Request) => {
@@ -44,18 +21,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const adminSessionToken = req.headers.get('X-Admin-Session');
-    if (!adminSessionToken) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing admin session token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const admin = await getAdminBySession(supabase, adminSessionToken);
-    if (!admin) {
-      return new Response(JSON.stringify({ success: false, error: 'Invalid admin session' }), {
-        status: 401,
+    const admin = await requireAdminSession(supabase, req.headers.get('X-Admin-Session'));
+    if (!adminHasPermission(admin, 'wallets', 'write')) {
+      return new Response(JSON.stringify({ success: false, error: 'Wallet write permission required' }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -68,25 +37,73 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (!['credit', 'debit', 'recover_reserved'].includes(transactionType)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid transaction type' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid amount' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: customer, error: customerError } = await supabase
+      .from('tbl_users')
+      .select('tu_id')
+      .eq('tu_id', userId)
+      .maybeSingle();
+
+    if (customerError) throw customerError;
+    if (!customer?.tu_id) {
+      return new Response(JSON.stringify({ success: false, error: 'User not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { data: wallet, error: walletError } = await supabase
       .from('tbl_wallets')
-      .select('tw_id, tw_balance')
+      .select('tw_id, tw_balance, tw_reserved_balance')
       .eq('tw_user_id', userId)
       .eq('tw_currency', 'USDT')
       .eq('tw_wallet_type', 'working')
-      .single();
+      .maybeSingle();
 
     if (walletError) {
       throw walletError;
     }
 
-    const transactionAmount = transactionType === 'credit' ? Number(amount) : -Number(amount);
-    const newBalance = Number(wallet.tw_balance) + transactionAmount;
+    if (!wallet?.tw_id) {
+      return new Response(JSON.stringify({ success: false, error: 'Working wallet not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const currentBalance = Number(wallet.tw_balance || 0);
+    const currentReservedBalance = Number(wallet.tw_reserved_balance || 0);
+    const balanceDelta = transactionType === 'debit' ? -parsedAmount : parsedAmount;
+    const reservedDelta = transactionType === 'recover_reserved' ? parsedAmount : 0;
+    const newBalance = currentBalance + balanceDelta;
+    const newReservedBalance = currentReservedBalance + reservedDelta;
+
+    if (newBalance < 0) {
+      return new Response(JSON.stringify({ success: false, error: 'Insufficient wallet balance' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const { error: updateError } = await supabase
       .from('tbl_wallets')
       .update({
         tw_balance: newBalance,
+        ...(transactionType === 'recover_reserved' ? { tw_reserved_balance: newReservedBalance } : {}),
         tw_updated_at: new Date().toISOString()
       })
       .eq('tw_id', wallet.tw_id);
@@ -95,16 +112,23 @@ Deno.serve(async (req: Request) => {
       throw updateError;
     }
 
+    const transactionDirection = transactionType === 'debit' ? 'debit' : 'credit';
+    const transactionDescription = description || (
+      transactionType === 'recover_reserved'
+        ? 'Admin recovered expired reserved balance'
+        : `Admin ${transactionDirection}`
+    );
+
     const { error: txError } = await supabase
       .from('tbl_wallet_transactions')
       .insert({
         twt_id: crypto.randomUUID(),
         twt_wallet_id: wallet.tw_id,
         twt_user_id: userId,
-        twt_transaction_type: transactionType,
-        twt_amount: amount,
-        twt_description: description || `Admin ${transactionType}`,
-        twt_reference_type: transactionType === 'credit' ? 'admin_credit' : 'withdrawal',
+        twt_transaction_type: transactionDirection,
+        twt_amount: parsedAmount,
+        twt_description: transactionDescription,
+        twt_reference_type: transactionType === 'debit' ? 'withdrawal' : 'admin_credit',
         twt_status: 'completed',
         twt_created_at: new Date().toISOString()
       });
@@ -116,11 +140,14 @@ Deno.serve(async (req: Request) => {
     await logAdminAction(supabase, admin.tau_id, 'wallet_transaction', 'wallets', {
       user_id: userId,
       transaction_type: transactionType,
-      amount,
-      new_balance: newBalance
+      amount: parsedAmount,
+      balance_delta: balanceDelta,
+      reserved_delta: reservedDelta,
+      new_balance: newBalance,
+      new_reserved_balance: newReservedBalance
     });
 
-    return new Response(JSON.stringify({ success: true, data: { newBalance } }), {
+    return new Response(JSON.stringify({ success: true, data: { newBalance, newReservedBalance } }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

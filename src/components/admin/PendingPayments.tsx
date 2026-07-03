@@ -136,6 +136,10 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
   const [earningsEndDate, setEarningsEndDate] = useState('');
   const [walletStats, setWalletStats] = useState<AdminWalletStats | null>(null);
   const [walletStatsLoading, setWalletStatsLoading] = useState(false);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [stuckPage, setStuckPage] = useState(1);
+  const [earningsPage, setEarningsPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const notification = useNotification();
   const showPaymentHistory = view === 'history';
   const showPendingPayments = view === 'pending';
@@ -143,6 +147,8 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
 
   useEffect(() => {
     loadPayments();
+    setPendingPage(1);
+    setStuckPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountScope]);
 
@@ -152,6 +158,7 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
 
   useEffect(() => {
     loadAdminEarnings();
+    setEarningsPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [earningsAdminFilter, earningsStartDate, earningsEndDate, accountScope]);
 
@@ -490,6 +497,98 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
     };
   })();
 
+  const paginateRows = <T,>(rows: T[], page: number) => {
+    const totalPages = Math.max(1, Math.ceil(rows.length / itemsPerPage));
+    const safePage = Math.min(page, totalPages);
+    return {
+      totalPages,
+      safePage,
+      pageRows: rows.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage),
+    };
+  };
+
+  const pendingPagination = paginateRows(payments, pendingPage);
+  const stuckPagination = paginateRows(stuckPayments, stuckPage);
+  const earningsPagination = paginateRows(adminEarnings, earningsPage);
+
+  const getPageNumbers = (totalPages: number, currentPage: number) => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+    const pages: Array<number | string> = [1];
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPages - 1, currentPage + 1);
+    if (startPage > 2) pages.push('...');
+    for (let page = startPage; page <= endPage; page += 1) pages.push(page);
+    if (endPage < totalPages - 1) pages.push('...');
+    pages.push(totalPages);
+    return pages;
+  };
+
+  const renderPagination = (
+    totalCount: number,
+    safePage: number,
+    totalPages: number,
+    setPage: React.Dispatch<React.SetStateAction<number>>,
+    label: string
+  ) => {
+    if (totalCount === 0) return null;
+
+    return (
+      <div className="flex flex-col gap-3 border-t border-gray-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-gray-600">
+          Showing <span className="font-medium">{(safePage - 1) * itemsPerPage + 1}</span> to{' '}
+          <span className="font-medium">{Math.min(safePage * itemsPerPage, totalCount)}</span> of{' '}
+          <span className="font-medium">{totalCount}</span> {label}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setPage(1)}
+            disabled={safePage === 1}
+            className={`px-3 py-1 rounded-md text-sm ${safePage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          >
+            First
+          </button>
+          <button
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={safePage === 1}
+            className={`px-3 py-1 rounded-md text-sm ${safePage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          >
+            Prev
+          </button>
+          {getPageNumbers(totalPages, safePage).map((page, index) => (
+            <button
+              key={`${label}-${page}-${index}`}
+              onClick={() => typeof page === 'number' && setPage(page)}
+              disabled={page === '...'}
+              className={`px-3 py-1 rounded-md text-sm ${
+                page === safePage
+                  ? 'bg-blue-600 text-white'
+                  : page === '...'
+                    ? 'bg-transparent text-gray-500 cursor-default'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+          <button
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={safePage === totalPages}
+            className={`px-3 py-1 rounded-md text-sm ${safePage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          >
+            Next
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={safePage === totalPages}
+            className={`px-3 py-1 rounded-md text-sm ${safePage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          >
+            Last
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (loading && (showPendingPayments || showStuckPayments)) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
@@ -516,6 +615,24 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
             </p>
           </div>
           <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-2">
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setPendingPage(1);
+                  setStuckPage(1);
+                  setEarningsPage(1);
+                }}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="whitespace-nowrap text-sm text-gray-600">per page</span>
+            </div>
             <select
               value={accountScope}
               onChange={(e) => setAccountScope(e.target.value as 'real' | 'dummy' | 'all')}
@@ -631,7 +748,7 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {payments.map((payment) => (
+                {pendingPagination.pageRows.map((payment) => (
                   <tr key={payment.tp_id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -750,6 +867,13 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
               </tbody>
             </table>
           </div>
+          {renderPagination(
+            payments.length,
+            pendingPagination.safePage,
+            pendingPagination.totalPages,
+            setPendingPage,
+            'payments'
+          )}
         </div>
       ))}
 
@@ -796,7 +920,7 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
             </div>
           ) : (
             <div className="space-y-4">
-              {stuckPayments.map((payment) => {
+              {stuckPagination.pageRows.map((payment) => {
                 const walletError = payment.tp_wallet_error_raw || getGatewayIssue(payment);
                 const errorCode = payment.tp_wallet_error_code;
                 const isAndroid = /android/i.test(payment.tp_device_info || '');
@@ -975,6 +1099,13 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
             </div>
           )}
         </div>
+        {renderPagination(
+          stuckPayments.length,
+          stuckPagination.safePage,
+          stuckPagination.totalPages,
+          setStuckPage,
+          'stuck payments'
+        )}
       </div>
       )}
 
@@ -1103,7 +1234,7 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
                   </td>
                 </tr>
               ) : (
-                adminEarnings.map((earning) => {
+                earningsPagination.pageRows.map((earning) => {
                   const gateway = parseGatewayResponse(earning.tp_gateway_response);
                   const adminIncome = Number(gateway.admin_income ?? 0);
                   const commissionPaid = Number(gateway.parent_income ?? 0);
@@ -1173,6 +1304,13 @@ const PendingPayments: React.FC<PendingPaymentsProps> = ({ view = 'history' }) =
             </tbody>
           </table>
         </div>
+        {renderPagination(
+          adminEarnings.length,
+          earningsPagination.safePage,
+          earningsPagination.totalPages,
+          setEarningsPage,
+          'records'
+        )}
       </div>
       )}
 

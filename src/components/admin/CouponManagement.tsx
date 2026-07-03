@@ -129,6 +129,8 @@ const CouponManagement: React.FC = () => {
   const [rewardReportEndDate, setRewardReportEndDate] = useState(toLocalISODate(new Date()));
   const [rewardReport, setRewardReport] = useState<RewardCouponReport | null>(null);
   const [rewardReportLoading, setRewardReportLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const notification = useNotification();
 
   const [newCoupon, setNewCoupon] = useState({
@@ -161,6 +163,10 @@ const CouponManagement: React.FC = () => {
     loadCompanies();
     loadRewardCouponReport();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, companyFilter, showDailyTasks, dailyTasksDate]);
 
   const loadCompanies = async () => {
     try {
@@ -474,6 +480,25 @@ const CouponManagement: React.FC = () => {
         return matchesSearch && matchesStatus && matchesCompany;
       });
 
+  const totalPages = Math.max(1, Math.ceil(filteredCoupons.length / itemsPerPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedCoupons = filteredCoupons.slice(
+    (safeCurrentPage - 1) * itemsPerPage,
+    safeCurrentPage * itemsPerPage
+  );
+
+  const getPageNumbers = () => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+    const pages: Array<number | string> = [1];
+    const startPage = Math.max(2, safeCurrentPage - 1);
+    const endPage = Math.min(totalPages - 1, safeCurrentPage + 1);
+    if (startPage > 2) pages.push('...');
+    for (let page = startPage; page <= endPage; page += 1) pages.push(page);
+    if (endPage < totalPages - 1) pages.push('...');
+    pages.push(totalPages);
+    return pages;
+  };
+
   const getCouponStats = () => {
     const total = coupons.length;
     const pending = coupons.filter(c => c.tc_status === 'pending').length;
@@ -609,27 +634,40 @@ const CouponManagement: React.FC = () => {
 		          </div>
 
 	          {/* Launch calendar toggle */}
-          <div className="flex items-center mb-4 p-4 bg-gray-50 rounded-lg">
-            <label className="flex items-center cursor-pointer">
-              <div className="relative">
-                <input type="checkbox" className="sr-only" checked={showDailyTasks} onChange={() => setShowDailyTasks(!showDailyTasks)} />
-                <div className={`block w-14 h-8 rounded-full ${showDailyTasks ? 'bg-orange-600' : 'bg-gray-600'}`}></div>
-                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition transform ${showDailyTasks ? 'translate-x-6' : ''}`}></div>
-              </div>
-              <div className="ml-3 text-gray-700 font-medium flex items-center">
-                <Rocket className="h-5 w-5 mr-2" />
-                Launch Calendar
-              </div>
-            </label>
-            {showDailyTasks && (
-                <div className="ml-6">
+          <div className="mb-4 flex flex-col gap-3 rounded-lg bg-gray-50 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <label className="flex items-center cursor-pointer">
+                <div className="relative">
+                  <input type="checkbox" className="sr-only" checked={showDailyTasks} onChange={() => setShowDailyTasks(!showDailyTasks)} />
+                  <div className={`block w-14 h-8 rounded-full ${showDailyTasks ? 'bg-orange-600' : 'bg-gray-600'}`}></div>
+                  <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition transform ${showDailyTasks ? 'translate-x-6' : ''}`}></div>
+                </div>
+                <div className="ml-3 text-gray-700 font-medium flex items-center">
+                  <Rocket className="h-5 w-5 mr-2" />
+                  Launch Calendar
+                </div>
+              </label>
+              {showDailyTasks && (
                   <input
                       type="date" value={dailyTasksDate}
                       onChange={(e) => setDailyTasksDate(e.target.value)}
                       className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   />
-                </div>
-            )}
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={itemsPerPage}
+                onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="whitespace-nowrap text-sm text-gray-600">per page</span>
+            </div>
           </div>
 
           {/* Search and Filters */}
@@ -684,7 +722,7 @@ const CouponManagement: React.FC = () => {
             </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-            {filteredCoupons.map((coupon) => (
+            {paginatedCoupons.map((coupon) => (
                 <tr key={coupon.tc_id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -809,6 +847,62 @@ const CouponManagement: React.FC = () => {
                 Create First Coupon
               </button>
             </div>
+        )}
+
+        {filteredCoupons.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-gray-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-gray-600">
+              Showing <span className="font-medium">{(safeCurrentPage - 1) * itemsPerPage + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(safeCurrentPage * itemsPerPage, filteredCoupons.length)}</span> of{' '}
+              <span className="font-medium">{filteredCoupons.length}</span> coupons
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={safeCurrentPage === 1}
+                className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                First
+              </button>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={safeCurrentPage === 1}
+                className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                Prev
+              </button>
+              {getPageNumbers().map((page, index) => (
+                <button
+                  key={`${page}-${index}`}
+                  onClick={() => typeof page === 'number' && setCurrentPage(page)}
+                  disabled={page === '...'}
+                  className={`px-3 py-1 rounded-md text-sm ${
+                    page === safeCurrentPage
+                      ? 'bg-orange-600 text-white'
+                      : page === '...'
+                        ? 'bg-transparent text-gray-500 cursor-default'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={safeCurrentPage === totalPages}
+                className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                Next
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={safeCurrentPage === totalPages}
+                className={`px-3 py-1 rounded-md text-sm ${safeCurrentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                Last
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Create Coupon Modal */}

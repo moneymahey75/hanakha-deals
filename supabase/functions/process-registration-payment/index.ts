@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { adminHasPermission } from '../_shared/adminSession.ts';
 import { paymentEmailTemplate, sendSmtpMail } from '../_shared/email.ts';
 
 const corsHeaders = {
@@ -88,6 +89,7 @@ Deno.serve(async (req: Request) => {
           tau_email,
           tau_full_name,
           tau_role,
+          tau_permissions,
           tau_is_active
         )
       `)
@@ -102,6 +104,16 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ success: false, error: 'Invalid admin session' }),
         {
           status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (!adminHasPermission(adminUser, 'payments', 'write')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Permission denied: payments.write' }),
+        {
+          status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );

@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
+import { adminHasPermission, logAdminAction, requireAdminSession } from '../_shared/adminSession.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,6 +23,12 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const adminSessionToken = req.headers.get('X-Admin-Session');
     const admin = await requireAdminSession(supabase, adminSessionToken);
+    if (!adminHasPermission(admin, 'admins', 'delete')) {
+      return new Response(JSON.stringify({ success: false, error: 'Permission denied: admins.delete' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (admin.tau_role !== 'super_admin') {
       return new Response(JSON.stringify({ success: false, error: 'Insufficient permissions' }), {

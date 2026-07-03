@@ -79,7 +79,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchUserData = useCallback(async (userId: string) => {
     if (!userId) {
-      console.warn('⚠️ No userId provided to fetchUserData');
       return;
     }
 
@@ -87,8 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserDataLoading(true);
 
     try {
-      console.log('🔍 Fetching user data for:', userId);
-
       // Optimize user data fetching with single query using joins
       let userData = null;
       let profileData = null;
@@ -107,20 +104,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('tu_id', userId)
             .maybeSingle();
 
-        if (userError) {
-          console.log('⚠️ Error fetching user data:', userError.message);
-        } else if (userWithProfile) {
+        if (!userError && userWithProfile) {
           userData = userWithProfile;
           profileData = userWithProfile.tbl_user_profiles?.[0];
-          console.log('✅ User and profile data loaded:', {
-            hasUser: !!userData,
-            hasProfile: !!profileData,
-            firstName: profileData?.tup_first_name,
-            lastName: profileData?.tup_last_name
-          });
         }
       } catch (rlsError) {
-        console.warn('RLS blocking users table:', rlsError);
       }
 
       // Only fetch additional data if not already retrieved from combined query
@@ -130,10 +118,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .from('tbl_user_profiles')
               .select('*')
               .eq('tup_user_id', userId);
-          console.log('📋 Profile data retrieved:', profileDataArray?.length || 0, 'records');
           profileData = profileDataArray?.[0];
         } catch (profileRlsError) {
-          console.warn('RLS blocking user_profiles table:', profileRlsError);
         }
       }
 
@@ -143,48 +129,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       //       .from('tbl_companies')
       //       .select('*')
       //       .eq('tc_user_id', userId);
-      //     console.log('🏢 Company data retrieved:', companyDataArray?.length || 0, 'records');
       //     companyData = companyDataArray?.[0];
       //   } catch (companyRlsError) {
-      //     console.warn('RLS blocking companies table:', companyRlsError);
       //   }
       // }
 
       if (!subscriptionData) {
         try {
-          console.log('💳 Checking for active subscription for user:', userId);
           const { data: subscriptionDataArray } = await supabase
               .from('tbl_user_subscriptions')
               .select('*, plan:tus_plan_id(tsp_plan_phase, tsp_type)')
               .eq('tus_user_id', userId)
               .eq('tus_status', 'active')
               .or(`tus_end_date.is.null,tus_end_date.gt.${new Date().toISOString()}`);
-          console.log('💳 Subscription data retrieved:', subscriptionDataArray?.length || 0, 'records');
           subscriptionData = subscriptionDataArray?.[0];
           const launchSubscription = subscriptionDataArray?.find((row: any) =>
             String(row?.plan?.tsp_plan_phase || row?.tus_plan_phase || '').toLowerCase() === 'launch'
           );
           activePlanPhase = launchSubscription ? 'launch' : 'prelaunch';
         } catch (subscriptionRlsError) {
-          console.warn('RLS blocking user_subscriptions table:', subscriptionRlsError);
         }
       }
 
       // Get current session to get email
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user || session.user.id !== userId || loadSequence !== userLoadSequenceRef.current) {
-        console.warn('Ignoring stale user data response:', {
-          requestedUserId: userId,
-          sessionUserId: session?.user?.id,
-          loadSequence,
-          currentSequence: userLoadSequenceRef.current
-        });
         return;
       }
 
       // Ensure we have at least minimal user data
       if (!userData && !profileData) {
-        console.error('❌ No user or profile data found for userId:', userId);
         throw new Error('User data not found');
       }
 
@@ -207,24 +181,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profileLoaded: true
       };
 
-      console.log('✅ User data compiled:', {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        userType: user.userType,
-        hasProfile: !!profileData,
-        hasActiveSubscription: !!subscriptionData,
-        registrationPaid
-      });
-
       // Mark session as customer type when user data is loaded
       sessionStorage.setItem('session_type', 'customer');
       if (loadSequence === userLoadSequenceRef.current) {
         setUser(user);
       }
-    } catch (error) {
-      console.error('❌ Error fetching user data:', error);
+    } catch {
       // Non-fatal: keep existing user state to avoid auth flicker/redirect loops.
       if (loadSequence === userLoadSequenceRef.current) {
         setUser((prev) => {
@@ -243,9 +205,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const safeFetchUserData = useCallback(async (userId: string, label: string) => {
     try {
       await withTimeout(fetchUserData(userId), 20000, label);
-    } catch (error) {
+    } catch {
       // Non-fatal: a slow DB/RPC should not log the user out or cause route guards to redirect.
-      console.warn(`⚠️ ${label} failed (non-fatal):`, error);
     }
   }, [fetchUserData, withTimeout]);
 
@@ -266,13 +227,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               tual_user_agent: navigator.userAgent,
               tual_logout_time: new Date().toISOString()
             })
-            .then(({ error }) => {
-              if (error) console.warn('Failed to log logout activity:', error);
-            });
+            .then(() => {});
       }
 
       // Clear all session data
-      console.log('🧹 Clearing all session data during logout...');
       sessionStorage.setItem('customer_logout_in_progress', 'true');
       sessionManager.removeSession(currentUserId);
       sessionStorage.removeItem('session_type');
@@ -290,8 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
 
       notification.showInfo('Logged Out', 'You have been successfully logged out.');
-    } catch (error) {
-      console.error('❌ Error during logout:', error);
+    } catch {
     } finally {
       setLoading(false);
     }
@@ -305,11 +262,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initializeSession = async () => {
       setLoading(true);
       try {
-        console.log('🔍 Initializing authentication...');
-
         const sessionType = sessionStorage.getItem('session_type');
         if (sessionType === 'admin') {
-          console.log('⚠️ Admin session active, skipping customer session initialization');
           if (mounted) setUser(null);
           return;
         }
@@ -321,8 +275,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         if (existingSession?.user) {
-          console.log('✅ Found existing Supabase session:', existingSession.user.id);
-
           try {
             const { data: adminCheck, error: adminCheckError } = await withTimeout(
               supabase
@@ -335,7 +287,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             );
 
             if (!adminCheckError && adminCheck) {
-              console.log('⚠️ Session belongs to admin user, clearing for frontend');
               userLoadSequenceRef.current += 1;
               sessionStorage.removeItem('session_type');
               await supabase.auth.signOut();
@@ -344,13 +295,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               sessionManager.saveSession(existingSession);
               await safeFetchUserData(existingSession.user.id, 'Initial user data load');
             }
-          } catch (error) {
-            console.log('ℹ️ Admin check failed, assuming regular user:', error);
+          } catch {
             sessionManager.saveSession(existingSession);
             await safeFetchUserData(existingSession.user.id, 'Initial user data load');
           }
         } else {
-          console.log('🔍 Checking sessionStorage for saved session...');
           const restoredSession = await withTimeout(
             sessionManager.restoreSession(),
             10000,
@@ -358,15 +307,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
 
           if (restoredSession?.user) {
-            console.log('✅ Session restored from sessionStorage:', restoredSession.user.id);
             await safeFetchUserData(restoredSession.user.id, 'Restored user data load');
           } else if (mounted) {
-            console.log('ℹ️ No existing session found');
             setUser(null);
           }
         }
-      } catch (error) {
-        console.error('❌ Failed to initialize session:', error);
+      } catch {
         sessionManager.removeSession();
         if (mounted) setUser(null);
       } finally {
@@ -388,28 +334,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isInitialized) return;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state change:', event, session?.user?.id);
-
       try {
         if (event === 'SIGNED_IN' && session?.user) {
-          console.log('✅ User signed in, saving session');
           sessionManager.saveSession(session);
           // Non-blocking; avoid timeouts causing auth flicker.
           void safeFetchUserData(session.user.id, 'Auth change user load');
         } else if (event === 'SIGNED_OUT') {
-          console.log('👋 User signed out, clearing session');
           userLoadSequenceRef.current += 1;
           sessionManager.removeSession(user?.id);
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          console.log('🔄 Token refreshed, updating session');
           sessionManager.saveSession(session);
           if (!user || user.id !== session.user.id) {
             void safeFetchUserData(session.user.id, 'Token refresh user load');
           }
         }
-      } catch (error) {
-        console.error('❌ Error handling auth state change:', error);
+      } catch {
         // Non-fatal: do not clear session or force logout on transient errors.
       }
     });
@@ -417,7 +357,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible' || !user) return;
 
-      console.log('👁️ Tab became visible, checking session validity');
       try {
         const { data: { session }, error } = await withTimeout(
           supabase.auth.getSession(),
@@ -426,17 +365,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         if (error) {
-          console.error('❌ Error checking session:', error);
           return;
         }
 
         if (session?.user) {
-          console.log('✅ Session is valid');
           sessionManager.saveSession(session);
           return;
         }
 
-        console.warn('⚠️ No live session found, attempting restore');
         const restoredSession = await withTimeout(
           sessionManager.restoreSession(),
           10000,
@@ -444,7 +380,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         if (restoredSession?.user) {
-          console.log('✅ Session restored after tab became visible');
           sessionManager.saveSession(restoredSession);
           if (restoredSession.user.id !== user.id) {
             void safeFetchUserData(restoredSession.user.id, 'Visibility user reload');
@@ -452,10 +387,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        console.warn('⚠️ Unable to restore session, logging out');
         logout();
-      } catch (error) {
-        console.error('❌ Error handling visibility change:', error);
+      } catch {
       }
     };
 
@@ -470,10 +403,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (emailOrUsername: string, password: string, userType: string) => {
     setLoading(true);
     try {
-      console.log('🔍 Attempting login for:', emailOrUsername);
-
       // Clear any existing session data first (including admin sessions)
-      console.log('🧹 Clearing existing session data...');
       userLoadSequenceRef.current += 1;
       sessionStorage.removeItem('session_type');
       sessionStorage.removeItem('admin_session_token');
@@ -481,7 +411,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionManager.removeSession();
       
       // Check if there's actually an active Supabase session before signing out
-      console.log('🔍 Checking for active Supabase session...');
       let hasActiveSession = false;
       try {
         const { data: { session: activeSession } } = await withTimeout(
@@ -490,26 +419,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'Get session check'
         );
         hasActiveSession = !!activeSession;
-      } catch (getSessionError) {
-        console.warn('⚠️ Could not check active session:', getSessionError);
+      } catch {
         hasActiveSession = false;
       }
       
       if (hasActiveSession) {
-        console.log('🚪 Active session found, signing out...');
         try {
           await withTimeout(supabase.auth.signOut(), 5000, 'Supabase sign-out');
-          console.log('✅ Supabase sign-out completed');
-        } catch (signOutError) {
-          console.warn('⚠️ Supabase sign-out failed or timed out, continuing with login anyway:', signOutError);
+        } catch {
         }
-      } else {
-        console.log('ℹ️ No active Supabase session found, skipping sign-out');
       }
       setUser(null);
 
       // Longer delay to ensure auth state is reset and ready for fresh login
-      console.log('⏳ Waiting for auth state to stabilize...');
       await new Promise(resolve => setTimeout(resolve, 800));
 
       // Determine if input is email or username
@@ -520,15 +442,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!isEmail) {
         const handle = String(emailOrUsername || '').trim();
 
-        console.log('🔎 Looking up email for username:', handle);
         const { data: usernameData, error: usernameError } = await supabase
           .rpc('get_email_by_username', { p_username: handle });
 
         if (!usernameError && usernameData && usernameData.length > 0) {
           actualEmail = usernameData[0].email;
-          console.log('✅ Email resolved from username');
         } else {
-          console.log('🔎 Looking up email for sponsorship number:', handle);
           const { data: sponsorData, error: sponsorError } = await supabase
             .rpc('get_email_by_sponsorship', { p_sponsorship: handle });
 
@@ -537,12 +456,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           actualEmail = sponsorData[0].email;
-          console.log('✅ Email resolved from sponsorship number');
         }
       }
 
       // Authenticate with Supabase (with extended timeout for network issues)
-      console.log('🔐 Signing in with Supabase...');
       const { data: authData, error: authError } = await withTimeout(
         supabase.auth.signInWithPassword({
           email: actualEmail,
@@ -551,7 +468,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         20000,
         'Supabase sign-in'
       );
-      console.log('🔐 Supabase sign-in response received');
 
       if (authError) {
         throw new Error(authError.message);
@@ -566,7 +482,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : null;
 
       if (expectedUserType) {
-        console.log('🔒 Verifying account type for portal:', expectedUserType);
         const { data: accountData, error: accountError } = await withTimeout(
           supabase
             .from('tbl_users')
@@ -578,16 +493,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         if (accountError || !accountData?.tu_user_type) {
-          console.error('❌ Could not verify account type:', accountError);
           await supabase.auth.signOut();
           throw new Error('Unable to verify account type. Please try again.');
         }
 
         if (accountData.tu_user_type !== expectedUserType) {
-          console.warn('🚫 Login blocked due to account type mismatch:', {
-            expectedUserType,
-            actualUserType: accountData.tu_user_type
-          });
           await supabase.auth.signOut();
           throw new Error(
             `${formatUserType(expectedUserType)} login is only for ${expectedUserType} accounts.`
@@ -596,13 +506,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Explicitly save the session
-      console.log('💾 Saving session after login...');
       sessionManager.saveSession(authData.session);
 
       // Mark session type as customer
       sessionStorage.removeItem('customer_logout_in_progress');
       sessionStorage.setItem('session_type', 'customer');
-      console.log('🧾 session_type set to customer');
 
       // Set a minimal user immediately to avoid login hanging on slow DB calls
       const minimalUser: User = {
@@ -622,7 +530,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Fire-and-forget: log activity and fetch full profile
       void (async () => {
         try {
-          console.log('📝 Logging login activity...');
           await withTimeout(
             supabase
               .from('tbl_user_activity_logs')
@@ -636,27 +543,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             8000,
             'Login activity insert'
           );
-          console.log('✅ Login activity logged');
-        } catch (logError) {
-          console.warn('Failed to log login activity:', logError);
+        } catch {
         }
       })();
 
       void (async () => {
         try {
-          console.log('🔍 Fetching user profile after login...');
           await withTimeout(fetchUserData(authData.user.id), 15000, 'Fetch user data');
-          console.log('✅ User profile loaded');
-        } catch (fetchError) {
-          console.warn('Failed to fetch user data after login:', fetchError);
+        } catch {
         }
       })();
 
       notification.showSuccess('Login Successful!', 'Welcome back!');
-      console.log('🎉 Login flow completed successfully');
 
     } catch (error: any) {
-      console.error('❌ Login error:', error);
       const errorMessage = error?.message || 'Login failed';
       notification.showError('Login Failed', errorMessage);
 
@@ -674,8 +574,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (userData: any, userType: string) => {
     setLoading(true);
     try {
-      console.log('🔍 Attempting registration for:', JSON.stringify(userData));
-
       // Clear any existing session data first
       userLoadSequenceRef.current += 1;
       sessionManager.removeSession();
@@ -704,30 +602,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (authError) {
-        console.error('Supabase auth error:', authError);
         throw new Error(authError.message);
       }
 
       if (!authData.user) {
-        console.error('No user data returned from Supabase');
         throw new Error('Registration failed');
       }
 
-      console.log('✅ Supabase auth successful, user ID:', authData.user.id);
-
       // Save session immediately if available
       if (authData.session) {
-        console.log('💾 Saving session to sessionStorage');
         sessionStorage.removeItem('customer_logout_in_progress');
         sessionManager.saveSession(authData.session);
       }
 
       // Use the appropriate registration function based on user type
       if (userType === 'customer') {
-        console.log('✅ Customer profile created by auth signup trigger');
 
       } else if (userType === 'company') {
-        console.log('📝 Registering company profile...');
         const { error: regError } = await supabase.rpc('register_company', {
           p_user_id: authData.user.id,
           p_email: userData.email,
@@ -743,7 +634,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (regError) {
-          console.error('Company registration error:', regError);
           throw new Error(regError.message);
         }
       }
@@ -761,13 +651,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
         if (activityLogError) {
-          console.warn('Failed to log registration activity:', activityLogError);
         }
-      } catch (activityLogError) {
-        console.warn('Failed to log registration activity:', activityLogError);
+      } catch {
       }
 
-      console.log('✅ Registration completed successfully');
       notification.showSuccess('Registration Successful!', 'Your account has been created successfully.');
 
       // Fetch user data immediately after successful registration
@@ -778,7 +665,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return authData.user.id;
 
     } catch (error: any) {
-      console.error('❌ Registration failed:', error);
       const errorMessage = error?.message || 'Registration failed';
       notification.showError('Registration Failed', errorMessage);
 
@@ -833,18 +719,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('No user found');
       }
 
-      console.log('🔍 Starting OTP verification for user:', user.id);
       const result = await verifyOTPAPI(user.id, otp, 'mobile');
 
       if (!result.success) {
         throw new Error(result.error || 'OTP verification failed');
       }
 
-      console.log('✅ OTP verification successful');
       setUser({ ...user, mobileVerified: true });
       notification.showSuccess('Verification Successful', 'Mobile number verified successfully.');
     } catch (error: any) {
-      console.error('❌ OTP verification failed:', error);
       notification.showError('Verification Failed', error?.message || 'Invalid OTP code');
       throw error;
     }
@@ -852,8 +735,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const sendOTPToUser = async (userId: string, contactInfo: string, otpType: 'email' | 'mobile') => {
     try {
-      console.log('📤 Sending OTP to user:', { userId, contactInfo, otpType });
-
       // Validate inputs
       if (!userId || !contactInfo || !otpType) {
         throw new Error('Missing required information for OTP sending');
@@ -865,11 +746,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(result.error || 'Failed to send OTP');
       }
 
-      console.log('✅ OTP sent successfully');
-      notification.showSuccess('OTP Sent', `Verification code sent to ${contactInfo}`);
+      const contactDisplay = otpType === 'mobile'
+        ? contactInfo.replace(/(.{3}).*(.{4})/, '$1***$2')
+        : contactInfo.replace(/(.{3}).*(@.*)/, '$1***$2');
+      notification.showSuccess('OTP Sent', `Verification code sent to ${contactDisplay}`);
       return result;
     } catch (error: any) {
-      console.error('❌ Failed to send OTP:', error);
       const errorMessage = error?.message || 'Failed to send OTP. Please try again.';
       notification.showError('Send Failed', errorMessage);
       throw error;
@@ -878,8 +760,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const checkVerificationStatus = useCallback(async (userId: string) => {
     try {
-      console.log('🔍 Checking verification status for user:', userId);
-
       // Use authenticated supabase client
       const { data: userData, error: userError } = await withTimeout(
         supabase
@@ -892,7 +772,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       if (userError) {
-        console.warn('Could not fetch user verification status:', userError);
         return { needsVerification: false, settings: null };
       }
 
@@ -928,16 +807,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? !emailVerified && !mobileVerified
         : (emailRequired && !emailVerified) || (mobileRequired && !mobileVerified);
 
-      console.log('📋 Verification check result:', {
-        emailVerified,
-        mobileVerified,
-        isVerified: userData.tu_is_verified,
-        emailRequired,
-        mobileRequired,
-        eitherRequired,
-        needsVerification
-      });
-
       return {
         needsVerification,
         emailVerified,
@@ -948,8 +817,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           eitherVerificationRequired: eitherRequired
         }
       };
-    } catch (error) {
-      console.error('Error checking verification status:', error);
+    } catch {
       return { needsVerification: false, settings: null };
     }
   }, []);

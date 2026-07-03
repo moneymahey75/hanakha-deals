@@ -6,6 +6,18 @@ import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import ReCaptcha from '../../components/ui/ReCaptcha';
 import { verifyTurnstileToken } from '../../lib/turnstile';
 
+const PAYMENT_SELECTED_PLAN_KEY = 'payment_selected_plan_state';
+
+const savePaymentPlanIdSelection = (planId: string) => {
+  try {
+    const value = JSON.stringify({ planId, savedAt: Date.now() });
+    sessionStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+    localStorage.setItem(PAYMENT_SELECTED_PLAN_KEY, value);
+  } catch {
+    // Storage can be unavailable in embedded wallet browsers.
+  }
+};
+
 const CustomerLogin: React.FC = () => {
   const { login } = useAuth();
   const { settings } = useAdmin();
@@ -46,6 +58,7 @@ const CustomerLogin: React.FC = () => {
       const returnToPayment = location.state?.returnToPayment;
       
       if (selectedPlanId && returnToPayment) {
+        savePaymentPlanIdSelection(selectedPlanId);
         navigate('/payment', { 
           state: { 
             selectedPlanId, 
