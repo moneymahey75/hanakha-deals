@@ -1052,7 +1052,6 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(supabase, adminUser.tau_id, 'verify_registration_payment', 'payments', {
       payment_id: paymentId,
-      tx_hash: txHash,
       amount: expectedAmount,
       confirmations
     });

@@ -462,7 +462,6 @@ Deno.serve(async (req: Request) => {
 
       await logAdminAction(supabase, adminUser.tau_id, 'verify_withdrawal_transfer', 'withdrawals', {
         withdrawal_id: withdrawalId,
-        tx_hash: existingBlockchainTx,
         block_number: receipt.blockNumber,
         confirmations
       });
@@ -629,7 +628,6 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(supabase, adminUser.tau_id, 'process_withdrawal', 'withdrawals', {
       withdrawal_id: withdrawalId,
-      tx_hash: txHash,
       amount: withdrawal.twr_amount,
       net_amount: withdrawal.twr_net_amount
     });

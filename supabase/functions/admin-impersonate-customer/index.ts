@@ -145,7 +145,6 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(adminClient, admin.tau_id, 'impersonate_customer', 'customers', {
       customer_id: customer.tu_id,
-      customer_email: customerEmail,
       auth_email_synced: authEmail !== customerEmail,
     });
 

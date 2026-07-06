@@ -142,9 +142,7 @@ Deno.serve(async (req: Request) => {
       transaction_type: transactionType,
       amount: parsedAmount,
       balance_delta: balanceDelta,
-      reserved_delta: reservedDelta,
-      new_balance: newBalance,
-      new_reserved_balance: newReservedBalance
+      reserved_delta: reservedDelta
     });
 
     return new Response(JSON.stringify({ success: true, data: { newBalance, newReservedBalance } }), {

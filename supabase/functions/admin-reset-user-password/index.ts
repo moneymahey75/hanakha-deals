@@ -60,7 +60,7 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(supabase, admin.tau_id, 'reset_user_password', 'customers', {
       user_id: userId,
-      user_email: userRow.tu_email
+      user_type: userRow.tu_user_type
     });
 
     return new Response(JSON.stringify({

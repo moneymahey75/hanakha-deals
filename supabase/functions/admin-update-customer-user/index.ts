@@ -133,8 +133,6 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(supabase, admin.tau_id, 'update_customer_user', 'customers', {
       user_id: userId,
-      email: normalizedEmail,
-      previous_email: existingUser.tu_email,
       auth_email_changed: emailChangedInAuth,
       is_verified: isVerified,
       email_verified: emailVerified,

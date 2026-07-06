@@ -56,11 +56,13 @@ Deno.serve(async (req: Request) => {
 
     await logAdminAction(supabase, admin.tau_id, 'update_customer_profile', 'customers', {
       user_id: userId,
-      first_name: firstName,
-      last_name: lastName,
-      username,
-      mobile,
-      gender
+      fields_updated: {
+        first_name: firstName !== undefined,
+        last_name: lastName !== undefined,
+        username: username !== undefined,
+        mobile: mobile !== undefined,
+        gender: gender !== undefined
+      }
     });
 
     return new Response(JSON.stringify({ success: true, data: { userId } }), {

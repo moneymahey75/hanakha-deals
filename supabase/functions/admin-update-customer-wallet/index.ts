@@ -218,8 +218,6 @@ Deno.serve(async (req: Request) => {
     await logAdminAction(supabase, admin.tau_id, 'update_customer_wallet', 'wallets', {
       user_id: userId,
       wallet_connection_id: savedWallet?.tuwc_id,
-      wallet_address: walletAddress,
-      wallet_name: walletName,
       wallet_type: walletType,
       chain_id: chainId,
       is_default: isDefault,

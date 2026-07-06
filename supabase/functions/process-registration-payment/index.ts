@@ -747,7 +747,6 @@ Deno.serve(async (req: Request) => {
         taal_module: 'payment_management',
         taal_details: {
           payment_id: paymentId,
-          user_email: payment.user.tu_email,
           amount: payment.tp_amount,
           commission_paid: 0,
           commission_percentage: null,
@@ -755,7 +754,6 @@ Deno.serve(async (req: Request) => {
           admin_income: adminNetAmount,
           direct_account_number: null,
           sponsor_user_id: sponsorUserId,
-          sponsor_sponsorship_number: sponsorSponsorshipNumber,
           timestamp: new Date().toISOString(),
         },
       });
