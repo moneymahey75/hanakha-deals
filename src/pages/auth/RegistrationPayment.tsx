@@ -206,7 +206,6 @@ const RegistrationPayment: React.FC = () => {
       if (!user?.id) return;
 
       try {
-        console.log('🔎 Validating Parent A/C for user:', user.id);
         const { data: profile } = await supabase
           .from('tbl_user_profiles')
           .select('tup_parent_account')
@@ -214,14 +213,12 @@ const RegistrationPayment: React.FC = () => {
           .maybeSingle();
 
         const parentAccount = profile?.tup_parent_account?.trim();
-        console.log('🔎 Parent A/C (tup_parent_account):', parentAccount || '(empty)');
         if (!parentAccount) {
           setParentAccountError(null);
           return;
         }
 
         const sponsorStatus = await getSponsorStatusBySponsorshipNumber(parentAccount);
-        console.log('🔎 Sponsor status lookup result:', sponsorStatus || null);
         if (!sponsorStatus?.user_id) {
           setParentAccountError('Parent A/C not found. Please contact support.');
           return;
@@ -242,10 +239,9 @@ const RegistrationPayment: React.FC = () => {
           return;
         }
 
-        console.log('✅ Parent A/C validation passed');
         setParentAccountError(null);
-      } catch (error) {
-        console.error('Error validating parent account:', error);
+      } catch {
+        console.warn('Error validating parent account');
         setParentAccountError('Unable to verify Parent A/C. Please try again later.');
       }
     };
@@ -409,9 +405,9 @@ const RegistrationPayment: React.FC = () => {
         try {
           const updated = await walletService.syncCurrentWalletState();
           if (!cancelled) setWalletState(updated);
-        } catch (error) {
+        } catch {
           // ignore: UI will still show previous state; user can reconnect
-          console.warn('Failed to sync wallet balances after settings change:', error);
+          console.warn('Failed to sync wallet balances after settings change');
         } finally {
           if (!cancelled) setRefreshingBalances(false);
         }
@@ -456,7 +452,6 @@ const RegistrationPayment: React.FC = () => {
     const currentWalletState = walletService.getCurrentWalletState();
     if (currentWalletState.isConnected && !walletState.isConnected) {
       setWalletState(currentWalletState);
-      console.log('Restored wallet state from WalletService:', currentWalletState.address);
     }
   }, [walletService, walletState.isConnected, isConnecting]);
 
@@ -524,9 +519,9 @@ const RegistrationPayment: React.FC = () => {
     try {
       setStatusMessage('Preparing USDT token in MetaMask...');
       await walletService.watchUSDTToken();
-    } catch (error: any) {
+    } catch {
       // Non-fatal: MetaMask can still send the transfer, but may show the token as Unknown.
-      console.warn('Unable to prepare USDT token metadata before payment:', error);
+      console.warn('Unable to prepare USDT token metadata before payment');
     }
   }, [walletService, walletState.walletName]);
 
@@ -581,13 +576,13 @@ const RegistrationPayment: React.FC = () => {
 	            await sleep(500 * attempt);
 	            continue;
 	          }
-	          const message = await extractEdgeFunctionErrorMessage(error);
-	          console.warn('Failed to save wallet connection (non-fatal):', message);
+	          await extractEdgeFunctionErrorMessage(error);
+	          console.warn('Failed to save wallet connection');
 	          return;
 	        }
 
 	        if (!data?.success) {
-	          console.warn('Failed to save wallet connection (non-fatal):', data?.error || 'Unknown error');
+	          console.warn('Failed to save wallet connection');
 	          return;
 	        }
 
@@ -597,7 +592,7 @@ const RegistrationPayment: React.FC = () => {
 	          await sleep(500 * attempt);
 	          continue;
 	        }
-	        console.warn('Error saving wallet connection (non-fatal):', error);
+	        console.warn('Error saving wallet connection');
 	        return;
 	      }
 	    }
@@ -954,8 +949,8 @@ const RegistrationPayment: React.FC = () => {
 
       if (insertError) throw insertError;
       return insertedPayment?.tp_id || null;
-    } catch (dbError) {
-      console.error('Failed to save registration payment issue:', dbError);
+    } catch {
+      console.warn('Failed to save registration payment issue');
       return null;
     }
   };
@@ -1046,8 +1041,8 @@ const RegistrationPayment: React.FC = () => {
     let startBlock: number | null = null;
     try {
       startBlock = await walletService.getCurrentBlockNumber();
-    } catch (error) {
-      console.warn('Unable to capture payment start block:', error);
+    } catch {
+      console.warn('Unable to capture payment start block');
     }
 
     return {
@@ -1093,11 +1088,11 @@ const RegistrationPayment: React.FC = () => {
         }
 
         if (!response.ok || result?.success === false) {
-          console.warn('Server payment recovery failed:', result?.error || response.status);
+          console.warn('Server payment recovery failed');
         }
       }
-    } catch (error) {
-      console.warn('Server payment recovery unavailable, trying browser recovery:', error);
+    } catch {
+      console.warn('Server payment recovery unavailable, trying browser recovery');
     }
 
     return walletService.findRecentUSDTTransfer(
@@ -1185,8 +1180,8 @@ const RegistrationPayment: React.FC = () => {
       const updatedWallet = await walletService.refreshInjectedWalletSession();
       setWalletState(updatedWallet);
       return await recoverAndVerifyPayment(attempt, reason);
-    } catch (error) {
-      console.warn('Automatic wallet session refresh failed:', error);
+    } catch {
+      console.warn('Automatic wallet session refresh failed');
       return false;
     } finally {
       softWalletRefreshInFlightRef.current = false;
@@ -1225,7 +1220,7 @@ const RegistrationPayment: React.FC = () => {
         setStatusMessage('Still checking for your payment. If USDT was deducted, wait a few seconds and tap the button again.');
       }
     } catch (error: any) {
-      console.warn('Manual payment recovery failed:', error);
+      console.warn('Manual payment recovery failed');
       notification.showError('Recovery Failed', error?.message || 'Unable to refresh wallet and check payment.');
     } finally {
       setManualRecoveryProcessing(false);
@@ -1316,8 +1311,8 @@ const RegistrationPayment: React.FC = () => {
           intervalId = null;
           return;
         }
-      } catch (error) {
-        console.warn('Durable payment recovery failed:', error);
+      } catch {
+        console.warn('Durable payment recovery failed');
       } finally {
         recoveryCheckInFlightRef.current = false;
       }
@@ -1402,8 +1397,8 @@ const RegistrationPayment: React.FC = () => {
               : 'Previous payment not found yet. If USDT was deducted, wait a minute and tap Re-verify or contact admin with the transaction ID from MetaMask.'
           );
         }
-      } catch (error) {
-        console.warn('Payment recovery check failed:', error);
+      } catch {
+        console.warn('Payment recovery check failed');
       } finally {
         recoveryCheckInFlightRef.current = false;
       }

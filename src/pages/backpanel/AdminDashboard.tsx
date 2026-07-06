@@ -155,7 +155,6 @@ const AdminDashboard: React.FC = () => {
     const interval = setInterval(() => {
       // FIX: Rely on sessionUtils.validateAdminSession to renew the timestamp AND check validity
       if (!sessionUtils.validateAdminSession()) {
-        console.log('🔒 Admin session invalid, redirecting to login');
         handleLogout();
       }
     }, 30000); // Check every 30 seconds
@@ -183,8 +182,8 @@ const AdminDashboard: React.FC = () => {
     try {
       const data = await getSubAdmins();
       setSubAdmins(data);
-    } catch (error) {
-      console.error('Failed to load sub-admins:', error);
+    } catch {
+      console.warn('Failed to load sub-admins');
     } finally {
       setLoading(false);
     }
@@ -213,8 +212,8 @@ const AdminDashboard: React.FC = () => {
         }
       });
       loadSubAdmins();
-    } catch (error) {
-      console.error('Failed to create sub-admin:', error);
+    } catch {
+      console.warn('Failed to create sub-admin');
     }
   };
 
@@ -222,8 +221,8 @@ const AdminDashboard: React.FC = () => {
     if (confirm('Are you sure you want to reset this sub-admin\'s password?')) {
       try {
         await resetSubAdminPassword(subAdminId);
-      } catch (error) {
-        console.error('Failed to reset password:', error);
+      } catch {
+        console.warn('Failed to reset password');
       }
     }
   };
@@ -233,8 +232,8 @@ const AdminDashboard: React.FC = () => {
       try {
         await deleteSubAdmin(subAdminId);
         loadSubAdmins();
-      } catch (error) {
-        console.error('Failed to delete sub-admin:', error);
+      } catch {
+        console.warn('Failed to delete sub-admin');
       }
     }
   };
@@ -272,8 +271,8 @@ const AdminDashboard: React.FC = () => {
       const result = await adminApi.post<{ stats: OverviewStats; recent: OverviewRecentItem[] }>('admin-get-dashboard-overview', {});
       setOverviewStats(result?.stats || { totalUsers: 0, companies: 0, pendingWithdrawals: 0, totalEarnings: 0 });
       setOverviewRecent(Array.isArray(result?.recent) ? result.recent : []);
-    } catch (error) {
-      console.error('Failed to load admin dashboard overview:', error);
+    } catch {
+      console.warn('Failed to load admin dashboard overview');
     } finally {
       setOverviewLoading(false);
     }

@@ -193,18 +193,12 @@ const verifyTurnstile = async (token: string, siteMode: string, remoteip: string
 
   const result = await response.json();
   if (!result?.success) {
-    console.warn('Contact form Turnstile verification failed', {
-      remoteip,
-      errorCodes: result?.['error-codes'] || [],
-    });
+    console.warn('Contact form Turnstile verification failed');
     throw new Error('Security verification failed. Please try again.');
   }
 
   if (expectedSiteKey && result?.sitekey && result.sitekey !== expectedSiteKey) {
-    console.warn('Contact form Turnstile site key mismatch', {
-      remoteip,
-      hostname: result?.hostname,
-    });
+    console.warn('Contact form Turnstile site key mismatch');
     throw new Error('Security verification failed. Please try again.');
   }
 };
@@ -388,9 +382,9 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error: any) {
-    console.error('Contact form email error:', error);
-    return new Response(JSON.stringify({ success: false, error: error?.message || 'Failed to send message' }), {
+  } catch {
+    console.error('Contact form email error');
+    return new Response(JSON.stringify({ success: false, error: 'Failed to send message' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

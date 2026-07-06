@@ -97,8 +97,6 @@ const SubscriptionPlans: React.FC = () => {
         return [String(raw)];
       };
 
-      console.log('🔍 Loading subscription plans from database...');
-      
       const { data, error } = await supabase
         .from('tbl_subscription_plans')
         .select('*')
@@ -107,7 +105,6 @@ const SubscriptionPlans: React.FC = () => {
         .order('tsp_price', { ascending: true });
 
       if (error) {
-        console.error('❌ Failed to load plans:', error);
         throw error;
       }
       
@@ -116,10 +113,8 @@ const SubscriptionPlans: React.FC = () => {
         tsp_features: normalizeFeatures(row?.tsp_features),
       }));
 
-      console.log('✅ Plans loaded successfully:', normalized.length, 'plans');
       setPlans(normalized);
-    } catch (error) {
-      console.error('Failed to load subscription plans:', error);
+    } catch {
       setError('Failed to load subscription plans. Please try again.');
       // Fallback to default plans if database fails
       setPlans([
@@ -202,8 +197,8 @@ const SubscriptionPlans: React.FC = () => {
             }
           : null,
       })));
-    } catch (error) {
-      console.error('Failed to load active packages:', error);
+    } catch {
+      console.warn('Failed to load active packages');
       setActivePackages([]);
     }
   };
@@ -256,7 +251,6 @@ const SubscriptionPlans: React.FC = () => {
   };
 
   const handleSelectPlan = async (planId: string) => {
-    console.log('🎯 Plan selected:', planId);
     const selectedPlan = plans.find(p => p.tsp_id === planId);
 
     if (selectedPlan && hasActiveSamePackage(selectedPlan)) {
@@ -297,7 +291,7 @@ const SubscriptionPlans: React.FC = () => {
         return;
       }
     } catch (error: any) {
-      console.error('Failed to validate plan purchase:', error);
+      console.warn('Failed to validate plan purchase');
       alert(error?.message || 'Unable to validate this package purchase. Please try again.');
       return;
     } finally {

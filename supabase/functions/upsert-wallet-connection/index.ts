@@ -175,11 +175,11 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {
-    console.error('upsert-wallet-connection error:', error);
+    console.error('upsert-wallet-connection error');
     const rawMessage = error instanceof Error ? error.message : 'Internal server error';
     const message = rawMessage.includes('wallet_unique_per_customer')
       ? 'This wallet address is already linked to another customer.'
-      : rawMessage;
+      : 'Unable to save wallet connection';
     return new Response(JSON.stringify({ success: false, error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

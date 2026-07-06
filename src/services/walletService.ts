@@ -185,15 +185,14 @@ export class WalletService {
 
   // Private constructor to enforce singleton
   private constructor() {
-    console.log('WalletService instance created');
     if (typeof window !== 'undefined') {
       try {
         const persistedState = sessionStorage.getItem(WALLET_STATE_STORAGE_KEY);
         if (persistedState) {
           this.currentWalletState = JSON.parse(persistedState) as WalletState;
         }
-      } catch (error) {
-        console.warn('Failed to restore persisted wallet state:', error);
+      } catch {
+        console.warn('Failed to restore persisted wallet state');
       }
 
       window.addEventListener('eip6963:announceProvider', (event: Event) => {
@@ -222,21 +221,14 @@ export class WalletService {
       } else {
         sessionStorage.removeItem(WALLET_STATE_STORAGE_KEY);
       }
-    } catch (error) {
-      console.warn('Failed to persist wallet state:', error);
+    } catch {
+      console.warn('Failed to persist wallet state');
     }
   }
 
   // Method to set admin settings from context
   setAdminSettings(settings: AdminSettings): void {
     this.adminSettings = settings;
-    console.log('Admin settings configured:', {
-      paymentMode: settings.paymentMode,
-      network: getPaymentNetworkName(settings.paymentMode),
-      usdtAddress: settings.usdtAddress?.substring(0, 10) + '...',
-      subscriptionContract: settings.subscriptionContractAddress?.substring(0, 10) + '...',
-      subscriptionWallet: settings.subscriptionWalletAddress?.substring(0, 10) + '...'
-    });
   }
 
   // Get admin settings (for debugging)
@@ -463,8 +455,8 @@ export class WalletService {
     if (shouldRequest) {
       try {
         window.dispatchEvent(new Event('eip6963:requestProvider'));
-      } catch (error) {
-        console.warn('Failed to request EIP-6963 wallet providers:', error);
+      } catch {
+        console.warn('Failed to request EIP-6963 wallet providers');
       }
     }
 
@@ -606,7 +598,6 @@ export class WalletService {
     if (inAppWalletName && this.isMobileBrowser()) {
       const provider = this.findProviderByWalletName(inAppWalletName) || (window as any).ethereum;
       if (inAppWalletName === 'Bitget Wallet' && !normalizeUsableProvider(provider)) {
-        console.log('Detected Bitget mobile browser, but no usable Bitget provider is available.');
         return wallets;
       }
       wallets.push({
@@ -615,7 +606,6 @@ export class WalletService {
         isInstalled: true,
         provider,
       });
-      console.log(`Detected ${wallets.length} wallet(s):`, wallets.map(w => w.name));
       return wallets;
     }
 
@@ -707,7 +697,6 @@ export class WalletService {
       });
     }
 
-    console.log(`Detected ${wallets.length} wallet(s):`, wallets.map(w => w.name));
     return wallets;
   }
 
@@ -719,7 +708,6 @@ export class WalletService {
     }
 
     this.isConnecting = true;
-    console.log('Connecting to wallet...');
 
     try {
       // Add delay to prevent rapid successive requests
@@ -730,7 +718,6 @@ export class WalletService {
       this.provider = new ethers.BrowserProvider(walletProvider);
 
       // Request account access
-      console.log('Requesting account access...');
       // FIX: Ensure eth_requestAccounts is called first to trigger connection
       let accounts = await walletProvider.request({ method: 'eth_accounts' });
 
@@ -744,7 +731,6 @@ export class WalletService {
       }
 
       // Switch to correct network
-      console.log('Switching to correct network...');
       await this.switchToCorrectNetwork(walletProvider);
 
       // Recreate the provider after a chain switch so subsequent reads use the active network.
@@ -756,7 +742,6 @@ export class WalletService {
       const address = await this.signer.getAddress();
       const network = await this.provider.getNetwork();
 
-      console.log('Getting balances...');
       const [bnbBalanceResult, usdtBalanceResult] = await Promise.allSettled([
         this.readBNBBalance(address),
         this.readUSDTBalance(address)
@@ -782,18 +767,10 @@ export class WalletService {
       this.currentWalletState = newWalletState; // Update internal state
       this.persistCurrentWalletState();
 
-      console.log('Wallet connected successfully:', {
-        address: address.substring(0, 10) + '...',
-        network: Number(network.chainId),
-        balance: balance.substring(0, 8),
-        usdtBalance: usdtBalance.substring(0, 8),
-        warning,
-      });
-
       return newWalletState;
 
     } catch (error: any) {
-      console.error('Wallet connection failed:', error);
+      console.warn('Wallet connection failed');
 
       // Handle specific errors with better messaging
       if (error.code === -32002) {
@@ -827,16 +804,14 @@ export class WalletService {
 
       const networkConfig = this.getNetworkConfig();
       const expectedChainId = this.getExpectedChainId();
-      console.log(`Switching to ${networkConfig.chainName}...`);
 
       try {
         const currentChainId = this.parseWalletChainId(await provider.request({ method: 'eth_chainId' }));
         if (currentChainId === expectedChainId) {
-          console.log(`Wallet is already on ${networkConfig.chainName}`);
           return;
         }
-      } catch (chainReadError) {
-        console.warn('Could not read wallet chain before switching:', chainReadError);
+      } catch {
+        console.warn('Could not read wallet chain before switching');
       }
 
       await provider.request({
@@ -844,24 +819,17 @@ export class WalletService {
         params: [{ chainId: networkConfig.chainId }],
       });
 
-      console.log(`Successfully switched to ${networkConfig.chainName}`);
-
     } catch (switchError: any) {
-      console.log('Network switch failed, attempting to add network:', switchError.code);
-
       // Chain not added, try to add it
       if (switchError.code === 4902) {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         const networkConfig = this.getNetworkConfig();
-        console.log(`Adding ${networkConfig.chainName} to wallet...`);
 
         await provider.request({
           method: 'wallet_addEthereumChain',
           params: [networkConfig],
         });
-
-        console.log(`Successfully added ${networkConfig.chainName}`);
 
       } else if (switchError.code === -32002) {
         throw new Error('MetaMask is busy. Please check for pending requests and try again.');
@@ -894,8 +862,8 @@ export class WalletService {
   async getBNBBalance(address: string): Promise<string> {
     try {
       return await this.readBNBBalance(address);
-    } catch (error) {
-      console.error('Error fetching BNB balance:', error);
+    } catch {
+      console.warn('Error fetching BNB balance');
       return '0.00';
     }
   }
@@ -907,14 +875,12 @@ export class WalletService {
     }
 
     const usdtContractAddress = this.getUSDTContractAddress();
-    console.log('Fetching USDT balance from:', usdtContractAddress);
 
     const contract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.provider);
     const balance = await contract.balanceOf(address);
     const decimals = await contract.decimals();
 
     const formattedBalance = ethers.formatUnits(balance, decimals);
-    console.log('USDT balance:', formattedBalance);
 
     return formattedBalance;
   }
@@ -922,13 +888,8 @@ export class WalletService {
   async getUSDTBalance(address: string): Promise<string> {
     try {
       return await this.readUSDTBalance(address);
-    } catch (error: any) {
-      console.error('❌ Critical Error fetching USDT balance:', error);
-
-      if (error.code === 'CALL_EXCEPTION') {
-        console.error('The USDT contract call failed. Check if wallet is on the correct network and if the USDT address is correct.');
-      }
-
+    } catch {
+      console.warn('Error fetching USDT balance');
       return '0.00';
     }
   }
@@ -946,7 +907,6 @@ export class WalletService {
     const steps: string[] = [];
     const signerAddress = await this.signer.getAddress();
 
-    console.log('Starting USDT distribution process...');
     await this.assertCorrectNetwork();
 
     // Use subscription wallet address from settings
@@ -957,13 +917,6 @@ export class WalletService {
     // Get contract addresses
     const usdtContractAddress = this.getUSDTContractAddress();
     const distributionContractAddress = this.getDistributionContractAddress();
-
-    console.log('Contract configuration:', {
-      usdtContract: usdtContractAddress,
-      distributionContract: distributionContractAddress,
-      subscriptionWallet: recipients[0],
-      planPrice: planPrice
-    });
 
     // Initialize contracts
     const distributionContract = new ethers.Contract(distributionContractAddress, DISTRIBUTION_ABI, this.signer);
@@ -980,7 +933,6 @@ export class WalletService {
     try {
       // Step 1: Check USDT balance
       steps.push("\n1. Checking USDT balance...");
-      console.log('Checking USDT balance...');
 
       const balance = await usdtContract.balanceOf(signerAddress);
       const formattedBalance = ethers.formatUnits(balance, 18);
@@ -988,13 +940,11 @@ export class WalletService {
 
       if (balance < totalAmount) {
         const errorMsg = `Insufficient USDT balance! Required: ${planPrice} USDT, Available: ${formattedBalance} USDT`;
-        console.error(errorMsg);
         throw new Error(errorMsg);
       }
 
       // Step 2: Check current allowance
       steps.push("\n2. Checking current allowance...");
-      console.log('Checking allowance...');
 
       const currentAllowance = await usdtContract.allowance(signerAddress, distributionContractAddress);
       const formattedAllowance = ethers.formatUnits(currentAllowance, 18);
@@ -1003,25 +953,20 @@ export class WalletService {
       // Step 3: Approve USDT if needed
       if (currentAllowance < totalAmount) {
         steps.push("\n3. Approving USDT spending...");
-        console.log('Approving USDT spending...');
 
         try {
           const approveTx = await usdtContract.approve(distributionContractAddress, totalAmount);
           steps.push(`Approve transaction: ${approveTx.hash}`);
-          console.log('Approve transaction hash:', approveTx.hash);
 
           steps.push("Waiting for approval confirmation...");
           const approveReceipt = await approveTx.wait();
-          console.log('Approval confirmed, gas used:', approveReceipt?.gasUsed?.toString());
 
           steps.push("✅ USDT approval successful!");
         } catch (approveError: any) {
-          console.error('USDT approval failed:', approveError);
           throw new Error(`USDT approval failed: ${approveError.message}`);
         }
       } else {
         steps.push("\n3. ✅ Already have sufficient allowance");
-        console.log('Sufficient allowance already exists');
       }
 
       // Step 4: Validate distribution (optional)
@@ -1033,14 +978,12 @@ export class WalletService {
         if (!isValid) {
           throw new Error("Distribution validation failed!");
         }
-      } catch (validationError: any) {
-        console.log('Validation check failed or method not available:', validationError.message);
+      } catch {
         steps.push("⚠️ Validation check skipped (method may not exist)");
       }
 
       // Step 5: Execute distribution
       steps.push("\n5. Distributing payment...");
-      console.log('Executing distribution...');
 
       try {
         const tx = await distributionContract.distributePayment(recipients, amounts, totalAmount, {
@@ -1049,10 +992,8 @@ export class WalletService {
 
         steps.push(`Distribution transaction: ${tx.hash}`);
         steps.push("Waiting for confirmation...");
-        console.log('Distribution transaction hash:', tx.hash);
 
         const receipt = await tx.wait();
-        console.log('Distribution confirmed, gas used:', receipt?.gasUsed?.toString());
 
         steps.push("✅ Distribution completed successfully!");
         steps.push(`Gas used: ${receipt?.gasUsed?.toString() || 'N/A'}`);
@@ -1063,16 +1004,13 @@ export class WalletService {
         const finalFormattedBalance = ethers.formatUnits(finalBalance, 18);
         steps.push(`Remaining USDT Balance: ${finalFormattedBalance} USDT`);
 
-        console.log('Distribution process completed successfully');
         return { hash: tx.hash, steps };
 
       } catch (distributionError: any) {
-        console.error('Distribution failed:', distributionError);
         throw new Error(`Distribution failed: ${distributionError.message}`);
       }
 
     } catch (error: any) {
-      console.error('Distribution process failed:', error);
       steps.push(`\n❌ Error: ${error.message}`);
       throw error;
     }
@@ -1147,7 +1085,6 @@ export class WalletService {
 
       return { hash: tx.hash, steps };
     } catch (error: any) {
-      console.error('USDT transfer failed:', error);
       steps.push(`\n❌ Error: ${error.message}`);
       throw error;
     } finally {
@@ -1229,14 +1166,14 @@ export class WalletService {
         if (recovered) return recovered;
       } catch (error) {
         lastError = error;
-        console.warn('USDT transfer recovery provider failed:', error);
+        console.warn('USDT transfer recovery provider failed');
       } finally {
         this.destroyReadonlyProvider(provider);
       }
     }
 
     if (lastError) {
-      console.warn('USDT transfer recovery could not find a matching tx:', lastError);
+      console.warn('USDT transfer recovery could not find a matching tx');
     }
 
     return null;
@@ -1367,7 +1304,6 @@ export class WalletService {
 
   // Disconnect wallet
   disconnect(): void {
-    console.log('Disconnecting wallet...');
     this.provider = null;
     this.signer = null;
     this.externalProvider = null;
@@ -1404,8 +1340,8 @@ export class WalletService {
         chainId: Number(network.chainId),
         name: networkConfig.chainName
       };
-    } catch (error) {
-      console.error('Error getting network info:', error);
+    } catch {
+      console.warn('Error getting network info');
       return null;
     }
   }

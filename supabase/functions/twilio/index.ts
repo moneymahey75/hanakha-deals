@@ -44,8 +44,8 @@ serve(async (req) => {
     const result = await response.json();
 
     if (!response.ok) {
-      console.error("❌ Twilio Error Response:", result);
-      return new Response(JSON.stringify({ success: false, error: result.message || "Twilio error" }), {
+      console.error("Twilio SMS send failed");
+      return new Response(JSON.stringify({ success: false, error: "Unable to send SMS" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500
       });
@@ -61,10 +61,10 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error("❌ Exception while sending SMS:", error);
+    console.error("Exception while sending SMS");
     return new Response(JSON.stringify({
       success: false,
-      error: error?.message || "Unknown error"
+      error: "Unable to send SMS"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400

@@ -29,7 +29,7 @@ const ensureWalletForUser = async (
     .maybeSingle();
 
   if (walletError) {
-    console.error('Failed to fetch wallet:', walletError);
+    console.error('Failed to fetch wallet');
     return null;
   }
 
@@ -55,7 +55,7 @@ const ensureWalletForUser = async (
   });
 
   if (createError) {
-    console.error('Failed to create wallet:', createError);
+    console.error('Failed to create wallet');
     return null;
   }
 
@@ -75,7 +75,7 @@ const hasActiveUpgrade = async (
     .limit(50);
 
   if (error) {
-    console.error('Failed to load user subscriptions:', error);
+    console.error('Failed to load user subscriptions');
     return false;
   }
 
@@ -193,7 +193,7 @@ Deno.serve(async (req: Request) => {
         .eq('twt_reference_id', referenceId);
 
       if (countError) {
-        console.error('Failed to check existing wallet transaction:', countError);
+        console.error('Failed to check existing wallet transaction');
         skipped.push({ milestoneId: referenceId, title: milestone.tmm_title, reason: 'check_failed' });
         continue;
       }
@@ -229,7 +229,7 @@ Deno.serve(async (req: Request) => {
       });
 
       if (insertError) {
-        console.error('Failed to insert wallet transaction:', insertError);
+        console.error('Failed to insert wallet transaction');
         skipped.push({ milestoneId: referenceId, title: milestone.tmm_title, reason: 'insert_failed' });
         continue;
       }
@@ -250,7 +250,7 @@ Deno.serve(async (req: Request) => {
         });
 
         if (reservedInsertError) {
-          console.error('Failed to insert reserved wallet transaction:', reservedInsertError);
+          console.error('Failed to insert reserved wallet transaction');
           skipped.push({ milestoneId: referenceId, title: milestone.tmm_title, reason: 'reserved_insert_failed' });
         } else {
           totalBalanceInserted += reservedReward;
@@ -276,7 +276,7 @@ Deno.serve(async (req: Request) => {
         .eq('tw_id', walletInfo.walletId);
 
       if (updateError) {
-        console.error('Failed to update wallet balance:', updateError);
+        console.error('Failed to update wallet balance');
       }
     }
 

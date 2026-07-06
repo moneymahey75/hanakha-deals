@@ -187,7 +187,6 @@ Deno.serve(async (req: Request) => {
 
     const isMainnet = paymentMode === true || paymentMode === '1' || paymentMode === 1 || paymentMode === 'true';
     const rpcUrls = buildRpcUrls(isMainnet);
-    let lastError: any = null;
 
     for (const rpcUrl of rpcUrls) {
       try {
@@ -211,23 +210,20 @@ Deno.serve(async (req: Request) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-      } catch (error) {
-        lastError = error;
-        console.warn('Registration payment recovery RPC failed:', error?.message || error);
+      } catch {
+        console.warn('Registration payment recovery RPC failed');
       }
     }
 
     return new Response(JSON.stringify({
       success: true,
       status: 'pending',
-      message: 'Payment transaction not visible yet',
-      userId,
-      last_error: lastError?.message || null
+      message: 'Payment transaction not visible yet'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    console.error('recover-registration-payment error:', error);
+    console.error('recover-registration-payment error');
     return new Response(JSON.stringify({ success: false, error: error.message || 'Recovery failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

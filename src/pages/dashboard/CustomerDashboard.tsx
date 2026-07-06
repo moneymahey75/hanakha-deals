@@ -233,8 +233,8 @@ const CustomerDashboard: React.FC = () => {
           setHasLaunchUpgrade(Boolean(upgradeResult.data) || launchPackages.length > 0);
           setLaunchPackageName(packageNames.length > 0 ? packageNames.join(', ') : null);
         }
-      } catch (error) {
-        console.error('Failed to load launch upgrade status:', error);
+      } catch {
+        console.warn('Failed to load launch upgrade status');
         if (mounted) {
           setHasLaunchUpgrade(false);
           setLaunchPackageName(null);
@@ -276,8 +276,8 @@ const CustomerDashboard: React.FC = () => {
           const canSeeSpinWheel = spinStatus.hasSpun === true || isCampaignActive;
           setSpinWheelVisible(canSeeSpinWheel);
         }
-      } catch (error) {
-        console.error('Failed to load spin wheel visibility:', error);
+      } catch {
+        console.warn('Failed to load spin wheel visibility');
         if (mounted) setSpinWheelVisible(false);
       }
     };
@@ -312,7 +312,6 @@ const CustomerDashboard: React.FC = () => {
 
       const userId = user.id;
       setLoading(true);
-      console.log('🔄 Loading dashboard data for user:', user.id);
 
       try {
         // Load data in parallel with timeout
@@ -334,11 +333,10 @@ const CustomerDashboard: React.FC = () => {
         ]);
 
         if (mounted) {
-          console.log('✅ Dashboard data loaded successfully');
           setInitialLoadComplete(true);
         }
-      } catch (error) {
-        console.error('❌ Failed to load dashboard data:', error);
+      } catch {
+        console.warn('Failed to load dashboard data');
         if (mounted) {
           notification.showError('Error', 'Failed to load some dashboard data. Please refresh.');
           setInitialLoadComplete(true); // Still show the dashboard
@@ -359,10 +357,7 @@ const CustomerDashboard: React.FC = () => {
 
   const loadTreeStats = async (userId: string) => {
     try {
-      console.log('📊 Loading tree stats...');
-
       const stats = await getReferralNetworkStats(userId);
-      console.log('✅ Tree stats loaded:', stats);
 
       if (currentUserIdRef.current !== userId) return;
 
@@ -378,16 +373,14 @@ const CustomerDashboard: React.FC = () => {
         activeDirectReferrals,
         activeTeam,
       }));
-    } catch (error) {
-      console.error('❌ Failed to load tree stats:', error);
+    } catch {
+      console.warn('Failed to load tree stats');
       // Don't throw - allow other data to load
     }
   };
 
   const loadRecentActivities = async (userId: string) => {
     try {
-      console.log('📋 Loading recent activities...');
-
       const [txRes, wdRes] = await Promise.all([
         supabase
           .from('tbl_wallet_transactions')
@@ -459,9 +452,8 @@ const CustomerDashboard: React.FC = () => {
       if (currentUserIdRef.current === userId) {
         setRecentActivities(merged);
       }
-      console.log('✅ Recent activities loaded');
-    } catch (error) {
-      console.error('❌ Failed to load recent activities:', error);
+    } catch {
+      console.warn('Failed to load recent activities');
     }
   };
 
@@ -490,8 +482,8 @@ const CustomerDashboard: React.FC = () => {
           totalEarnings: Number(totalCredits.toFixed(2))
         }));
       }
-    } catch (error) {
-      console.error('❌ Failed to load earnings stats:', error);
+    } catch {
+      console.warn('Failed to load earnings stats');
     }
   };
 

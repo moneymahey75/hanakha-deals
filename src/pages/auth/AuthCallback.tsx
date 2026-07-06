@@ -76,7 +76,7 @@ const AuthCallback: React.FC = () => {
           navigate('/');
         }
       } catch (err: any) {
-        console.error('Auth callback error:', err);
+        console.warn('Auth callback error');
         setError(err?.message || 'Authentication failed');
         notification.showError('Authentication Failed', 'The login link is invalid or has expired.');
         setTimeout(() => navigate(type === 'recovery' ? '/forgot-password' : '/customer/login'), 3000);

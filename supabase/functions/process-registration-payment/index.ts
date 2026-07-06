@@ -44,7 +44,7 @@ const isSponsorLaunchEligible = async (
 ) => {
   const { data, error } = await supabase.rpc('is_user_launch_eligible', { p_user_id: userId });
   if (error) {
-    console.error('Failed to check launch sponsor eligibility:', error);
+    console.error('Failed to check launch sponsor eligibility');
     return false;
   }
   return data === true;
@@ -463,7 +463,7 @@ Deno.serve(async (req: Request) => {
             .limit(50);
 
           if (subsError) {
-            console.error('Failed to load user subscriptions:', subsError);
+            console.error('Failed to load user subscriptions');
             return false;
           }
 
@@ -488,7 +488,7 @@ Deno.serve(async (req: Request) => {
             .maybeSingle();
 
           if (existingError) {
-            console.error('Failed to load wallet:', existingError);
+            console.error('Failed to load wallet');
             return null;
           }
 
@@ -510,7 +510,7 @@ Deno.serve(async (req: Request) => {
               .single();
 
             if (createError) {
-              console.error('Failed to create wallet:', createError);
+              console.error('Failed to create wallet');
               return null;
             }
 
@@ -557,7 +557,7 @@ Deno.serve(async (req: Request) => {
             .eq('twt_reference_type', referenceType);
 
           if (countError) {
-            console.error('Failed to check existing wallet transaction:', countError);
+            console.error('Failed to check existing wallet transaction');
             return 0;
           }
 
@@ -583,7 +583,7 @@ Deno.serve(async (req: Request) => {
           }
 
           if (insertError) {
-            console.error('Failed to insert wallet transaction:', insertError);
+            console.error('Failed to insert wallet transaction');
             return 0;
           }
 
@@ -640,7 +640,7 @@ Deno.serve(async (req: Request) => {
             .order('tmm_level3_required', { ascending: true });
 
           if (milestonesError) {
-            console.error('Failed to load MLM reward milestones:', milestonesError);
+            console.error('Failed to load MLM reward milestones');
           }
 
           const milestones = (milestonesData && milestonesData.length > 0)
@@ -666,7 +666,7 @@ Deno.serve(async (req: Request) => {
             });
 
           if (uplinesError) {
-            console.error('Failed to load upline sponsors:', uplinesError);
+            console.error('Failed to load upline sponsors');
           } else if (milestones.length > 0) {
             for (const upline of uplines || []) {
               const sponsorshipNumber = String(upline.sponsorship_number || '').trim();
@@ -678,7 +678,7 @@ Deno.serve(async (req: Request) => {
                 .maybeSingle();
 
               if (countsError) {
-                console.error('Failed to update MLM level counts:', countsError);
+                console.error('Failed to update MLM level counts');
                 continue;
               }
 
@@ -734,7 +734,7 @@ Deno.serve(async (req: Request) => {
             .eq('tw_id', walletInfo.walletId);
 
           if (updateWalletError) {
-            console.error('Failed to update sponsor wallet:', updateWalletError);
+            console.error('Failed to update sponsor wallet');
           }
         }
     }
@@ -778,8 +778,8 @@ Deno.serve(async (req: Request) => {
           text: `Your ShopClix registration payment has been confirmed. Amount: ${paymentAmount} USDT. Transaction: ${txHash || 'Manual verification'}.`,
           fromName: 'ShopClix Payments',
         });
-      } catch (emailError) {
-        console.error('Failed to send manual registration payment confirmation email:', emailError);
+      } catch {
+        console.error('Failed to send manual registration payment confirmation email');
       }
     }
 
@@ -800,7 +800,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error: any) {
-    console.error('Error processing registration payment:', error);
+    console.error('Error processing registration payment');
     return new Response(
       JSON.stringify({
         success: false,

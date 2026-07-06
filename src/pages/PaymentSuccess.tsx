@@ -57,8 +57,8 @@ const PaymentSuccess: React.FC = () => {
         if (data) {
           setPayment(data);
         }
-      } catch (error) {
-        console.error('Failed to load payment details:', error);
+      } catch {
+        console.warn('Failed to load payment details');
       } finally {
         setLoading(false);
       }

@@ -264,9 +264,8 @@ Deno.serve(async (req: Request) => {
     }
 
     return jsonResponse({ success: false, error: 'Invalid action.' });
-  } catch (error: unknown) {
-    console.error('Password reset email error:', error);
-    const message = error instanceof Error ? error.message : 'Failed to reset password.';
-    return jsonResponse({ success: false, error: message }, 500);
+  } catch {
+    console.error('Password reset email error');
+    return jsonResponse({ success: false, error: 'Failed to reset password.' }, 500);
   }
 });

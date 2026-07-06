@@ -258,8 +258,8 @@ const Payment: React.FC = () => {
         .maybeSingle();
       if (error) throw error;
       setWorkingWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
-    } catch (error) {
-      console.error('Failed to load reserved wallet balance:', error);
+    } catch {
+      console.warn('Failed to load reserved wallet balance');
       setWorkingWalletReservedBalance(0);
     }
   }, [user?.id]);
@@ -282,8 +282,8 @@ const Payment: React.FC = () => {
         if (data && !error) {
           setLastConnectedWallet(data);
         }
-      } catch (error) {
-        console.error('Error loading saved wallet connections:', error);
+      } catch {
+        console.warn('Error loading saved wallet connections');
       }
     };
 
@@ -301,13 +301,11 @@ const Payment: React.FC = () => {
       const validateAddress = (addr: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(addr);
 
       if (!validateAddress(String(settings.usdtAddress || '')) && String(settings.usdtAddress || '') !== '') {
-        console.error('Invalid USDT address in settings');
         notification.showError('Configuration Error', 'Invalid USDT contract address');
         return;
       }
 
       if (!validateAddress(String(settings.adminPaymentWallet || '')) && String(settings.adminPaymentWallet || '') !== '') {
-        console.error('Invalid admin payment wallet in settings');
         notification.showError('Configuration Error', 'Invalid admin payment wallet');
         return;
       }
@@ -425,7 +423,6 @@ const Payment: React.FC = () => {
 	    const currentWalletState = walletService.getCurrentWalletState();
 	    if (currentWalletState.isConnected && !walletState.isConnected) {
 	      setWalletState(currentWalletState);
-	      console.log('Restored wallet state from WalletService:', currentWalletState.address);
 	    }
 	  }, [walletService, walletState.isConnected, isConnecting]);
 
@@ -669,13 +666,13 @@ const Payment: React.FC = () => {
 		            await sleep(500 * attempt);
 		            continue;
 		          }
-		          const message = await extractEdgeFunctionErrorMessage(error);
-		          console.warn('Failed to save wallet connection (non-fatal):', message);
+		          await extractEdgeFunctionErrorMessage(error);
+		          console.warn('Failed to save wallet connection');
 		          return;
 		        }
 
 		        if (!data?.success) {
-		          console.warn('Failed to save wallet connection (non-fatal):', data?.error || 'Unknown error');
+		          console.warn('Failed to save wallet connection');
 		          return;
 		        }
 
@@ -685,7 +682,7 @@ const Payment: React.FC = () => {
 		          await sleep(500 * attempt);
 		          continue;
 		        }
-		        console.warn('Error saving wallet connection (non-fatal):', error);
+		        console.warn('Error saving wallet connection');
 		        return;
 		      }
 		    }
@@ -725,7 +722,7 @@ const Payment: React.FC = () => {
 		
 		      notification.showSuccess('Wallet Connected', `Successfully connected to ${wallet.walletName}`);
 		    } catch (error: any) {
-	      console.error('Wallet connection failed:', error);
+	      console.warn('Wallet connection failed');
 	      const errorMessage = error.message || 'Failed to connect wallet';
 
       // Sanitize error message before showing to user
@@ -761,8 +758,8 @@ const Payment: React.FC = () => {
             .eq('tuwc_user_id', user.id)
             .eq('tuwc_wallet_address', walletState.address);
       }
-    } catch (error) {
-      console.error('Error updating wallet connection status:', error);
+    } catch {
+      console.warn('Error updating wallet connection status');
     }
 
     walletService.disconnect();
@@ -993,8 +990,8 @@ const Payment: React.FC = () => {
         let startBlock: number | null = null;
         try {
           startBlock = await walletService.getCurrentBlockNumber();
-        } catch (blockError) {
-          console.warn('Unable to capture upgrade payment start block:', blockError);
+        } catch {
+          console.warn('Unable to capture upgrade payment start block');
         }
 
         upgradeRecoveryAttemptRef.current = {
@@ -1179,8 +1176,6 @@ const Payment: React.FC = () => {
     let paymentData = null;
 
     try {
-      console.log('Processing direct USDT payment for plan:', selectedPlan.tsp_name);
-
       // Send USDT directly to the admin receiving wallet.
       const { hash, steps } = await walletService.sendUSDTTransfer(adminReceivingWallet, selectedPlan.tsp_price);
 
@@ -1229,12 +1224,10 @@ const Payment: React.FC = () => {
         });
 
       if (paymentError) {
-        console.error('Payment record creation failed:', paymentError);
         throw new Error(paymentError.message || 'Failed to create payment record');
       }
 
       subscriptionData = paymentData?.subscription_id || null;
-      console.log('✅ Payment record created:', paymentData);
 
       // FIX: Store success flag and transaction state in session storage BEFORE fetching user data
       sessionStorage.setItem(PAYMENT_SUCCESS_KEY, JSON.stringify({
@@ -1263,7 +1256,6 @@ const Payment: React.FC = () => {
       });
 
     } catch (error: any) {
-      console.error('Payment processing failed:', error);
 
       const errorMessage = await getPaymentErrorMessage(error, 'Payment processing failed. Please try again.');
       if (isWalletRequestAlreadyOpenMessage(errorMessage)) {
@@ -1293,7 +1285,7 @@ const Payment: React.FC = () => {
       sessionStorage.removeItem(PAYMENT_SUCCESS_KEY); // Clear success flag on failure
 
       try {
-        const { data: failedPayment, error: dbError } = await supabase
+        const { error: dbError } = await supabase
             .from('tbl_payments')
             .insert({
               tp_user_id: user.id,
@@ -1323,12 +1315,10 @@ const Payment: React.FC = () => {
             .single();
 
         if (dbError) {
-          console.error('❌ Failed to save failed payment record:', dbError);
-        } else {
-          console.log('✅ Failed payment record created:', failedPayment);
+          console.warn('Failed to save failed payment record');
         }
-      } catch (dbError) {
-        console.error('❌ Error saving failed payment to database:', dbError);
+      } catch {
+        console.warn('Error saving failed payment to database');
       }
 
       notification.showError('Payment Failed', errorMessage);
@@ -1397,7 +1387,7 @@ const Payment: React.FC = () => {
 
       notification.showSuccess('Wallet Reconnected', `Successfully reconnected to ${wallet.walletName}`);
     } catch (error: any) {
-      console.error('Wallet reconnection failed:', error);
+      console.warn('Wallet reconnection failed');
       const errorMessage = error.message || 'Failed to reconnect wallet';
       notification.showError('Reconnection Failed', errorMessage);
     } finally {

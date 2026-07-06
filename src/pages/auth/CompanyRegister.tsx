@@ -282,8 +282,6 @@ const CompanyRegister: React.FC = () => {
     setError('');
     setIsSubmitting(true);
 
-    console.log('🚀 Starting company registration process...');
-
     try {
       await verifyTurnstileToken({
         token: recaptchaToken,
@@ -315,18 +313,10 @@ const CompanyRegister: React.FC = () => {
     }
 
     try {
-      console.log('📝 Calling register function with company data:', {
-        email: formData.email,
-        companyName: formData.companyName,
-        registrationNumber: formData.registrationNumber
-      });
-
       await register(formData, 'company');
 
-      console.log('✅ Company registration successful, redirecting to dashboard...');
       navigate('/company/dashboard');
-    } catch (err) {
-      console.error('❌ Company registration error in component:', err);
+    } catch {
       // Error is now handled by notification system
     } finally {
       setIsSubmitting(false);

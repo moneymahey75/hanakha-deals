@@ -21,7 +21,6 @@ const AdminLogin: React.FC = () => {
   // Check if already logged in
   useEffect(() => {
     if (sessionUtils.validateAdminSession()) {
-      console.log('🔍 Valid admin session found, redirecting to dashboard');
       navigate('/backpanel/dashboard', { replace: true });
     }
   }, [navigate]);
@@ -44,12 +43,9 @@ const AdminLogin: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      console.log('🔐 Attempting admin login...');
       await login(formData.email, formData.password);
-      console.log('✅ Login successful, redirecting to dashboard');
       navigate('/backpanel/dashboard');
-    } catch (err) {
-      console.error('❌ Login failed:', err);
+    } catch {
       setError('Invalid email or password');
     } finally {
       setIsSubmitting(false);

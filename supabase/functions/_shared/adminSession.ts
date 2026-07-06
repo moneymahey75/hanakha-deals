@@ -110,7 +110,7 @@ export const logAdminAction = async (
       taal_module: module,
       taal_details: details
     });
-  } catch (error) {
-    console.warn('Failed to log admin action:', action, error);
+  } catch {
+    console.warn('Failed to log admin action');
   }
 };

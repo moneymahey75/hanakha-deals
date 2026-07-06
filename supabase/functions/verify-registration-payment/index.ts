@@ -59,7 +59,7 @@ const isSponsorLaunchEligible = async (
 ) => {
   const { data, error } = await supabase.rpc('is_user_launch_eligible', { p_user_id: userId });
   if (error) {
-    console.error('Failed to check launch sponsor eligibility:', error);
+    console.error('Failed to check launch sponsor eligibility');
     return false;
   }
   return data === true;
@@ -130,8 +130,8 @@ const ensurePaymentWalletDefault = async (
       });
 
     if (insertError) throw insertError;
-  } catch (error) {
-    console.error('Failed to set registration payment wallet as default:', error);
+  } catch {
+    console.error('Failed to set registration payment wallet as default');
   }
 };
 
@@ -247,9 +247,9 @@ Deno.serve(async (req: Request) => {
     let tx: Awaited<ReturnType<typeof provider.getTransaction>>;
     try {
       tx = await provider.getTransaction(txHash);
-    } catch (rpcError: any) {
+    } catch {
       // Transient RPC failure — tell the client to retry
-      console.warn('RPC getTransaction failed (transient):', rpcError?.message);
+      console.warn('RPC getTransaction failed');
       return new Response(JSON.stringify({
         success: true,
         status: 'pending',
@@ -752,7 +752,7 @@ Deno.serve(async (req: Request) => {
             .limit(50);
 
           if (subsError) {
-            console.error('Failed to load user subscriptions:', subsError);
+            console.error('Failed to load user subscriptions');
             return false;
           }
 
@@ -768,7 +768,7 @@ Deno.serve(async (req: Request) => {
         const isLaunchPlanUser = async (userId: string) => {
           const { data, error } = await supabase.rpc('is_user_on_launch_plan', { p_user_id: userId });
           if (error) {
-            console.error('Failed to check user plan phase:', error);
+            console.error('Failed to check user plan phase');
             return false;
           }
           return data === true;
@@ -786,7 +786,7 @@ Deno.serve(async (req: Request) => {
             .maybeSingle();
 
           if (existingError) {
-            console.error('Failed to load wallet:', existingError);
+            console.error('Failed to load wallet');
             return null;
           }
 
@@ -808,7 +808,7 @@ Deno.serve(async (req: Request) => {
               .single();
 
             if (createError) {
-              console.error('Failed to create wallet:', createError);
+              console.error('Failed to create wallet');
               return null;
             }
 
@@ -855,7 +855,7 @@ Deno.serve(async (req: Request) => {
             .eq('twt_reference_type', referenceType);
 
           if (countError) {
-            console.error('Failed to check existing wallet transaction:', countError);
+            console.error('Failed to check existing wallet transaction');
             return 0;
           }
 
@@ -881,7 +881,7 @@ Deno.serve(async (req: Request) => {
           }
 
           if (insertError) {
-            console.error('Failed to insert wallet transaction:', insertError);
+            console.error('Failed to insert wallet transaction');
             return 0;
           }
 
@@ -895,9 +895,7 @@ Deno.serve(async (req: Request) => {
 
         if (parentIncomeApplied > 0 && sponsorUserId) {
           const sponsorIsLaunchUser = await isLaunchPlanUser(sponsorUserId);
-          if (sponsorIsLaunchUser) {
-            console.log('Skipping Pre-Launch parent income for Launch plan sponsor:', sponsorUserId);
-          } else {
+          if (!sponsorIsLaunchUser) {
             const sponsorUpgraded = await hasActiveUpgrade(sponsorUserId);
             const refId = String(paymentId || txHash || sponsorUserId);
 
@@ -945,7 +943,7 @@ Deno.serve(async (req: Request) => {
             .order('tmm_level3_required', { ascending: true });
 
           if (milestonesError) {
-            console.error('Failed to load MLM reward milestones:', milestonesError);
+            console.error('Failed to load MLM reward milestones');
           }
 
           const milestones = (milestonesData && milestonesData.length > 0)
@@ -971,14 +969,13 @@ Deno.serve(async (req: Request) => {
             });
 
           if (uplinesError) {
-            console.error('Failed to load upline sponsors:', uplinesError);
+            console.error('Failed to load upline sponsors');
           } else if (milestones.length > 0) {
             for (const upline of uplines || []) {
               const sponsorshipNumber = String(upline.sponsorship_number || '').trim();
               const uplineUserId = String(upline.user_id || '').trim();
               if (!sponsorshipNumber || !uplineUserId) continue;
               if (await isLaunchPlanUser(uplineUserId)) {
-                console.log('Skipping Pre-Launch MLM reward for Launch plan upline:', uplineUserId);
                 continue;
               }
 
@@ -987,7 +984,7 @@ Deno.serve(async (req: Request) => {
                 .maybeSingle();
 
               if (countsError) {
-                console.error('Failed to update MLM level counts:', countsError);
+                console.error('Failed to update MLM level counts');
                 continue;
               }
 
@@ -1043,7 +1040,7 @@ Deno.serve(async (req: Request) => {
             .eq('tw_id', walletInfo.walletId);
 
           if (updateWalletError) {
-            console.error('Failed to update wallet balance:', updateWalletError, userId);
+            console.error('Failed to update wallet balance');
           }
         }
     }
@@ -1070,8 +1067,8 @@ Deno.serve(async (req: Request) => {
           text: `Your ShopClix registration payment has been confirmed. Amount: ${expectedAmount} USDT. Transaction: ${txHash}.`,
           fromName: 'ShopClix Payments',
         });
-      } catch (emailError) {
-        console.error('Failed to send registration payment confirmation email:', emailError);
+      } catch {
+        console.error('Failed to send registration payment confirmation email');
       }
     }
 
@@ -1086,7 +1083,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    console.error('Error verifying registration payment:', error);
+    console.error('Error verifying registration payment');
     return new Response(JSON.stringify({
       success: false,
       error: error.message || 'Internal server error'

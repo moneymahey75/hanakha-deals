@@ -62,13 +62,9 @@ export const adminSessionManager = {
           adminData?.tau_id;
 
         if (!adminId) {
-          console.error('❌ Refusing to save admin session: missing adminId', {
-            keys: adminData ? Object.keys(adminData) : []
-          });
+          console.warn('Refusing to save admin session: missing adminId');
           return;
         }
-
-        console.log('💾 Saving admin session:', adminId);
 
         const existingToken = sessionStorage.getItem('admin_session_token');
         const existingSessionData = sessionStorage.getItem('admin_session_data');
@@ -113,9 +109,8 @@ export const adminSessionManager = {
         // Keep admin marker per-tab for routing guards, but also persist in localStorage for other tabs.
         sessionStorage.setItem('session_type', 'admin');
 
-        console.log('✅ Admin session saved successfully');
-      } catch (error) {
-        console.error('❌ Failed to save admin session:', error);
+      } catch {
+        console.warn('Failed to save admin session');
       }
     }
   },
@@ -143,11 +138,6 @@ export const adminSessionManager = {
         const maxSessionAge = 8 * 60 * 60 * 1000;
 
         if ((expiresAtMs && now > expiresAtMs) || (!expiresAtMs && sessionAge > maxSessionAge)) {
-          console.log('⏰ Admin session expired', {
-            sessionAgeMs: sessionAge,
-            maxSessionAgeMs: maxSessionAge,
-            expiresAt: session.sessionExpiresAt || null
-          });
           adminSessionManager.removeSession();
           return null;
         }
@@ -164,8 +154,8 @@ export const adminSessionManager = {
         }
 
         return session;
-      } catch (error) {
-        console.error('❌ Failed to get admin session:', error);
+      } catch {
+        console.warn('Failed to get admin session');
         adminSessionManager.removeSession();
         return null;
       }
@@ -176,7 +166,6 @@ export const adminSessionManager = {
   removeSession: () => {
     if (typeof window !== 'undefined') {
       try {
-        console.log('🗑️ Removing admin session');
         sessionStorage.removeItem('admin_session_data');
         sessionStorage.removeItem('admin_session_token');
         localStorage.removeItem('admin_session_data');
@@ -187,9 +176,8 @@ export const adminSessionManager = {
           sessionStorage.removeItem('session_type');
         }
 
-        console.log('✅ Admin session removed');
-      } catch (error) {
-        console.error('❌ Failed to remove admin session:', error);
+      } catch {
+        console.warn('Failed to remove admin session');
       }
     }
   },

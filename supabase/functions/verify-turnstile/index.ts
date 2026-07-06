@@ -69,11 +69,7 @@ Deno.serve(async (req: Request) => {
     const result = await verifyResponse.json();
 
     if (!result?.success) {
-      console.warn('Turnstile verification failed', {
-        action,
-        remoteip,
-        errorCodes: result?.['error-codes'] || [],
-      });
+      console.warn('Turnstile verification failed');
 
       return new Response(JSON.stringify({
         success: false,
@@ -86,11 +82,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (expectedSiteKey && result?.sitekey && result.sitekey !== expectedSiteKey) {
-      console.warn('Turnstile site key mismatch', {
-        action,
-        remoteip,
-        hostname: result?.hostname,
-      });
+      console.warn('Turnstile site key mismatch');
 
       return new Response(JSON.stringify({
         success: false,

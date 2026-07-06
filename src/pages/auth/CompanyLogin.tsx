@@ -46,7 +46,6 @@ const CompanyLogin: React.FC = () => {
       const returnToPayment = location.state?.returnToPayment;
       
       if (selectedPlanId && returnToPayment) {
-        console.log('💳 Redirecting to payment with selected plan:', selectedPlanId);
         navigate('/payment', { 
           state: { 
             selectedPlanId, 
@@ -54,10 +53,8 @@ const CompanyLogin: React.FC = () => {
           } 
         });
       } else if (from) {
-        console.log('🔄 Redirecting to originally requested page:', from);
         navigate(from);
       } else {
-        console.log('🏠 Default redirect to dashboard');
         navigate('/company/dashboard');
       }
     } catch (err) {
