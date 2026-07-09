@@ -62,7 +62,22 @@ const PUBLIC_SYSTEM_SETTING_KEYS = [
   'password_prevent_sequences',
   'password_prevent_repeats',
   'password_max_consecutive',
-  'password_min_unique_chars'
+  'password_min_unique_chars',
+  'payment_mode',
+  'usdt_address',
+  'usdt_address_testnet',
+  'usdt_address_mainnet',
+  'admin_payment_wallet',
+  'admin_payment_wallet_testnet',
+  'admin_payment_wallet_mainnet',
+  'withdrawal_enabled',
+  'withdrawal_disabled_message',
+  'withdrawal_min_amount',
+  'reward_withdrawal_min_amount',
+  'withdrawal_step_amount',
+  'withdrawal_commission_percent',
+  'withdrawal_auto_transfer',
+  'withdrawal_processing_days'
 ];
 
 interface GeneralSettings {
