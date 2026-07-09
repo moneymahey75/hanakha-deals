@@ -267,6 +267,17 @@ export class WalletService {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  private getProviderErrorMessage(error: any): string {
+    return String(
+      error?.shortMessage ||
+      error?.reason ||
+      error?.data?.message ||
+      error?.error?.message ||
+      error?.message ||
+      ''
+    ).trim();
+  }
+
   private async assertCorrectNetwork(): Promise<void> {
     if (!this.provider) {
       throw new Error('Provider not initialized');
@@ -837,14 +848,19 @@ export class WalletService {
         throw new Error('Network switch cancelled by user');
       } else {
         const networkConfig = this.getNetworkConfig();
-        const message = String(switchError?.message || '').toLowerCase();
+        const errorMessage = this.getProviderErrorMessage(switchError);
+        const message = errorMessage.toLowerCase();
         if (
           networkConfig.chainId === BSC_TESTNET_CONFIG.chainId &&
           (message.includes('not supported') || message.includes('unsupported'))
         ) {
           throw new Error('Bitget Wallet does not support switching to BSC Testnet from this dApp. If you already added BSC Testnet, select it manually inside Bitget and try again. Otherwise use TokenPocket/MetaMask for testnet or switch payment mode to Live/Mainnet.');
         }
-        throw new Error(`Failed to switch network: ${switchError.message}`);
+        throw new Error(
+          errorMessage
+            ? `Failed to switch network: ${errorMessage}`
+            : `Failed to switch network. Please select ${networkConfig.chainName} in your wallet and try again.`
+        );
       }
     }
   }

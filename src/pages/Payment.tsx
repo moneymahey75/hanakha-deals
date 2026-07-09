@@ -223,6 +223,19 @@ const Payment: React.FC = () => {
     });
   }, [availableWallets, enabledWallets]);
 
+  const isLaunchedCheckout = (settings?.launchPhase || 'prelaunch') === 'launched';
+  const effectivePaymentMode = isLaunchedCheckout ? '1' : (settings?.paymentMode?.toString() || '0');
+  const effectiveUsdtAddress = String(
+    isLaunchedCheckout
+      ? (settings?.usdtAddressMainnet || settings?.usdtAddress || '')
+      : (settings?.usdtAddressTestnet || settings?.usdtAddress || '')
+  ).trim();
+  const effectiveAdminPaymentWallet = String(
+    isLaunchedCheckout
+      ? (settings?.adminPaymentWalletMainnet || settings?.adminPaymentWallet || '')
+      : (settings?.adminPaymentWalletTestnet || settings?.adminPaymentWallet || '')
+  ).trim();
+
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
   const selectedPlanType = String(selectedPlan?.tsp_type || '').toLowerCase();
@@ -244,7 +257,7 @@ const Payment: React.FC = () => {
   const reservedAmountToVanishForUpgrade = useReservedBalance && isUpgradePlanUi
     ? Math.max(0, workingWalletReservedBalance - Number(selectedPlan?.tsp_price || 0))
     : 0;
-  const adminReceivingWallet = String(settings?.adminPaymentWallet || '').trim();
+  const adminReceivingWallet = effectiveAdminPaymentWallet;
 
   const loadWorkingWalletReservedBalance = useCallback(async () => {
     if (!user?.id) return;
@@ -300,24 +313,24 @@ const Payment: React.FC = () => {
       // Validate admin settings before using them
       const validateAddress = (addr: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(addr);
 
-      if (!validateAddress(String(settings.usdtAddress || '')) && String(settings.usdtAddress || '') !== '') {
+      if (!validateAddress(effectiveUsdtAddress) && effectiveUsdtAddress !== '') {
         notification.showError('Configuration Error', 'Invalid USDT contract address');
         return;
       }
 
-      if (!validateAddress(String(settings.adminPaymentWallet || '')) && String(settings.adminPaymentWallet || '') !== '') {
+      if (!validateAddress(effectiveAdminPaymentWallet) && effectiveAdminPaymentWallet !== '') {
         notification.showError('Configuration Error', 'Invalid admin payment wallet');
         return;
       }
 
       walletService.setAdminSettings({
-        paymentMode: settings.paymentMode?.toString() || '0',
-        usdtAddress: settings.usdtAddress || '',
+        paymentMode: effectivePaymentMode,
+        usdtAddress: effectiveUsdtAddress,
         subscriptionContractAddress: '',
         subscriptionWalletAddress: ''
       });
     }
-  }, [settings, walletService, notification]);
+  }, [effectiveAdminPaymentWallet, effectivePaymentMode, effectiveUsdtAddress, settings, walletService, notification]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -435,7 +448,7 @@ const Payment: React.FC = () => {
     return price > 0 && price < 1000000; // Reasonable upper limit
   };
 
-  const networkName = getPaymentNetworkName(settings?.paymentMode);
+  const networkName = getPaymentNetworkName(effectivePaymentMode);
 
   const formatAddress = (address: string) => {
     if (!address) return '';
@@ -544,8 +557,8 @@ const Payment: React.FC = () => {
       p_currency: 'USDT',
       p_transaction_id: recoveredHash,
       p_gateway_response: {
-        blockchain: getPaymentNetworkName(settings.paymentMode),
-        usdt_contract: settings.usdtAddress,
+        blockchain: getPaymentNetworkName(effectivePaymentMode),
+        usdt_contract: effectiveUsdtAddress,
         admin_wallet: attempt.toAddress,
         transaction_hash: recoveredHash,
         wallet_address: attempt.walletAddress,
@@ -587,7 +600,7 @@ const Payment: React.FC = () => {
       amount: selectedPlan.tsp_price,
       transactionHash: recoveredHash,
       reservedUsed: attempt.reservedUsed,
-      network: getPaymentNetworkName(settings.paymentMode),
+      network: getPaymentNetworkName(effectivePaymentMode),
     });
     notification.showSuccess('Payment Recovered', 'TokenPocket payment was found and your upgrade has been activated.');
     goToPaymentSuccess({
@@ -961,8 +974,8 @@ const Payment: React.FC = () => {
       }
 
       walletService.setAdminSettings({
-        paymentMode: settings.paymentMode?.toString() || '0',
-        usdtAddress: settings.usdtAddress || '',
+        paymentMode: effectivePaymentMode,
+        usdtAddress: effectiveUsdtAddress,
         subscriptionContractAddress: '',
         subscriptionWalletAddress: ''
       });
@@ -1016,8 +1029,8 @@ const Payment: React.FC = () => {
           p_currency: 'USDT',
           p_transaction_id: hash,
           p_gateway_response: {
-            blockchain: getPaymentNetworkName(settings.paymentMode),
-            usdt_contract: settings.usdtAddress,
+            blockchain: getPaymentNetworkName(effectivePaymentMode),
+            usdt_contract: effectiveUsdtAddress,
             admin_wallet: adminReceivingWallet,
             transaction_hash: hash,
             wallet_address: walletState.address,
@@ -1058,7 +1071,7 @@ const Payment: React.FC = () => {
           amount: selectedPlan.tsp_price,
           transactionHash: hash,
           reservedUsed: reservedUsedRounded,
-          network: getPaymentNetworkName(settings.paymentMode),
+          network: getPaymentNetworkName(effectivePaymentMode),
         });
         notification.showSuccess('Payment Successful!', 'Upgrade has been activated using reserved balance and USDT payment.');
         goToPaymentSuccess({
@@ -1133,7 +1146,7 @@ const Payment: React.FC = () => {
     }
 
     // Validate settings addresses
-    if (!validateAddress(String(settings.usdtAddress || '')) && String(settings.usdtAddress || '') !== '') {
+    if (!validateAddress(effectiveUsdtAddress) && effectiveUsdtAddress !== '') {
       notification.showError('Configuration Error', 'Invalid USDT contract address in settings');
       return;
     }
@@ -1145,8 +1158,8 @@ const Payment: React.FC = () => {
 
     // Set admin settings again before payment to ensure they're current
     walletService.setAdminSettings({
-      paymentMode: settings.paymentMode?.toString() || '0',
-      usdtAddress: settings.usdtAddress || '',
+      paymentMode: effectivePaymentMode,
+      usdtAddress: effectiveUsdtAddress,
       subscriptionContractAddress: '',
       subscriptionWalletAddress: ''
     });
@@ -1190,8 +1203,8 @@ const Payment: React.FC = () => {
       setTransaction(finalTransactionState);
 
       const gatewayResponse = {
-        blockchain: getPaymentNetworkName(settings.paymentMode),
-        usdt_contract: settings.usdtAddress,
+        blockchain: getPaymentNetworkName(effectivePaymentMode),
+        usdt_contract: effectiveUsdtAddress,
         admin_wallet: adminReceivingWallet,
         transaction_hash: hash,
         wallet_address: walletState.address,
@@ -1244,7 +1257,7 @@ const Payment: React.FC = () => {
           planName: selectedPlan.tsp_name,
           amount: selectedPlan.tsp_price,
           transactionHash: hash,
-          network: getPaymentNetworkName(settings.paymentMode),
+          network: getPaymentNetworkName(effectivePaymentMode),
         });
       }
 
@@ -1297,8 +1310,8 @@ const Payment: React.FC = () => {
               tp_transaction_id: transaction.hash,
               tp_error_message: errorMessage,
               tp_gateway_response: {
-                blockchain: getPaymentNetworkName(settings.paymentMode),
-                usdt_contract: settings.usdtAddress,
+                blockchain: getPaymentNetworkName(effectivePaymentMode),
+                usdt_contract: effectiveUsdtAddress,
                 admin_wallet: adminReceivingWallet,
                 transaction_hash: transaction.hash,
                 wallet_address: walletState.address,
@@ -1348,25 +1361,36 @@ const Payment: React.FC = () => {
     try {
       setIsConnecting(true);
 
-      // Find the appropriate provider for the wallet type
-      let provider = null;
+      const walletTypeToName: Record<string, string> = {
+        metamask: 'MetaMask',
+        trust: 'Trust Wallet',
+        safepal: 'SafePal',
+        tokenpocket: 'TokenPocket',
+        bitget: 'Bitget Wallet',
+        binance: 'Binance Chain Wallet',
+      };
       const walletType = lastConnectedWallet.tuwc_wallet_type;
+      const savedWalletName = walletTypeToName[walletType] || lastConnectedWallet.tuwc_wallet_name;
+      let provider = filteredWallets.find((wallet) => (
+        wallet.name === savedWalletName || getWalletType(wallet.provider) === walletType
+      ))?.provider || null;
 
-      if (walletType === 'metamask' && (window as any).ethereum?.isMetaMask) {
-        provider = (window as any).ethereum;
-      } else if (walletType === 'trust' && (window as any).ethereum?.isTrust) {
-        provider = (window as any).ethereum;
-      } else if (walletType === 'safepal' && (window as any).ethereum?.isSafePal) {
-        provider = (window as any).ethereum;
-      } else if (walletType === 'tokenpocket' && ((window as any).ethereum?.isTokenPocket || (window as any).tokenpocket?.ethereum)) {
-        provider = (window as any).tokenpocket?.ethereum || (window as any).ethereum;
-      } else if (walletType === 'bitget' && ((window as any).ethereum?.isBitKeep || (window as any).ethereum?.isBitkeep || (window as any).ethereum?.isBitKeepChrome || (window as any).ethereum?.isBitget || (window as any).ethereum?.isBitgetWallet || (window as any).bitkeep?.ethereum || (window as any).bitkeep?.ethereumProvider || (window as any).bitkeep?.request || (window as any).bitget?.ethereum || (window as any).bitget?.ethereumProvider || (window as any).bitget?.request || (window as any).BitKeep?.ethereum || (window as any).BitKeep?.ethereumProvider || (window as any).BitKeep?.request || (window as any).bitgetWallet)) {
-        provider = (window as any).bitkeep?.ethereum || (window as any).bitkeep?.ethereumProvider || (window as any).bitkeep || (window as any).bitget?.ethereum || (window as any).bitget?.ethereumProvider || (window as any).bitget || (window as any).BitKeep?.ethereum || (window as any).BitKeep?.ethereumProvider || (window as any).BitKeep || (window as any).bitgetWallet || (window as any).ethereum;
-      } else if (walletType === 'binance' && (window as any).BinanceChain) {
-        provider = (window as any).BinanceChain;
-      } else if ((window as any).ethereum) {
-        // Fallback to generic Ethereum provider
-        provider = (window as any).ethereum;
+      if (!provider) {
+        if (walletType === 'metamask' && (window as any).ethereum?.isMetaMask) {
+          provider = (window as any).ethereum;
+        } else if (walletType === 'trust' && ((window as any).ethereum?.isTrust || (window as any).ethereum?.isTrustWallet)) {
+          provider = (window as any).ethereum;
+        } else if (walletType === 'safepal' && (window as any).ethereum?.isSafePal) {
+          provider = (window as any).ethereum;
+        } else if (walletType === 'tokenpocket' && ((window as any).ethereum?.isTokenPocket || (window as any).tokenpocket?.ethereum)) {
+          provider = (window as any).tokenpocket?.ethereum || (window as any).ethereum;
+        } else if (walletType === 'bitget' && ((window as any).ethereum?.isBitKeep || (window as any).ethereum?.isBitkeep || (window as any).ethereum?.isBitKeepChrome || (window as any).ethereum?.isBitget || (window as any).ethereum?.isBitgetWallet || (window as any).bitkeep?.ethereum || (window as any).bitkeep?.ethereumProvider || (window as any).bitkeep?.request || (window as any).bitget?.ethereum || (window as any).bitget?.ethereumProvider || (window as any).bitget?.request || (window as any).BitKeep?.ethereum || (window as any).BitKeep?.ethereumProvider || (window as any).BitKeep?.request || (window as any).bitgetWallet)) {
+          provider = (window as any).bitkeep?.ethereum || (window as any).bitkeep?.ethereumProvider || (window as any).bitkeep || (window as any).bitget?.ethereum || (window as any).bitget?.ethereumProvider || (window as any).bitget || (window as any).BitKeep?.ethereum || (window as any).BitKeep?.ethereumProvider || (window as any).BitKeep || (window as any).bitgetWallet || (window as any).ethereum;
+        } else if (walletType === 'binance' && (window as any).BinanceChain) {
+          provider = (window as any).BinanceChain;
+        } else if ((window as any).ethereum) {
+          provider = (window as any).ethereum;
+        }
       }
 
       if (!provider) {
