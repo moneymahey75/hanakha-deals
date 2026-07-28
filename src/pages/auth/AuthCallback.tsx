@@ -65,7 +65,8 @@ const AuthCallback: React.FC = () => {
 
           if (data.session) {
             sessionStorage.removeItem('customer_logout_in_progress');
-            sessionStorage.setItem('session_type', 'customer');
+            sessionStorage.setItem('session_type', 'admin_impersonation');
+            sessionStorage.setItem('admin_impersonation_customer_id', String(payload.customerId || data.session.user.id));
             sessionManager.saveSession(data.session);
             notification.showSuccess('Customer Session Started', 'Opening customer dashboard.');
             navigate('/customer/dashboard', { replace: true });

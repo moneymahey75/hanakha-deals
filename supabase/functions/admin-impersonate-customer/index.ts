@@ -72,13 +72,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (!customer.tu_is_active) {
-      return new Response(JSON.stringify({ success: false, error: 'Customer account is not active' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const customerEmail = String(customer.tu_email || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
       return new Response(JSON.stringify({ success: false, error: 'Customer email is invalid' }), {
@@ -146,6 +139,7 @@ Deno.serve(async (req: Request) => {
     await logAdminAction(adminClient, admin.tau_id, 'impersonate_customer', 'customers', {
       customer_id: customer.tu_id,
       auth_email_synced: authEmail !== customerEmail,
+      customer_is_active: customer.tu_is_active === true,
     });
 
     return new Response(

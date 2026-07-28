@@ -162,6 +162,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('User data not found');
       }
 
+      if (userData?.tu_is_active === false && sessionStorage.getItem('session_type') !== 'admin_impersonation') {
+        userLoadSequenceRef.current += 1;
+        sessionManager.removeSession(userId);
+        sessionStorage.removeItem('session_type');
+        sessionStorage.removeItem('last_customer_route');
+        localStorage.removeItem('last_customer_route');
+        await supabase.auth.signOut();
+        setUser(null);
+        notification.showError('Account Disabled', 'Your account has been disabled. Please contact support.');
+        return;
+      }
+
       const registrationPaid = userData?.tu_registration_paid === true;
 
       const user: User = {
@@ -234,6 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.setItem('customer_logout_in_progress', 'true');
       sessionManager.removeSession(currentUserId);
       sessionStorage.removeItem('session_type');
+      sessionStorage.removeItem('admin_impersonation_customer_id');
       sessionStorage.removeItem('last_customer_route');
       localStorage.removeItem('last_customer_route');
       sessionStorage.removeItem('registration_payment_recovery_attempt');
@@ -485,7 +498,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: accountData, error: accountError } = await withTimeout(
           supabase
             .from('tbl_users')
-            .select('tu_user_type')
+            .select('tu_user_type, tu_is_active')
             .eq('tu_id', authData.user.id)
             .maybeSingle(),
           8000,
@@ -502,6 +515,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error(
             `${formatUserType(expectedUserType)} login is only for ${expectedUserType} accounts.`
           );
+        }
+
+        if (accountData.tu_is_active === false) {
+          userLoadSequenceRef.current += 1;
+          sessionManager.removeSession(authData.user.id);
+          sessionStorage.removeItem('session_type');
+          sessionStorage.removeItem('admin_impersonation_customer_id');
+          sessionStorage.removeItem('last_customer_route');
+          localStorage.removeItem('last_customer_route');
+          await supabase.auth.signOut();
+          setUser(null);
+          throw new Error('Your account has been disabled. Please contact support.');
         }
       }
 

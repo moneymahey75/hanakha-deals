@@ -396,11 +396,6 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
     };
 
     const handleCustomerLogin = async (customer: Customer) => {
-        if (!customer.tu_is_active) {
-            notification.showError('Login Blocked', 'Customer account is disabled');
-            return;
-        }
-
         try {
             setImpersonatingCustomerId(customer.tu_id);
             const data = await adminApi.post<{
@@ -811,13 +806,13 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                         {hasPermission('customers' as any, 'write') && (
                                             <button
                                                 onClick={() => handleCustomerLogin(customer)}
-                                                disabled={impersonatingCustomerId === customer.tu_id || !customer.tu_is_active}
+                                                disabled={impersonatingCustomerId === customer.tu_id}
                                                 className={`p-1 rounded ${
-                                                    impersonatingCustomerId === customer.tu_id || !customer.tu_is_active
+                                                    impersonatingCustomerId === customer.tu_id
                                                         ? 'text-gray-300 cursor-not-allowed'
                                                         : 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50'
                                                 }`}
-                                                title={customer.tu_is_active ? 'Login as Customer' : 'Customer account is disabled'}
+                                                title={customer.tu_is_active ? 'Login as Customer' : 'Login as disabled Customer'}
                                             >
                                                 <LogIn className={`h-4 w-4 ${impersonatingCustomerId === customer.tu_id ? 'animate-pulse' : ''}`} />
                                             </button>
@@ -1213,13 +1208,13 @@ const CustomerDetails: React.FC<{
                         {hasPermission('customers' as any, 'write') && (
                             <button
                                 onClick={() => onCustomerLogin(customer)}
-                                disabled={impersonatingCustomerId === customer.tu_id || !customer.tu_is_active}
+                                disabled={impersonatingCustomerId === customer.tu_id}
                                 className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                                    impersonatingCustomerId === customer.tu_id || !customer.tu_is_active
+                                    impersonatingCustomerId === customer.tu_id
                                         ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                                         : 'bg-emerald-600 text-white hover:bg-emerald-700'
                                 }`}
-                                title={customer.tu_is_active ? 'Login as Customer' : 'Customer account is disabled'}
+                                title={customer.tu_is_active ? 'Login as Customer' : 'Login as disabled Customer'}
                             >
                                 <LogIn className={`h-4 w-4 ${impersonatingCustomerId === customer.tu_id ? 'animate-pulse' : ''}`} />
                                 <span>Login as Customer</span>
