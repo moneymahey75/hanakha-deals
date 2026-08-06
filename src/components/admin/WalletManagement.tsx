@@ -42,6 +42,8 @@ interface WalletData {
   user_id: string;
   user_email: string;
   user_name: string;
+  user_username?: string;
+  user_sponsor_id?: string;
   user_type: 'customer' | 'company' | 'admin';
   user_is_dummy?: boolean;
   wallet_balance: number;
@@ -64,6 +66,8 @@ interface Transaction {
   user_info?: {
     email: string;
     name: string;
+    username?: string;
+    sponsor_id?: string;
     type: 'customer' | 'company' | 'admin';
     company_name?: string;
     is_dummy?: boolean;
@@ -76,6 +80,8 @@ interface User {
   tu_user_type: 'customer' | 'company' | 'admin';
   tup_first_name?: string;
   tup_last_name?: string;
+  tup_username?: string;
+  tup_sponsorship_number?: string;
   company_name?: string;
 }
 
@@ -583,8 +589,13 @@ const WalletManagement: React.FC = () => {
   };
 
   const filteredWallets = wallets.filter(wallet => {
-    const matchesSearch = wallet.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        wallet.user_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch || [
+      wallet.user_email,
+      wallet.user_name,
+      wallet.user_username,
+      wallet.user_sponsor_id,
+    ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
 
     const matchesType = wallet.user_type === userTypeFilter;
 
@@ -596,9 +607,14 @@ const WalletManagement: React.FC = () => {
   });
 
   const filteredTransactions = transactions.filter(tx => {
-    const matchesSearch = tx.user_info?.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tx.user_info?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tx.twt_description.toLowerCase().includes(searchTerm.toLowerCase());
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch || [
+      tx.user_info?.email,
+      tx.user_info?.name,
+      tx.user_info?.username,
+      tx.user_info?.sponsor_id,
+      tx.twt_description,
+    ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
 
     const matchesType = tx.user_info?.type === userTypeFilter;
 
@@ -836,7 +852,9 @@ const WalletManagement: React.FC = () => {
                     setCurrentPage(1); // Reset to first page when searching
                   }}
                   className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder={activeTab === 'wallets' ? 'Search users...' : 'Search transactions...'}
+                  placeholder={activeTab === 'wallets'
+                    ? 'Search by email, username, sponsor ID, or name...'
+                    : 'Search transactions by user or description...'}
               />
             </div>
           </div>
@@ -898,6 +916,11 @@ const WalletManagement: React.FC = () => {
                                     <div className="text-sm text-gray-500">
                                       {wallet.user_email}
                                     </div>
+                                    {(wallet.user_username || wallet.user_sponsor_id) && (
+                                      <div className="text-xs text-gray-500">
+                                        {[wallet.user_username ? `@${wallet.user_username}` : '', wallet.user_sponsor_id || ''].filter(Boolean).join(' • ')}
+                                      </div>
+                                    )}
                                     {wallet.user_is_dummy ? (
                                       <div className="mt-1">
                                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
@@ -949,6 +972,8 @@ const WalletManagement: React.FC = () => {
                                             tu_user_type: wallet.user_type,
                                             tup_first_name: wallet.user_name.split(' ')[0],
                                             tup_last_name: wallet.user_name.split(' ')[1],
+                                            tup_username: wallet.user_username,
+                                            tup_sponsorship_number: wallet.user_sponsor_id,
                                             company_name: wallet.company_name
                                           });
                                           setUserSearch(`${wallet.user_name} (${wallet.user_email})`);
@@ -1058,6 +1083,11 @@ const WalletManagement: React.FC = () => {
                                   <span className="text-sm text-gray-500">
                                     {transaction.user_info?.name} ({transaction.user_info?.email})
                                   </span>
+                                    {(transaction.user_info?.username || transaction.user_info?.sponsor_id) && (
+                                      <span className="text-xs text-gray-500">
+                                        {[transaction.user_info?.username ? `@${transaction.user_info.username}` : '', transaction.user_info?.sponsor_id || ''].filter(Boolean).join(' • ')}
+                                      </span>
+                                    )}
                                     {transaction.user_info?.is_dummy ? (
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
                                         Dummy
@@ -1185,7 +1215,7 @@ const WalletManagement: React.FC = () => {
                           value={userSearch}
                           onChange={(e) => setUserSearch(e.target.value)}
                           onFocus={() => userSearch.length > 2 && setShowUserDropdown(true)}
-                          placeholder="Search by name or email..."
+                          placeholder="Search by email, username, sponsor ID, or name..."
                           disabled={walletTransactionSubmitting || packageStatsSubmitting}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                           required
@@ -1205,6 +1235,11 @@ const WalletManagement: React.FC = () => {
                                     }
                                   </div>
                                   <div className="text-sm text-gray-600">{user.tu_email}</div>
+                                  {(user.tup_username || user.tup_sponsorship_number) && (
+                                    <div className="text-xs text-gray-500">
+                                      {[user.tup_username ? `@${user.tup_username}` : '', user.tup_sponsorship_number || ''].filter(Boolean).join(' • ')}
+                                    </div>
+                                  )}
                                   <div className="text-xs text-blue-600 capitalize">{user.tu_user_type}</div>
                                 </div>
                             ))}

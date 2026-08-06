@@ -11,7 +11,7 @@ import { WalletInfo as WalletInfoComponent } from '../components/payment/WalletI
 import { CheckCircle, CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle, Loader, XCircle, ExternalLink, Copy } from 'lucide-react';
 import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
 import { sendAccountEmail } from '../utils/accountEmails';
-import { getBscExplorerBaseUrl, getPaymentNetworkName } from '../utils/paymentMode';
+import { getBscExplorerBaseUrl, getPaymentNetworkName, isLivePaymentModeValue } from '../utils/paymentMode';
 
 interface SubscriptionPlan {
   tsp_id: string;
@@ -20,6 +20,7 @@ interface SubscriptionPlan {
   tsp_price: number;
   tsp_duration_days: number;
   tsp_type?: string;
+  tsp_product_code?: string | null;
   tsp_features: string[];
 }
 
@@ -223,15 +224,16 @@ const Payment: React.FC = () => {
     });
   }, [availableWallets, enabledWallets]);
 
-  const isLaunchedCheckout = (settings?.launchPhase || 'prelaunch') === 'launched';
-  const effectivePaymentMode = isLaunchedCheckout ? '1' : (settings?.paymentMode?.toString() || '0');
+  // The admin-selected payment mode is the single source of truth. Launch phase
+  // controls site availability only; it must never silently change the chain.
+  const effectivePaymentMode = settings?.paymentMode?.toString() || '0';
   const effectiveUsdtAddress = String(
-    isLaunchedCheckout
+    isLivePaymentModeValue(effectivePaymentMode)
       ? (settings?.usdtAddressMainnet || settings?.usdtAddress || '')
       : (settings?.usdtAddressTestnet || settings?.usdtAddress || '')
   ).trim();
   const effectiveAdminPaymentWallet = String(
-    isLaunchedCheckout
+    isLivePaymentModeValue(effectivePaymentMode)
       ? (settings?.adminPaymentWalletMainnet || settings?.adminPaymentWallet || '')
       : (settings?.adminPaymentWalletTestnet || settings?.adminPaymentWallet || '')
   ).trim();
@@ -239,14 +241,17 @@ const Payment: React.FC = () => {
   // FIX: If the user has an active plan (from DB check), force success status.
   // Otherwise, rely on the session storage flag.
   const selectedPlanType = String(selectedPlan?.tsp_type || '').toLowerCase();
+  const isAutopool20Plan = selectedPlan?.tsp_product_code === 'autopool_20';
   const isUpgradePaymentPage = selectedPlanType === 'upgrade';
   const isExistingPaidUser = Boolean(user?.registrationPaid || user?.hasActiveSubscription);
-  const isUpgradePlanUi = isUpgradePaymentPage && isExistingPaidUser;
+  const isUpgradePlanUi = isUpgradePaymentPage && isExistingPaidUser && !isAutopool20Plan;
   const hasActivePlan = Boolean(user?.hasActiveSubscription && !isUpgradePlanUi);
   const hasPaidSuccessfully = hasActivePlan || transaction.status === 'success';
   const canUseReservedForUpgradeUi = isUpgradePlanUi && workingWalletReservedBalance > 0;
-  const paymentPageTitle = isUpgradePaymentPage ? 'Upgrade Account' : 'Registration Payment';
-  const paymentPageDescription = isUpgradePaymentPage
+  const paymentPageTitle = isAutopool20Plan ? '20 USDT AutoPool Add-on' : isUpgradePaymentPage ? 'Upgrade Account' : 'Registration Payment';
+  const paymentPageDescription = isAutopool20Plan
+    ? 'Connect your wallet and pay 20 USDT to activate the separate eight-level AutoPool matrix.'
+    : isUpgradePaymentPage
     ? 'Connect your wallet and pay with USDT (BEP-20) to upgrade your account.'
     : 'Connect your wallet and pay with USDT (BEP-20) to complete your registration.';
 
@@ -329,8 +334,26 @@ const Payment: React.FC = () => {
         subscriptionContractAddress: '',
         subscriptionWalletAddress: ''
       });
+
+      const expectedChainId = isLivePaymentModeValue(effectivePaymentMode) ? 56 : 97;
+      if (walletState.isConnected && walletState.chainId !== expectedChainId) {
+        walletService.disconnect();
+        setWalletState({
+          isConnected: false,
+          address: null,
+          chainId: null,
+          balance: '0',
+          usdtBalance: '0',
+          walletName: null,
+          warning: null,
+        });
+        notification.showInfo(
+          'Payment Network Changed',
+          `The admin selected ${getPaymentNetworkName(effectivePaymentMode)}. Please reconnect your wallet.`
+        );
+      }
     }
-  }, [effectiveAdminPaymentWallet, effectivePaymentMode, effectiveUsdtAddress, settings, walletService, notification]);
+  }, [effectiveAdminPaymentWallet, effectivePaymentMode, effectiveUsdtAddress, settings, walletService, walletState.chainId, walletState.isConnected, notification]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -821,10 +844,10 @@ const Payment: React.FC = () => {
       }
 
       const planType = String(selectedPlan.tsp_type || '').toLowerCase();
-      const isUpgradePlan = planType === 'upgrade' && Boolean(user.registrationPaid || user.hasActiveSubscription);
+      const isUpgradePlan = planType === 'upgrade' && Boolean(user.registrationPaid || user.hasActiveSubscription) && !isAutopool20Plan;
 
       // FIX: Re-check active subscription before payment
-      if (user.hasActiveSubscription && !isUpgradePlan) {
+      if (user.hasActiveSubscription && !isUpgradePlan && !isAutopool20Plan) {
         notification.showInfo('Already Subscribed', 'You already have an active subscription.');
         // Set local state to success to enforce the success UI path immediately
         setTransaction(prev => ({ ...prev, status: 'success' }));
@@ -1215,7 +1238,18 @@ const Payment: React.FC = () => {
         steps: steps
       };
 
-      const { data: paymentData, error: paymentError } = isUpgradePlan
+      const { data: paymentData, error: paymentError } = isAutopool20Plan
+        ? await supabase.rpc('create_autopool_20_payment', {
+          p_user_id: user.id,
+          p_plan_id: selectedPlan.tsp_id,
+          p_amount: selectedPlan.tsp_price,
+          p_currency: 'USDT',
+          p_payment_method: 'blockchain',
+          p_payment_status: 'completed',
+          p_transaction_id: hash,
+          p_gateway_response: gatewayResponse,
+        })
+        : isUpgradePlan
         ? await supabase.rpc('create_upgrade_payment_with_reserved_and_chain', {
           p_user_id: user.id,
           p_plan_id: selectedPlan.tsp_id,
@@ -1593,6 +1627,8 @@ const Payment: React.FC = () => {
                 <WalletInfoComponent
                   wallet={walletState}
                   onDisconnect={handleWalletDisconnect}
+                  paymentMode={effectivePaymentMode}
+                  usdtAddress={effectiveUsdtAddress}
                   onRefresh={async () => {
                     const updated = await walletService.syncCurrentWalletState();
                     setWalletState(updated);
@@ -1671,15 +1707,15 @@ const Payment: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {!!String(settings?.usdtAddress || '').trim() && (
+                {!!effectiveUsdtAddress && (
                   <div className="flex justify-between items-center gap-3">
                     <span>USDT Contract</span>
                     <div className="flex items-center gap-2">
                       <code className="px-2 py-1 bg-gray-50 text-gray-900 rounded border border-gray-200 font-mono text-xs">
-                        {formatAddress(String(settings?.usdtAddress || '').trim())}
+                        {formatAddress(effectiveUsdtAddress)}
                       </code>
                       <button
-                        onClick={() => void copyToClipboard(String(settings?.usdtAddress || '').trim())}
+                        onClick={() => void copyToClipboard(effectiveUsdtAddress)}
                         className="p-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200"
                         title="Copy USDT contract"
                       >

@@ -89,6 +89,37 @@ const chunk = <T>(items: T[], size: number) => {
   return chunks;
 };
 
+type PlanFilter = 'all' | 'launch' | 'no_launch' | 'autopool';
+
+const getAutopoolUserIds = async (
+  supabase: ReturnType<typeof createClient>,
+  userIds: string[]
+) => {
+  const result = new Set<string>();
+  const uniqueUserIds = Array.from(new Set(userIds.map((id) => String(id || '').trim()).filter(Boolean)));
+
+  for (const idChunk of chunk(uniqueUserIds, 500)) {
+    const { data, error } = await supabase
+      .from('tbl_autopool_20_memberships')
+      .select('ta20_user_id')
+      .in('ta20_user_id', idChunk);
+    if (error) throw error;
+    for (const row of data || []) {
+      const userId = String((row as any)?.ta20_user_id || '').trim();
+      if (userId) result.add(userId);
+    }
+  }
+
+  return result;
+};
+
+const matchesPlanFilter = (row: any, planFilter: PlanFilter, autopoolUserIds: Set<string>) => {
+  if (planFilter === 'all') return true;
+  if (planFilter === 'autopool') return autopoolUserIds.has(String(row?.tu_id || '').trim());
+  if (planFilter === 'launch') return row?.has_launch_subscription === true;
+  return row?.has_launch_subscription !== true;
+};
+
 const getLaunchSubscriptionMap = async (
   supabase: ReturnType<typeof createClient>,
   userIds: string[]
@@ -332,6 +363,10 @@ Deno.serve(async (req: Request) => {
     const dummyFilter = ['all', 'real', 'dummy'].includes(dummyFilterRaw.toLowerCase())
       ? dummyFilterRaw.toLowerCase()
       : 'all';
+    const planFilterRaw = (normalizeString(body.planFilter) || 'all').toLowerCase();
+    const planFilter: PlanFilter = ['all', 'launch', 'no_launch', 'autopool'].includes(planFilterRaw)
+      ? planFilterRaw as PlanFilter
+      : 'all';
     const parentAccount = normalizeString(body.parentAccount) || null;
     const levelFilterRaw = body.levelFilter;
     const levelFilter = Number.isFinite(Number(levelFilterRaw)) && Number(levelFilterRaw) > 0
@@ -518,6 +553,9 @@ Deno.serve(async (req: Request) => {
         supabase,
         (users || []).map((u: any) => u.tu_id)
       );
+      const autopoolUserIds = planFilter === 'autopool'
+        ? await getAutopoolUserIds(supabase, (users || []).map((u: any) => u.tu_id))
+        : new Set<string>();
 
       const combined = (users || [])
         .map((u: any) => {
@@ -545,7 +583,7 @@ Deno.serve(async (req: Request) => {
           if (statusFilter === 'pending' && !isPending) return null;
           if ((statusFilter === 'disabled' || statusFilter === 'inactive') && !isDisabled) return null;
 
-          return applyLaunchSubscriptionFields({
+          const customer = applyLaunchSubscriptionFields({
             tu_id: u.tu_id,
             tu_email: u.tu_email,
             tu_user_type: u.tu_user_type,
@@ -580,6 +618,8 @@ Deno.serve(async (req: Request) => {
             } : null,
             downline_level: levelMap.get(u.tu_id) ?? null
           }, launchSubscriptionByUserId);
+
+          return matchesPlanFilter(customer, planFilter, autopoolUserIds) ? customer : null;
         })
         .filter(Boolean) as any[];
 
@@ -710,6 +750,9 @@ Deno.serve(async (req: Request) => {
         supabase,
         (users || []).map((u: any) => u.tu_id)
       );
+      const autopoolUserIds = planFilter === 'autopool'
+        ? await getAutopoolUserIds(supabase, (users || []).map((u: any) => u.tu_id))
+        : new Set<string>();
 
       const combined = (users || [])
         .map((u: any) => {
@@ -736,7 +779,7 @@ Deno.serve(async (req: Request) => {
           if (statusFilter === 'pending' && !isPending) return null;
           if ((statusFilter === 'disabled' || statusFilter === 'inactive') && !isDisabled) return null;
 
-          return applyLaunchSubscriptionFields({
+          const customer = applyLaunchSubscriptionFields({
             tu_id: u.tu_id,
             tu_email: u.tu_email,
             tu_user_type: u.tu_user_type,
@@ -771,6 +814,8 @@ Deno.serve(async (req: Request) => {
             } : null,
             downline_level: null,
           }, launchSubscriptionByUserId);
+
+          return matchesPlanFilter(customer, planFilter, autopoolUserIds) ? customer : null;
         })
         .filter(Boolean) as any[];
 
@@ -788,14 +833,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data, error } = await supabase.rpc('admin_get_customers', {
+    const baseRpcParams = {
       p_search_term: searchTerm || null,
       p_status_filter: statusFilter || 'all',
       p_verification_filter: verificationFilter || 'all',
       p_offset: offset,
       p_limit: limit,
       p_dummy_filter: dummyFilter
-    });
+    };
+    const { data, error } = planFilter === 'all'
+      ? await supabase.rpc('admin_get_customers', baseRpcParams)
+      : await supabase.rpc('admin_get_customers_filtered', {
+        ...baseRpcParams,
+        p_plan_filter: planFilter
+      });
 
     if (error) {
       throw error;

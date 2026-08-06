@@ -18,7 +18,8 @@ import {
   CheckCircle,
   Target,
   Rocket,
-  DollarSign
+  DollarSign,
+  X
 } from 'lucide-react';
 
 type PromoCompany = {
@@ -39,6 +40,15 @@ const getInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const letters = parts.slice(0, 2).map((p) => p[0]).join('');
   return (letters || name.trim().slice(0, 2) || 'CO').toUpperCase();
+};
+
+const HOME_AUTOPOOL_POPUP_DISMISSED_KEY = 'home_autopool_popup_dismissed_date';
+
+const getLocalDateKey = () => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
 };
 
 const PromoCompanyLogo: React.FC<{ company: PromoCompany }> = ({ company }) => {
@@ -93,10 +103,36 @@ const PromoCompanyLogo: React.FC<{ company: PromoCompany }> = ({ company }) => {
 };
 
 const Home: React.FC = () => {
-  const { settings } = useAdmin();
+  const { settings, loading: settingsLoading } = useAdmin();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [showAutopoolPopup, setShowAutopoolPopup] = useState(false);
+
+  useEffect(() => {
+    if (settingsLoading) return;
+
+    if (settings.homeAutopoolPopupEnabled === false) {
+      setShowAutopoolPopup(false);
+      return;
+    }
+
+    try {
+      const dismissedDate = localStorage.getItem(HOME_AUTOPOOL_POPUP_DISMISSED_KEY);
+      setShowAutopoolPopup(dismissedDate !== getLocalDateKey());
+    } catch {
+      setShowAutopoolPopup(true);
+    }
+  }, [settings.homeAutopoolPopupEnabled, settingsLoading]);
+
+  const dismissAutopoolPopup = () => {
+    try {
+      localStorage.setItem(HOME_AUTOPOOL_POPUP_DISMISSED_KEY, getLocalDateKey());
+    } catch {
+      // Continue closing the popup if browser storage is unavailable.
+    }
+    setShowAutopoolPopup(false);
+  };
 
   const exampleCouponCompanies: PromoCompany[] = [
     { name: 'Shufersal', domain: 'shufersal.co.il' },
@@ -216,6 +252,55 @@ const Home: React.FC = () => {
 
   return (
     <div className="min-h-screen">
+      {showAutopoolPopup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="autopool-offer-title">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-emerald-300/60 bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-900 p-8 text-white shadow-2xl">
+            <button
+              type="button"
+              onClick={dismissAutopoolPopup}
+              aria-label="Close offer"
+              className="absolute right-4 top-4 rounded-full p-2 text-emerald-100 transition hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-amber-400 px-4 py-2 text-sm font-extrabold uppercase tracking-wide text-slate-950">
+              <Sparkles className="h-4 w-4" />
+              New Bumper Offer
+            </div>
+            <h2 id="autopool-offer-title" className="text-3xl font-black leading-tight sm:text-4xl">
+              20 USDT Matrix Plan
+            </h2>
+            <p className="mt-4 text-lg leading-relaxed text-emerald-50">
+              Join the separate eight-level AutoPool matrix with a one-time 20 USDT subscription.
+            </p>
+            <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
+              {['Separate matrix', 'Top-to-bottom placement', 'Eight levels', 'Add-on eligible'].map((item) => (
+                <div key={item} className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-3 text-emerald-50">
+                  <CheckCircle className="h-4 w-4 shrink-0 text-lime-300" />
+                  {item}
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                to="/upcoming-plan#autopool-20-matrix"
+                onClick={dismissAutopoolPopup}
+                className="flex-1 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-center font-extrabold text-slate-950 transition hover:from-amber-300 hover:to-orange-400"
+              >
+                View Plan
+              </Link>
+              <button
+                type="button"
+                onClick={dismissAutopoolPopup}
+                className="rounded-xl border border-white/30 px-5 py-3 font-semibold text-white transition hover:bg-white/10"
+              >
+                Maybe Later
+              </button>
+            </div>
+            <p className="mt-4 text-center text-xs text-emerald-100/70">This popup will stay hidden for the rest of today after closing.</p>
+          </div>
+        </div>
+      )}
       {/* Hero Slider Section */}
       <section className="relative h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="absolute inset-0">

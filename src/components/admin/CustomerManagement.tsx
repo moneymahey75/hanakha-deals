@@ -198,6 +198,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
     const [statusFilter, setStatusFilter] = useState('all');
     const [verificationFilter, setVerificationFilter] = useState('all');
     const [dummyFilter, setDummyFilter] = useState<'all' | 'real' | 'dummy'>('all');
+    const [planFilter, setPlanFilter] = useState<'all' | 'launch' | 'no_launch' | 'autopool'>('all');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [showCustomerDetails, setShowCustomerDetails] = useState(false);
     const [editMode, setEditMode] = useState(false);
@@ -244,6 +245,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                 statusFilter,
                 verificationFilter,
                 dummyFilter,
+                planFilter,
                 offset,
                 limit: itemsPerPage
             };
@@ -304,6 +306,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                 statusFilter,
                 verificationFilter,
                 dummyFilter,
+                planFilter,
                 offset,
                 limit: itemsPerPage
             });
@@ -317,11 +320,11 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
 
     useEffect(() => {
         loadCustomers();
-    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, dummyFilter, currentPage, itemsPerPage]);
+    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, dummyFilter, planFilter, currentPage, itemsPerPage]);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, dummyFilter]);
+    }, [searchTerm, parentAccountFilter, levelFilter, statusFilter, verificationFilter, dummyFilter, planFilter]);
 
     const handleViewCustomer = (customer: Customer) => {
         setSelectedCustomer(customer);
@@ -561,8 +564,8 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                 </div>
 
                 {/* Search and Filters */}
-                <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
-                    <div className="md:col-span-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-9 gap-4">
+                    <div className="md:col-span-2 xl:col-span-2">
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <Search className="h-5 w-5 text-gray-400" />
@@ -576,7 +579,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                             />
                         </div>
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-2 xl:col-span-2">
                         <input
                             type="text"
                             value={parentAccountFilter}
@@ -584,6 +587,19 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Filter by Parent Account (User ID)"
                         />
+                    </div>
+                    <div>
+                        <select
+                            value={planFilter}
+                            onChange={(e) => setPlanFilter(e.target.value as 'all' | 'launch' | 'no_launch' | 'autopool')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            title="Filter customers by plan group"
+                        >
+                            <option value="all">All Plan Groups</option>
+                            <option value="launch">Launch Users</option>
+                            <option value="no_launch">No Launch Users</option>
+                            <option value="autopool">AutoPool Matrix Users</option>
+                        </select>
                     </div>
                     <div>
                         <select
@@ -875,7 +891,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                     <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
                     <p className="text-gray-600">
-                        {searchTerm || statusFilter !== 'all' || verificationFilter !== 'all'
+                        {searchTerm || statusFilter !== 'all' || verificationFilter !== 'all' || planFilter !== 'all'
                             ? 'Try adjusting your search criteria'
                             : 'No customers have registered yet'}
                     </p>

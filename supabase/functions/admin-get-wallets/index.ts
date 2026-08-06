@@ -102,7 +102,9 @@ Deno.serve(async (req: Request) => {
         tu_is_dummy,
         tbl_user_profiles (
           tup_first_name,
-          tup_last_name
+          tup_last_name,
+          tup_username,
+          tup_sponsorship_number
         )
       `
       )
@@ -179,6 +181,8 @@ Deno.serve(async (req: Request) => {
             user_id: wallet.tw_user_id,
             user_email: userEmail,
             user_name: userName,
+            user_username: user?.tbl_user_profiles?.[0]?.tup_username || '',
+            user_sponsor_id: user?.tbl_user_profiles?.[0]?.tup_sponsorship_number || '',
             user_type: userType,
             user_is_dummy: dummyByUserId.get(String(wallet.tw_user_id)) ?? false,
             wallet_balance: Number(wallet.tw_balance),
@@ -198,6 +202,8 @@ Deno.serve(async (req: Request) => {
             user_name: user?.tbl_user_profiles?.[0]?.tup_first_name
               ? `${user.tbl_user_profiles[0].tup_first_name} ${user.tbl_user_profiles[0].tup_last_name || ''}`.trim()
               : user?.tu_email || 'Unknown User',
+            user_username: user?.tbl_user_profiles?.[0]?.tup_username || '',
+            user_sponsor_id: user?.tbl_user_profiles?.[0]?.tup_sponsorship_number || '',
             user_type: (user?.tu_user_type as 'customer' | 'company' | 'admin') || 'customer',
             user_is_dummy: dummyByUserId.get(String(wallet.tw_user_id)) ?? false,
             wallet_balance: Number(wallet.tw_balance),

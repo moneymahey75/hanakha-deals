@@ -31,6 +31,8 @@ const PUBLIC_SYSTEM_SETTING_KEYS = [
   'social_youtube_url',
   'social_whatsapp_url',
   'after_launch_plan_config',
+  'home_autopool_popup_enabled',
+  'autopool_user_counts_enabled',
   'launch_phase',
   'site_mode',
   'captcha_verification_enabled',
@@ -106,6 +108,8 @@ interface GeneralSettings {
   socialYoutubeUrl: string;
   socialWhatsappUrl: string;
   afterLaunchPlanConfig?: any;
+  homeAutopoolPopupEnabled: boolean;
+  autopoolUserCountsEnabled: boolean;
   launchPhase?: 'prelaunch' | 'launched';
   siteMode?: 'live' | 'development';
   captchaVerificationEnabled: boolean;
@@ -269,6 +273,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     socialYoutubeUrl: '',
     socialWhatsappUrl: '',
     afterLaunchPlanConfig: null,
+    homeAutopoolPopupEnabled: true,
+    autopoolUserCountsEnabled: true,
     launchPhase: 'prelaunch',
     siteMode: 'live',
     captchaVerificationEnabled: true,
@@ -520,6 +526,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'after_launch_plan_config':
                 loadedSettings.afterLaunchPlanConfig = value;
+                break;
+              case 'home_autopool_popup_enabled':
+                loadedSettings.homeAutopoolPopupEnabled = toBooleanSetting(value, true);
+                break;
+              case 'autopool_user_counts_enabled':
+                loadedSettings.autopoolUserCountsEnabled = toBooleanSetting(value, true);
                 break;
               case 'launch_phase': {
                 const phase = String(value || '').trim().toLowerCase();

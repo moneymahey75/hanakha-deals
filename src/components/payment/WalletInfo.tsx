@@ -9,10 +9,21 @@ interface WalletInfoProps {
   onDisconnect: () => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  paymentMode?: unknown;
+  usdtAddress?: string;
 }
 
-export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, onRefresh, refreshing }) => {
+export const WalletInfo: React.FC<WalletInfoProps> = ({
+  wallet,
+  onDisconnect,
+  onRefresh,
+  refreshing,
+  paymentMode,
+  usdtAddress,
+}) => {
   const { settings } = useAdmin();
+  const selectedPaymentMode = paymentMode ?? settings?.paymentMode;
+  const selectedUsdtAddress = String(usdtAddress ?? settings?.usdtAddress ?? '').trim();
 
   const copyAddress = () => {
     if (wallet.address) {
@@ -24,7 +35,7 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
 
   const openInExplorer = () => {
     if (wallet.address) {
-      const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/address/${wallet.address}`;
+      const explorerUrl = `${getBscExplorerBaseUrl(selectedPaymentMode)}/address/${wallet.address}`;
       window.open(explorerUrl, '_blank');
     }
   };
@@ -39,20 +50,18 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
   };
 
   const getNetworkName = () => {
-    return getPaymentNetworkName(settings?.paymentMode);
+    return getPaymentNetworkName(selectedPaymentMode);
   };
 
   const openTokenInExplorer = () => {
-    const contract = String(settings?.usdtAddress || '').trim();
-    if (!contract) return;
-    const explorerUrl = `${getBscExplorerBaseUrl(settings?.paymentMode)}/token/${contract}`;
+    if (!selectedUsdtAddress) return;
+    const explorerUrl = `${getBscExplorerBaseUrl(selectedPaymentMode)}/token/${selectedUsdtAddress}`;
     window.open(explorerUrl, '_blank');
   };
 
   const copyTokenContract = () => {
-    const contract = String(settings?.usdtAddress || '').trim();
-    if (!contract) return;
-    navigator.clipboard.writeText(contract);
+    if (!selectedUsdtAddress) return;
+    navigator.clipboard.writeText(selectedUsdtAddress);
   };
 
   return (
@@ -132,11 +141,11 @@ export const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onDisconnect, on
                 <div className="px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-gray-900 rounded border border-green-200 font-semibold">
                   {parseFloat(wallet.usdtBalance).toFixed(2)} USDT
                 </div>
-                {!!String(settings?.usdtAddress || '').trim() && (
+                {!!selectedUsdtAddress && (
                   <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
                     <span className="font-medium">USDT Contract:</span>
                     <code className="px-2 py-1 bg-gray-50 rounded border border-gray-200 font-mono">
-                      {formatContract(String(settings?.usdtAddress || '').trim())}
+                      {formatContract(selectedUsdtAddress)}
                     </code>
                     <button
                       onClick={copyTokenContract}

@@ -298,6 +298,27 @@ export class WalletService {
     return `${networkConfig.chainName} RPC is not responding in your wallet. Please update the network RPC URL in MetaMask and reconnect.`;
   }
 
+  private buildBalanceReadWarning(
+    bnbBalanceResult: PromiseSettledResult<string>,
+    usdtBalanceResult: PromiseSettledResult<string>
+  ): string | null {
+    const failedBalances = [
+      bnbBalanceResult.status === 'rejected' ? 'BNB' : null,
+      usdtBalanceResult.status === 'rejected' ? 'USDT' : null,
+    ].filter(Boolean);
+
+    if (failedBalances.length === 0) return null;
+
+    const hasRpcFailure =
+      (bnbBalanceResult.status === 'rejected' && this.isRpcFetchError(bnbBalanceResult.reason)) ||
+      (usdtBalanceResult.status === 'rejected' && this.isRpcFetchError(usdtBalanceResult.reason));
+
+    if (hasRpcFailure) return this.buildRpcUnavailableMessage();
+
+    const networkConfig = this.getNetworkConfig();
+    return `Could not read the ${failedBalances.join(' and ')} balance on ${networkConfig.chainName}. Check the selected network and configured USDT contract, then reconnect.`;
+  }
+
   private getReadonlyProvider(): ethers.JsonRpcProvider {
     const networkConfig = this.getNetworkConfig();
     return this.createReadonlyProvider(networkConfig.rpcUrls[0]);
@@ -760,10 +781,7 @@ export class WalletService {
 
       const balance = bnbBalanceResult.status === 'fulfilled' ? bnbBalanceResult.value : '0.00';
       const usdtBalance = usdtBalanceResult.status === 'fulfilled' ? usdtBalanceResult.value : '0.00';
-      const hasRpcWarning =
-        (bnbBalanceResult.status === 'rejected' && this.isRpcFetchError(bnbBalanceResult.reason)) ||
-        (usdtBalanceResult.status === 'rejected' && this.isRpcFetchError(usdtBalanceResult.reason));
-      const warning = hasRpcWarning ? this.buildRpcUnavailableMessage() : null;
+      const warning = this.buildBalanceReadWarning(bnbBalanceResult, usdtBalanceResult);
 
       const newWalletState: WalletState = {
         isConnected: true,
@@ -871,8 +889,25 @@ export class WalletService {
       throw new Error('Provider not initialized');
     }
 
-    const balance = await this.provider.getBalance(address);
-    return ethers.formatEther(balance);
+    try {
+      const balance = await this.provider.getBalance(address);
+      return ethers.formatEther(balance);
+    } catch (walletProviderError) {
+      let lastError: unknown = walletProviderError;
+
+      for (const provider of this.getReadonlyProviders()) {
+        try {
+          const balance = await provider.getBalance(address);
+          return ethers.formatEther(balance);
+        } catch (error) {
+          lastError = error;
+        } finally {
+          this.destroyReadonlyProvider(provider);
+        }
+      }
+
+      throw lastError;
+    }
   }
 
   async getBNBBalance(address: string): Promise<string> {
@@ -891,14 +926,32 @@ export class WalletService {
     }
 
     const usdtContractAddress = this.getUSDTContractAddress();
+    const readFromProvider = async (provider: ethers.Provider): Promise<string> => {
+      const contract = new ethers.Contract(usdtContractAddress, USDT_ABI, provider);
+      const [balance, decimals] = await Promise.all([
+        contract.balanceOf(address),
+        contract.decimals()
+      ]);
+      return ethers.formatUnits(balance, decimals);
+    };
 
-    const contract = new ethers.Contract(usdtContractAddress, USDT_ABI, this.provider);
-    const balance = await contract.balanceOf(address);
-    const decimals = await contract.decimals();
+    try {
+      return await readFromProvider(this.provider);
+    } catch (walletProviderError) {
+      let lastError: unknown = walletProviderError;
 
-    const formattedBalance = ethers.formatUnits(balance, decimals);
+      for (const provider of this.getReadonlyProviders()) {
+        try {
+          return await readFromProvider(provider);
+        } catch (error) {
+          lastError = error;
+        } finally {
+          this.destroyReadonlyProvider(provider);
+        }
+      }
 
-    return formattedBalance;
+      throw lastError;
+    }
   }
 
   async getUSDTBalance(address: string): Promise<string> {
@@ -1385,10 +1438,7 @@ export class WalletService {
 
     const balance = bnbBalanceResult.status === 'fulfilled' ? bnbBalanceResult.value : this.currentWalletState.balance || '0.00';
     const usdtBalance = usdtBalanceResult.status === 'fulfilled' ? usdtBalanceResult.value : this.currentWalletState.usdtBalance || '0.00';
-    const hasRpcWarning =
-      (bnbBalanceResult.status === 'rejected' && this.isRpcFetchError(bnbBalanceResult.reason)) ||
-      (usdtBalanceResult.status === 'rejected' && this.isRpcFetchError(usdtBalanceResult.reason));
-    const warning = hasRpcWarning ? this.buildRpcUnavailableMessage() : null;
+    const warning = this.buildBalanceReadWarning(bnbBalanceResult, usdtBalanceResult);
 
     const newWalletState: WalletState = {
       ...this.currentWalletState,

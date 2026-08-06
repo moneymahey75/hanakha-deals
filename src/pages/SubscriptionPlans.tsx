@@ -14,6 +14,7 @@ interface SubscriptionPlan {
   tsp_features: any;
   tsp_is_active: boolean;
   tsp_plan_phase?: string | null;
+  tsp_product_code?: string | null;
   tsp_created_at: string;
 }
 
@@ -24,10 +25,12 @@ interface ActivePackage {
   tus_package_kind?: 'registration' | 'upgrade' | 'renew' | null;
   tus_end_date?: string | null;
   tus_start_date?: string | null;
+  tus_product_code?: string | null;
   plan?: {
     tsp_id: string;
     tsp_price: number | null;
     tsp_plan_phase?: string | null;
+    tsp_product_code?: string | null;
   } | null;
 }
 
@@ -173,7 +176,8 @@ const SubscriptionPlans: React.FC = () => {
           plan:tus_plan_id(
             tsp_id,
             tsp_price,
-            tsp_plan_phase
+            tsp_plan_phase,
+            tsp_product_code
           )
         `)
         .eq('tus_user_id', user.id)
@@ -189,11 +193,13 @@ const SubscriptionPlans: React.FC = () => {
         tus_package_kind: row.tus_package_kind,
         tus_end_date: row.tus_end_date,
         tus_start_date: row.tus_start_date,
+        tus_product_code: row.plan?.tsp_product_code || null,
         plan: row.plan
           ? {
               tsp_id: row.plan.tsp_id,
               tsp_price: row.plan.tsp_price == null ? null : Number(row.plan.tsp_price),
               tsp_plan_phase: row.plan.tsp_plan_phase,
+              tsp_product_code: row.plan.tsp_product_code,
             }
           : null,
       })));
@@ -204,6 +210,7 @@ const SubscriptionPlans: React.FC = () => {
   };
 
   const normalizeAmount = (value: number | null | undefined) => Number(Number(value || 0).toFixed(6));
+  const isAutopool20Plan = (plan: SubscriptionPlan) => plan.tsp_product_code === 'autopool_20';
 
   const isActivePackageUsable = (pkg: ActivePackage) => {
     if (pkg.tus_end_date) {
@@ -211,7 +218,7 @@ const SubscriptionPlans: React.FC = () => {
       if (Number.isFinite(end) && end <= Date.now()) return false;
     }
 
-    if (pkg.tus_start_date) {
+    if (pkg.tus_start_date && pkg.tus_product_code !== 'autopool_20' && pkg.plan?.tsp_product_code !== 'autopool_20') {
       const start = new Date(pkg.tus_start_date);
       if (Number.isFinite(start.getTime())) {
         const today = new Date();
@@ -228,9 +235,16 @@ const SubscriptionPlans: React.FC = () => {
   const hasActiveSamePackage = (plan: SubscriptionPlan) => {
     const planAmount = normalizeAmount(plan.tsp_price);
     const planPhase = String(plan.tsp_plan_phase || 'prelaunch');
+    const targetIsAutopool20 = isAutopool20Plan(plan);
 
     return activePackages.some((pkg) => {
       if (!isActivePackageUsable(pkg)) return false;
+      const packageIsAutopool20 = pkg.tus_product_code === 'autopool_20' || pkg.plan?.tsp_product_code === 'autopool_20';
+
+      if (targetIsAutopool20 || packageIsAutopool20) {
+        return targetIsAutopool20 && packageIsAutopool20 && pkg.tus_plan_id === plan.tsp_id;
+      }
+
       const packageAmount = normalizeAmount(pkg.tus_payment_amount ?? pkg.plan?.tsp_price ?? 0);
       const packagePhase = String(pkg.tus_plan_phase || pkg.plan?.tsp_plan_phase || 'prelaunch');
 
@@ -239,11 +253,13 @@ const SubscriptionPlans: React.FC = () => {
   };
 
   const hasHigherActivePackage = (plan: SubscriptionPlan) => {
+    if (isAutopool20Plan(plan)) return false;
     const planAmount = normalizeAmount(plan.tsp_price);
     const planPhase = String(plan.tsp_plan_phase || 'prelaunch');
 
     return activePackages.some((pkg) => {
       if (!isActivePackageUsable(pkg)) return false;
+      if (pkg.tus_product_code === 'autopool_20' || pkg.plan?.tsp_product_code === 'autopool_20') return false;
       const packageAmount = normalizeAmount(pkg.tus_payment_amount ?? pkg.plan?.tsp_price ?? 0);
       const packagePhase = String(pkg.tus_plan_phase || pkg.plan?.tsp_plan_phase || 'prelaunch');
       return packagePhase === planPhase && packageAmount > planAmount;
@@ -385,6 +401,7 @@ const SubscriptionPlans: React.FC = () => {
         ) : plans.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {plans.map((plan, index) => {
+              const isAutopool20 = isAutopool20Plan(plan);
               const alreadyActive = hasActiveSamePackage(plan);
               const blockedByHigherPackage = hasHigherActivePackage(plan);
 
@@ -427,6 +444,7 @@ const SubscriptionPlans: React.FC = () => {
                   </div>
                   
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.tsp_name}</h3>
+                  {isAutopool20 && <div className="text-sm font-semibold text-emerald-700 mb-2">Separate add-on matrix plan</div>}
                   
                   {/* USDT Price Display - Same as admin panel */}
                   <div className="flex items-center justify-center mb-4">
@@ -436,7 +454,7 @@ const SubscriptionPlans: React.FC = () => {
                   
                   <div className="flex items-center justify-center space-x-2 text-gray-600">
                     <Calendar className="h-4 w-4" />
-                    <span>Up to 200 days earning window</span>
+                    <span>{isAutopool20 ? 'Eight-level matrix placement' : 'Up to 200 days earning window'}</span>
                   </div>
                   
                   <p className="text-gray-600 mt-3">{plan.tsp_description}</p>
@@ -466,8 +484,8 @@ const SubscriptionPlans: React.FC = () => {
                       <div className="text-xs text-gray-600">USDT Price</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-gray-900">200</div>
-                      <div className="text-xs text-gray-600">Earning Days</div>
+                      <div className="text-lg font-bold text-gray-900">{isAutopool20 ? '4×4' : '200'}</div>
+                      <div className="text-xs text-gray-600">{isAutopool20 ? 'Matrix structure' : 'Earning Days'}</div>
                     </div>
                   </div>
                 </div>
@@ -507,6 +525,8 @@ const SubscriptionPlans: React.FC = () => {
                       ? 'Renewal opens after this package is exhausted.'
                       : blockedByHigherPackage
                       ? 'Lower package purchases are blocked while a higher package is active.'
+                      : isAutopool20
+                      ? '✓ Add-on eligible • ✓ Separate matrix • ✓ USDT payment'
                       : '✓ Instant activation • ✓ 24/7 support • ✓ USDT payments'}
                   </p>
                 </div>

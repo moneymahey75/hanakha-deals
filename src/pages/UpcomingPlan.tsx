@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import {
@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Gift,
   Layers,
+  Network,
   Rocket,
   ShieldCheck,
   Users
@@ -16,6 +17,19 @@ const UpcomingPlan: React.FC = () => {
   const { settings } = useAdmin();
   const launchPhase = (settings?.launchPhase || 'prelaunch') as 'prelaunch' | 'launched';
   const isLaunched = launchPhase === 'launched';
+
+  useEffect(() => {
+    if (!window.location.hash) return;
+
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    const scrollToTarget = () => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    const timer = window.setTimeout(scrollToTarget, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const afterLaunchConfig = (settings as any)?.afterLaunchPlanConfig || null;
   const rewards = [
     {
@@ -344,6 +358,85 @@ const UpcomingPlan: React.FC = () => {
               </div>
             </div>
           </div>
+            </div>
+          </section>
+
+          <section id="autopool-20-matrix" className="scroll-mt-8 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-900 text-white shadow-xl">
+            <div className="border-b border-white/10 px-6 py-6 sm:px-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl bg-amber-400/15 p-3">
+                    <Network className="h-7 w-7 text-amber-300" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">New bumper offer</div>
+                    <h2 className="mt-1 text-2xl font-extrabold sm:text-3xl">20 USDT Matrix Plan</h2>
+                  </div>
+                </div>
+                <Link
+                  to="/subscription-plans"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-amber-300"
+                >
+                  View Plan <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+              <p className="mt-5 max-w-4xl text-base leading-relaxed text-emerald-50/90">
+                This is a separate one-time 20 USDT subscription. It uses its own AutoPool matrix and does not replace or modify the existing 5, 50, 100, or 200 USDT plan structures.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 px-6 py-6 sm:px-8 lg:grid-cols-[1.05fr_1.95fr]">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                  <h3 className="text-lg font-bold text-white">How it works</h3>
+                  <ul className="mt-4 space-y-3 text-sm leading-relaxed text-emerald-50/85">
+                    <li><span className="font-bold text-amber-300">1.</span> The first buyer occupies the top position.</li>
+                    <li><span className="font-bold text-amber-300">2.</span> New buyers are placed top-to-bottom and left-to-right.</li>
+                    <li><span className="font-bold text-amber-300">3.</span> Each member can have up to 4 members at the next matrix level.</li>
+                    <li><span className="font-bold text-amber-300">4.</span> The matrix is separate from the existing referral tree.</li>
+                  </ul>
+                </div>
+                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-5">
+                  <div className="text-sm font-bold uppercase tracking-wide text-lime-300">Eligibility</div>
+                  <p className="mt-2 text-sm leading-relaxed text-emerald-50/90">
+                    Existing active users may buy it as an add-on. New users may buy it alone or together with an eligible 50, 100, or 200 USDT plan.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5 p-4">
+                <h3 className="px-2 pb-3 text-lg font-bold text-white">Matrix levels and milestone schedule</h3>
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-emerald-200/70">
+                      <th className="px-3 py-3">Level</th>
+                      <th className="px-3 py-3">Members</th>
+                      <th className="px-3 py-3">Milestone reward</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      [1, '4', '1 USDT'],
+                      [2, '16', '8 USDT'],
+                      [3, '64', '32 USDT'],
+                      [4, '256', '128 USDT'],
+                      [5, '1,024', '512 USDT'],
+                      [6, '4,096', '1,024 USDT'],
+                      [7, '16,384', '4,096 USDT'],
+                      [8, '65,536', '16,384 USDT'],
+                    ].map(([level, members, reward]) => (
+                      <tr key={level} className="border-b border-white/10 last:border-0">
+                        <td className="px-3 py-3 font-semibold text-white">Level {level}</td>
+                        <td className="px-3 py-3 text-emerald-50/85">{members}</td>
+                        <td className="px-3 py-3 font-bold text-amber-300">{reward}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="border-t border-white/10 px-6 py-4 text-xs leading-relaxed text-emerald-100/65 sm:px-8">
+              Rewards are milestone-based and subject to the platform’s applicable rules, availability, and legal requirements. This plan is separate from the existing earning plans.
             </div>
           </section>
 

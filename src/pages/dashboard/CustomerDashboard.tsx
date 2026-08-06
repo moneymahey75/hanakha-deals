@@ -13,6 +13,7 @@ import WithdrawalsDashboard from '../../components/customer/WithdrawalsDashboard
 import ProfileUpdateForm from '../../components/customer/ProfileUpdateForm';
 import PasswordUpdateForm from '../../components/customer/PasswordUpdateForm';
 import SpinWheel from '../../components/customer/SpinWheel';
+import AutopoolMatrixProgress from '../../components/customer/AutopoolMatrixProgress';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import {
   Users,
@@ -40,6 +41,7 @@ import {
   Gem,
   Medal,
   ShieldCheck,
+  Network,
 } from 'lucide-react';
 import MyNetwork from "../../components/mlm/MyNetwork";
 import { formatWithdrawalFailureShort } from '../../utils/withdrawalMessages';
@@ -143,7 +145,7 @@ const getPackageBadgeConfig = (packageName: string) => {
 const CustomerDashboard: React.FC = () => {
   const { user } = useAuth();
   const notification = useNotification();
-  const { settings } = useAdmin();
+  const { settings, loading: settingsLoading } = useAdmin();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -163,6 +165,7 @@ const CustomerDashboard: React.FC = () => {
   const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
+  const autopoolCountsVisible = !settingsLoading && settings.autopoolUserCountsEnabled;
 
   useEffect(() => {
     currentUserIdRef.current = user?.id || null;
@@ -175,6 +178,7 @@ const CustomerDashboard: React.FC = () => {
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'tasks', label: 'Daily Coupons', icon: Ticket },
     { id: 'network', label: 'My Network', icon: Users },
+    ...(autopoolCountsVisible ? [{ id: 'autopool', label: 'AutoPool Matrix', icon: Network }] : []),
     { id: 'payments', label: 'Payment History', icon: CreditCard },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
@@ -182,6 +186,12 @@ const CustomerDashboard: React.FC = () => {
     { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
   ];
+
+  useEffect(() => {
+    if (!autopoolCountsVisible && activeTab === 'autopool') {
+      setActiveTab('overview');
+    }
+  }, [activeTab, autopoolCountsVisible]);
 
   useEffect(() => {
     let mounted = true;
@@ -827,6 +837,10 @@ const CustomerDashboard: React.FC = () => {
                       {/* FIXED: Now uses the new MyNetwork component */}
                       <MyNetwork userId={user?.id || ''} />
                     </div>
+                )}
+
+                {activeTab === 'autopool' && autopoolCountsVisible && (
+                    <AutopoolMatrixProgress />
                 )}
 
                 {activeTab === 'profile' && (

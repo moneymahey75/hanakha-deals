@@ -93,6 +93,7 @@ Deno.serve(async (req: Request) => {
         tbl_user_profiles (
           tup_first_name,
           tup_last_name,
+          tup_username,
           tup_sponsorship_number
         )
       `
@@ -106,6 +107,7 @@ Deno.serve(async (req: Request) => {
         `
         tup_first_name,
         tup_last_name,
+        tup_username,
         tup_sponsorship_number,
         tbl_users (
           tu_id,
@@ -114,7 +116,7 @@ Deno.serve(async (req: Request) => {
         )
       `
       )
-      .or(`tup_first_name.ilike.%${searchQuery}%,tup_last_name.ilike.%${searchQuery}%,tup_sponsorship_number.ilike.%${searchQuery}%`)
+      .or(`tup_first_name.ilike.%${searchQuery}%,tup_last_name.ilike.%${searchQuery}%,tup_username.ilike.%${searchQuery}%,tup_sponsorship_number.ilike.%${searchQuery}%`)
       .limit(10);
 
     const allUsers = [...(usersData || [])];
@@ -127,6 +129,7 @@ Deno.serve(async (req: Request) => {
               {
                 tup_first_name: profile.tup_first_name,
                 tup_last_name: profile.tup_last_name,
+                tup_username: profile.tup_username,
                 tup_sponsorship_number: profile.tup_sponsorship_number
               }
             ]
@@ -156,6 +159,7 @@ Deno.serve(async (req: Request) => {
       tu_user_type: user.tu_user_type,
       tup_first_name: user.tbl_user_profiles?.[0]?.tup_first_name,
       tup_last_name: user.tbl_user_profiles?.[0]?.tup_last_name,
+      tup_username: user.tbl_user_profiles?.[0]?.tup_username,
       tup_sponsorship_number: user.tbl_user_profiles?.[0]?.tup_sponsorship_number,
       company_name: companiesMap.get(user.tu_id)
     }));

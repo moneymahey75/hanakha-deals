@@ -111,7 +111,9 @@ Deno.serve(async (req: Request) => {
         tu_is_dummy,
         tbl_user_profiles (
           tup_first_name,
-          tup_last_name
+          tup_last_name,
+          tup_username,
+          tup_sponsorship_number
         )
       `
       )
@@ -158,6 +160,8 @@ Deno.serve(async (req: Request) => {
         user_info: {
           email: user?.tu_email || 'Unknown Email',
           name: userName,
+          username: user?.tbl_user_profiles?.[0]?.tup_username || '',
+          sponsor_id: user?.tbl_user_profiles?.[0]?.tup_sponsorship_number || '',
           type: userType,
           company_name: companyName,
           is_dummy: dummyByUserId.get(String(tx.twt_user_id)) ?? false

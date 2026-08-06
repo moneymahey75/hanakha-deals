@@ -397,6 +397,25 @@ const RegistrationPayment: React.FC = () => {
       subscriptionWalletAddress: settings.subscriptionWalletAddress || ''
     });
 
+    const expectedChainId = isLivePaymentModeValue(settings.paymentMode) ? 56 : 97;
+    if (walletState.isConnected && walletState.chainId !== expectedChainId) {
+      walletService.disconnect();
+      setWalletState({
+        isConnected: false,
+        address: null,
+        chainId: null,
+        balance: '0',
+        usdtBalance: '0',
+        walletName: null,
+        warning: null,
+      });
+      notification.showInfo(
+        'Payment Network Changed',
+        `The admin selected ${getPaymentNetworkName(settings.paymentMode)}. Please reconnect your wallet.`
+      );
+      return;
+    }
+
     // If already connected, refresh balances using the currently configured USDT contract.
     if (walletState.isConnected) {
       let cancelled = false;
@@ -416,7 +435,7 @@ const RegistrationPayment: React.FC = () => {
         cancelled = true;
       };
     }
-  }, [settings, walletService]);
+  }, [settings, walletService, walletState.chainId, walletState.isConnected, notification]);
 
   useEffect(() => {
     const refreshDetectedWallets = () => {
