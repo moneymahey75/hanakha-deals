@@ -72,6 +72,17 @@ const UpcomingPlan: React.FC = () => {
     { level: 15, percent: '2%' },
   ];
 
+  const autopoolLevels = [
+    { level: 1, members: '4', reward: '1 USDT' },
+    { level: 2, members: '16', reward: '8 USDT' },
+    { level: 3, members: '64', reward: '32 USDT' },
+    { level: 4, members: '256', reward: '128 USDT' },
+    { level: 5, members: '1,024', reward: '512 USDT' },
+    { level: 6, members: '4,096', reward: '1,024 USDT' },
+    { level: 7, members: '16,384', reward: '4,096 USDT' },
+    { level: 8, members: '65,536', reward: '16,384 USDT' },
+  ];
+
   const effectiveAfterLaunch = {
     planTitle: afterLaunchConfig?.planTitle || 'SHOPCLIX Plan (Launch)',
     joiningPacks: Array.isArray(afterLaunchConfig?.joiningPacks) ? afterLaunchConfig.joiningPacks : [50, 100, 200],
@@ -407,8 +418,51 @@ const UpcomingPlan: React.FC = () => {
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                 <h3 className="text-lg font-bold text-white">Matrix overview</h3>
                 <p className="mt-3 text-sm leading-relaxed text-emerald-50/85">
-                  The matrix uses eight placement levels with up to four positions under each member. Detailed level counts and reward schedules are currently available to administrators only.
+                  The matrix uses eight placement levels with up to four positions under each member. Your AutoPool position and personal milestone earnings are tracked separately from the existing plans.
                 </p>
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="text-2xl font-extrabold text-amber-300">8</div>
+                    <div className="mt-1 text-xs text-emerald-50/75">Earning levels</div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="text-2xl font-extrabold text-amber-300">4</div>
+                    <div className="mt-1 text-xs text-emerald-50/75">Positions per member</div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="text-2xl font-extrabold text-amber-300">20</div>
+                    <div className="mt-1 text-xs text-emerald-50/75">USDT one-time subscription</div>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+                  The following is a potential milestone illustration based on completing each level.
+                </div>
+                <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
+                  <table className="w-full min-w-[420px] text-left text-sm">
+                    <thead className="bg-slate-950/60 text-xs uppercase tracking-wide text-emerald-100/75">
+                      <tr>
+                        <th className="px-3 py-3">Level</th>
+                        <th className="px-3 py-3">Required members</th>
+                        <th className="px-3 py-3 text-right">Potential reward</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autopoolLevels.map((row) => (
+                        <tr key={row.level} className="border-t border-white/10 text-emerald-50/90">
+                          <td className="px-3 py-2 font-semibold">Level {row.level}</td>
+                          <td className="px-3 py-2">{row.members}</td>
+                          <td className="px-3 py-2 text-right font-bold text-amber-300">{row.reward}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t border-amber-300/30 bg-amber-300/10">
+                      <tr>
+                        <td colSpan={2} className="px-3 py-3 font-bold text-white">Total potential income</td>
+                        <td className="px-3 py-3 text-right text-lg font-extrabold text-amber-300">22,185 USDT</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             </div>
             <div className="border-t border-white/10 px-6 py-4 text-xs leading-relaxed text-emerald-100/65 sm:px-8">
