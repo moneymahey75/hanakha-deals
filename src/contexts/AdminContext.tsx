@@ -32,7 +32,6 @@ const PUBLIC_SYSTEM_SETTING_KEYS = [
   'social_whatsapp_url',
   'after_launch_plan_config',
   'home_autopool_popup_enabled',
-  'autopool_user_counts_enabled',
   'launch_phase',
   'site_mode',
   'captcha_verification_enabled',
@@ -76,6 +75,7 @@ const PUBLIC_SYSTEM_SETTING_KEYS = [
   'withdrawal_disabled_message',
   'withdrawal_min_amount',
   'reward_withdrawal_min_amount',
+  'autopool_withdrawal_min_amount',
   'withdrawal_step_amount',
   'withdrawal_commission_percent',
   'withdrawal_auto_transfer',
@@ -109,7 +109,6 @@ interface GeneralSettings {
   socialWhatsappUrl: string;
   afterLaunchPlanConfig?: any;
   homeAutopoolPopupEnabled: boolean;
-  autopoolUserCountsEnabled: boolean;
   launchPhase?: 'prelaunch' | 'launched';
   siteMode?: 'live' | 'development';
   captchaVerificationEnabled: boolean;
@@ -142,6 +141,7 @@ interface GeneralSettings {
   };
   withdrawalMinAmount: number;
   rewardWithdrawalMinAmount: number;
+  autopoolWithdrawalMinAmount: number;
   withdrawalStepAmount: number;
   withdrawalCommissionPercent: number;
   withdrawalAutoTransfer: boolean;
@@ -274,7 +274,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     socialWhatsappUrl: '',
     afterLaunchPlanConfig: null,
     homeAutopoolPopupEnabled: true,
-    autopoolUserCountsEnabled: true,
     launchPhase: 'prelaunch',
     siteMode: 'live',
     captchaVerificationEnabled: true,
@@ -303,6 +302,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     },
     withdrawalMinAmount: 10,
     rewardWithdrawalMinAmount: 10,
+    autopoolWithdrawalMinAmount: 10,
     withdrawalStepAmount: 10,
     withdrawalCommissionPercent: 0.5,
     withdrawalAutoTransfer: false,
@@ -530,9 +530,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'home_autopool_popup_enabled':
                 loadedSettings.homeAutopoolPopupEnabled = toBooleanSetting(value, true);
                 break;
-              case 'autopool_user_counts_enabled':
-                loadedSettings.autopoolUserCountsEnabled = toBooleanSetting(value, true);
-                break;
               case 'launch_phase': {
                 const phase = String(value || '').trim().toLowerCase();
                 loadedSettings.launchPhase = phase === 'launched' ? 'launched' : 'prelaunch';
@@ -617,6 +614,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'reward_withdrawal_min_amount':
                 loadedSettings.rewardWithdrawalMinAmount = Number(value);
+                break;
+              case 'autopool_withdrawal_min_amount':
+                loadedSettings.autopoolWithdrawalMinAmount = Number(value);
                 break;
               case 'withdrawal_step_amount':
                 loadedSettings.withdrawalStepAmount = Number(value);
@@ -779,6 +779,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           rewardWithdrawalMinAmount: Number.isFinite(loadedSettings.rewardWithdrawalMinAmount as number)
             ? (loadedSettings.rewardWithdrawalMinAmount as number)
             : defaultSettings.rewardWithdrawalMinAmount,
+          autopoolWithdrawalMinAmount: Number.isFinite(loadedSettings.autopoolWithdrawalMinAmount as number)
+            ? (loadedSettings.autopoolWithdrawalMinAmount as number)
+            : defaultSettings.autopoolWithdrawalMinAmount,
           withdrawalStepAmount: Number.isFinite(loadedSettings.withdrawalStepAmount as number)
             ? (loadedSettings.withdrawalStepAmount as number)
             : defaultSettings.withdrawalStepAmount,

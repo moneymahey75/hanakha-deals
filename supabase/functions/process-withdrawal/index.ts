@@ -74,7 +74,7 @@ const processTransfer = async (params: {
   amount: number;
   netAmount: number;
   destinationAddress: string;
-  walletType: 'working' | 'non_working' | 'reward';
+  walletType: 'working' | 'non_working' | 'reward' | 'autopool';
   adminPaymentWallet: string;
   usdtAddress: string;
   paymentMode: any;
@@ -561,8 +561,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const walletTypeRaw = String((withdrawal as any).twr_wallet_type || 'working');
-    const walletType: 'working' | 'non_working' | 'reward' =
-      walletTypeRaw === 'reward' ? 'reward' : walletTypeRaw === 'non_working' ? 'non_working' : 'working';
+    const walletType: 'working' | 'non_working' | 'reward' | 'autopool' =
+      walletTypeRaw === 'reward' ? 'reward' : walletTypeRaw === 'non_working' ? 'non_working' : walletTypeRaw === 'autopool' ? 'autopool' : 'working';
 
     const txHash = await processTransfer({
       supabase,

@@ -404,35 +404,11 @@ const UpcomingPlan: React.FC = () => {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5 p-4">
-                <h3 className="px-2 pb-3 text-lg font-bold text-white">Matrix levels and milestone schedule</h3>
-                <table className="min-w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-emerald-200/70">
-                      <th className="px-3 py-3">Level</th>
-                      <th className="px-3 py-3">Members</th>
-                      <th className="px-3 py-3">Milestone reward</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      [1, '4', '1 USDT'],
-                      [2, '16', '8 USDT'],
-                      [3, '64', '32 USDT'],
-                      [4, '256', '128 USDT'],
-                      [5, '1,024', '512 USDT'],
-                      [6, '4,096', '1,024 USDT'],
-                      [7, '16,384', '4,096 USDT'],
-                      [8, '65,536', '16,384 USDT'],
-                    ].map(([level, members, reward]) => (
-                      <tr key={level} className="border-b border-white/10 last:border-0">
-                        <td className="px-3 py-3 font-semibold text-white">Level {level}</td>
-                        <td className="px-3 py-3 text-emerald-50/85">{members}</td>
-                        <td className="px-3 py-3 font-bold text-amber-300">{reward}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <h3 className="text-lg font-bold text-white">Matrix overview</h3>
+                <p className="mt-3 text-sm leading-relaxed text-emerald-50/85">
+                  The matrix uses eight placement levels with up to four positions under each member. Detailed level counts and reward schedules are currently available to administrators only.
+                </p>
               </div>
             </div>
             <div className="border-t border-white/10 px-6 py-4 text-xs leading-relaxed text-emerald-100/65 sm:px-8">

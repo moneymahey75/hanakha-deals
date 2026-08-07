@@ -165,7 +165,6 @@ const CustomerDashboard: React.FC = () => {
   const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
-  const autopoolCountsVisible = !settingsLoading && settings.autopoolUserCountsEnabled;
 
   useEffect(() => {
     currentUserIdRef.current = user?.id || null;
@@ -178,20 +177,14 @@ const CustomerDashboard: React.FC = () => {
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'tasks', label: 'Daily Coupons', icon: Ticket },
     { id: 'network', label: 'My Network', icon: Users },
-    ...(autopoolCountsVisible ? [{ id: 'autopool', label: 'AutoPool Matrix', icon: Network }] : []),
     { id: 'payments', label: 'Payment History', icon: CreditCard },
     { id: 'transactions', label: 'Transactions', icon: CreditCard },
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
+    { id: 'autopool', label: 'AutoPool Income', icon: Network },
     { id: 'withdrawals', label: 'Withdrawals', icon: ArrowUpRight },
     { id: 'wallets', label: 'My Wallets', icon: WalletIcon },
     { id: 'referrals', label: 'Referral Links', icon: Share2 },
   ];
-
-  useEffect(() => {
-    if (!autopoolCountsVisible && activeTab === 'autopool') {
-      setActiveTab('overview');
-    }
-  }, [activeTab, autopoolCountsVisible]);
 
   useEffect(() => {
     let mounted = true;
@@ -839,7 +832,7 @@ const CustomerDashboard: React.FC = () => {
                     </div>
                 )}
 
-                {activeTab === 'autopool' && autopoolCountsVisible && (
+                {activeTab === 'autopool' && (
                     <AutopoolMatrixProgress />
                 )}
 
@@ -879,6 +872,7 @@ const CustomerDashboard: React.FC = () => {
                       <WithdrawalsDashboard />
                     </div>
                 )}
+
 
                 {activeTab === 'referrals' && (
                     <div>

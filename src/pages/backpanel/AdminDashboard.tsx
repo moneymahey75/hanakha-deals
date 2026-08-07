@@ -19,6 +19,7 @@ import EarningDistributionSettings from '../../components/admin/EarningDistribut
 import AfterLaunchPlanSettings from '../../components/admin/AfterLaunchPlanSettings';
 import SpinWheelManagement from '../../components/admin/SpinWheelManagement';
 import MLMLevelCounts from '../../components/admin/MLMLevelCounts';
+import AutopoolAnalytics from '../../components/admin/AutopoolAnalytics';
 import {
   Users,
   Building,
@@ -121,6 +122,7 @@ const AdminDashboard: React.FC = () => {
       'pending_payments',
       'stuck_payments',
       'level_counts',
+      'autopool_analytics',
       'withdrawals',
       'admins',
       'settings',
@@ -342,6 +344,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'pending_payments', label: 'Pending Payments', icon: Clock, permission: 'payments' },
     { id: 'stuck_payments', label: 'Stuck Payments', icon: AlertTriangle, permission: 'payments' },
     { id: 'level_counts', label: 'Level Counts', icon: BarChart3, permission: 'mlm' },
+    { id: 'autopool_analytics', label: 'AutoPool Analytics', icon: TrendingUp, permission: 'mlm' },
     { id: 'withdrawals', label: 'Withdrawals', icon: RefreshCw, permission: 'withdrawals' },
     { id: 'admins', label: 'Sub-Admins', icon: Shield, permission: 'admins' },
     { id: 'settings', label: 'Settings', icon: Settings, permission: 'settings' }
@@ -495,6 +498,7 @@ const AdminDashboard: React.FC = () => {
                   {activeTab === 'pending_payments' && 'Review customer payments awaiting approval'}
                   {activeTab === 'stuck_payments' && 'Resolve wallet payments that need manual verification'}
                   {activeTab === 'withdrawals' && 'Review and manage withdrawal requests'}
+                  {activeTab === 'autopool_analytics' && 'Analyze AutoPool revenue, payouts, levels, and user earnings'}
                   {activeTab === 'admins' && 'Manage sub-administrators and permissions'}
                   {activeTab === 'settings' && 'Configure system settings and preferences'}
                 </p>
@@ -608,6 +612,10 @@ const AdminDashboard: React.FC = () => {
 
             {activeTab === 'level_counts' && hasPermission('mlm' as any, 'read') && (
                 <MLMLevelCounts />
+            )}
+
+            {activeTab === 'autopool_analytics' && hasPermission('mlm' as any, 'read') && (
+                <AutopoolAnalytics />
             )}
 
             {activeTab === 'withdrawals' && hasPermission('withdrawals' as any, 'read') && (

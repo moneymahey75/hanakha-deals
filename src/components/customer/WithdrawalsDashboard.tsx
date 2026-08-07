@@ -23,6 +23,7 @@ interface WithdrawalRequest {
 interface WithdrawalSettings {
   minAmount: number;
   rewardMinAmount: number;
+  autopoolMinAmount: number;
   stepAmount: number;
   commissionPercent: number;
   autoTransfer: boolean;
@@ -44,7 +45,9 @@ interface DefaultWalletConnection {
 
 const pendingWithdrawalStatuses = ['pending', 'processing', 'approved'];
 
-const WithdrawalsDashboard: React.FC = () => {
+type WithdrawalWalletType = 'working' | 'reward' | 'autopool';
+
+const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({ walletType: walletTypeProp = 'working' }) => {
   const { user } = useAuth();
   const notification = useNotification();
 
@@ -52,13 +55,15 @@ const WithdrawalsDashboard: React.FC = () => {
   const [walletReservedBalance, setWalletReservedBalance] = useState(0);
   const [rewardWalletBalance, setRewardWalletBalance] = useState(0);
   const [rewardWithdrawalStatus, setRewardWithdrawalStatus] = useState<RewardWithdrawalStatus | null>(null);
-  const [walletType, setWalletType] = useState<'working' | 'reward'>('working');
+  const [selectedWalletType, setSelectedWalletType] = useState<WithdrawalWalletType>('working');
+  const walletType: WithdrawalWalletType = walletTypeProp === 'autopool' ? 'autopool' : selectedWalletType;
   const [reservedBalance, setReservedBalance] = useState(0);
   const [defaultWallet, setDefaultWallet] = useState<DefaultWalletConnection | null>(null);
 
   const [withdrawalSettings, setWithdrawalSettings] = useState<WithdrawalSettings>({
     minAmount: 10,
     rewardMinAmount: 10,
+    autopoolMinAmount: 10,
     stepAmount: 10,
     commissionPercent: 0.5,
     autoTransfer: false,
@@ -83,7 +88,7 @@ const WithdrawalsDashboard: React.FC = () => {
     loadDefaultWallet();
     loadWalletBalance();
     loadReservedBalance();
-    loadRewardWithdrawalStatus();
+    if (walletType === 'reward') loadRewardWithdrawalStatus();
   }, [user?.id, walletType]);
 
   useEffect(() => {
@@ -97,7 +102,9 @@ const WithdrawalsDashboard: React.FC = () => {
     return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(reservedBalance || 0));
   }, [rewardWalletBalance, reservedBalance, walletBalance, walletReservedBalance, walletType]);
 
-  const activeMinAmount = walletType === 'reward' ? withdrawalSettings.rewardMinAmount : withdrawalSettings.minAmount;
+  const activeMinAmount = walletType === 'reward'
+    ? withdrawalSettings.rewardMinAmount
+    : walletType === 'autopool' ? withdrawalSettings.autopoolMinAmount : withdrawalSettings.minAmount;
   const activeStepAmount = withdrawalSettings.stepAmount;
 
   const isStepValid = (amount: number, step: number) => {
@@ -158,7 +165,7 @@ const WithdrawalsDashboard: React.FC = () => {
         setWalletReservedBalance(0);
       } else {
         setWalletBalance(Number(data?.tw_balance ?? 0));
-        setWalletReservedBalance(Number((data as any)?.tw_reserved_balance ?? 0));
+        setWalletReservedBalance(walletType === 'autopool' ? 0 : Number((data as any)?.tw_reserved_balance ?? 0));
       }
     } catch (error) {
       console.error('Failed to load wallet balance:', error);
@@ -191,6 +198,7 @@ const WithdrawalsDashboard: React.FC = () => {
         .in('tss_setting_key', [
           'withdrawal_min_amount',
           'reward_withdrawal_min_amount',
+          'autopool_withdrawal_min_amount',
           'withdrawal_step_amount',
           'withdrawal_commission_percent',
           'withdrawal_auto_transfer',
@@ -211,6 +219,7 @@ const WithdrawalsDashboard: React.FC = () => {
       setWithdrawalSettings({
         minAmount: Number(settingsMap.withdrawal_min_amount ?? 10),
         rewardMinAmount: Number(settingsMap.reward_withdrawal_min_amount ?? settingsMap.withdrawal_min_amount ?? 10),
+        autopoolMinAmount: Number(settingsMap.autopool_withdrawal_min_amount ?? 10),
         stepAmount: Number(settingsMap.withdrawal_step_amount ?? 10),
         commissionPercent: Number(settingsMap.withdrawal_commission_percent ?? 0.5),
         autoTransfer: Boolean(settingsMap.withdrawal_auto_transfer ?? false),
@@ -355,7 +364,7 @@ const WithdrawalsDashboard: React.FC = () => {
 
       setWithdrawalInput('');
       setCurrentPage(1);
-      await Promise.all([loadWithdrawalHistory(), loadWalletBalance(), loadReservedBalance(), loadRewardWithdrawalStatus()]);
+      await Promise.all([loadWithdrawalHistory(), loadWalletBalance(), loadReservedBalance(), walletType === 'reward' ? loadRewardWithdrawalStatus() : Promise.resolve()]);
     } catch (error: any) {
       notification.showError('Withdrawal Failed', error.message || 'Unable to submit withdrawal');
     } finally {
@@ -392,7 +401,7 @@ const WithdrawalsDashboard: React.FC = () => {
       }
 
       notification.showSuccess('Withdrawal Cancelled', 'Your withdrawal request has been cancelled.');
-      await Promise.all([loadWithdrawalHistory(), loadReservedBalance(), loadWalletBalance(), loadRewardWithdrawalStatus()]);
+      await Promise.all([loadWithdrawalHistory(), loadReservedBalance(), loadWalletBalance(), walletType === 'reward' ? loadRewardWithdrawalStatus() : Promise.resolve()]);
     } catch (error: any) {
       notification.showError('Cancellation Failed', error.message || 'Unable to cancel withdrawal');
     } finally {
@@ -426,7 +435,9 @@ const WithdrawalsDashboard: React.FC = () => {
     <div className="space-y-6">
       <div ref={topRef} />
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Withdrawals</h3>
+        <h3 className="text-lg font-semibold text-gray-900">
+          {walletType === 'autopool' ? 'AutoPool Income Withdrawal' : 'Withdrawals'}
+        </h3>
         <button
           onClick={() => {
             loadWithdrawalHistory();
@@ -453,16 +464,17 @@ const WithdrawalsDashboard: React.FC = () => {
           </span> */}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 rounded-xl border border-gray-100 bg-gray-50 p-1">
+        {walletTypeProp !== 'autopool' && <div className="grid grid-cols-3 gap-2 rounded-xl border border-gray-100 bg-gray-50 p-1">
           {[
             { id: 'working' as const, label: 'Working Wallet' },
             { id: 'reward' as const, label: 'ROI Wallet' },
+            { id: 'autopool' as const, label: 'AutoPool Wallet' },
           ].map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => {
-                setWalletType(option.id);
+                setSelectedWalletType(option.id);
                 setWithdrawalInput('');
                 setCurrentPage(1);
               }}
@@ -473,7 +485,7 @@ const WithdrawalsDashboard: React.FC = () => {
               {option.label}
             </button>
           ))}
-        </div>
+        </div>}
 
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -491,7 +503,7 @@ const WithdrawalsDashboard: React.FC = () => {
             <div>
               <p className="text-xs font-medium text-gray-600">Reserved</p>
               <p className="mt-1 text-lg font-semibold text-gray-900">
-                {((walletType === 'reward' ? 0 : walletReservedBalance) + reservedBalance).toFixed(2)} USDT
+                {((walletType === 'reward' || walletType === 'autopool' ? 0 : walletReservedBalance) + reservedBalance).toFixed(2)} USDT
               </p>
             </div>
           </div>
