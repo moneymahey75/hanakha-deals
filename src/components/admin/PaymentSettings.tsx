@@ -27,6 +27,7 @@ const PaymentSettings: React.FC = () => {
         withdrawalMinAmount: settings.withdrawalMinAmount,
         rewardWithdrawalMinAmount: settings.rewardWithdrawalMinAmount,
         autopoolWithdrawalMinAmount: settings.autopoolWithdrawalMinAmount,
+        autopool20DirectIncome: settings.autopool20DirectIncome,
         withdrawalStepAmount: settings.withdrawalStepAmount,
         withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
         withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
@@ -55,6 +56,7 @@ const PaymentSettings: React.FC = () => {
             withdrawalMinAmount: settings.withdrawalMinAmount,
             rewardWithdrawalMinAmount: settings.rewardWithdrawalMinAmount,
             autopoolWithdrawalMinAmount: settings.autopoolWithdrawalMinAmount,
+            autopool20DirectIncome: settings.autopool20DirectIncome,
             withdrawalStepAmount: settings.withdrawalStepAmount,
             withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
             withdrawalAutoTransfer: settings.withdrawalAutoTransfer,
@@ -100,6 +102,7 @@ const PaymentSettings: React.FC = () => {
                 { key: 'withdrawal_min_amount', value: JSON.stringify(formData.withdrawalMinAmount) },
                 { key: 'reward_withdrawal_min_amount', value: JSON.stringify(formData.rewardWithdrawalMinAmount) },
                 { key: 'autopool_withdrawal_min_amount', value: JSON.stringify(formData.autopoolWithdrawalMinAmount) },
+                { key: 'autopool_20_direct_income', value: JSON.stringify(formData.autopool20DirectIncome) },
                 { key: 'withdrawal_step_amount', value: JSON.stringify(formData.withdrawalStepAmount) },
                 { key: 'withdrawal_commission_percent', value: JSON.stringify(formData.withdrawalCommissionPercent) },
                 { key: 'withdrawal_auto_transfer', value: JSON.stringify(formData.withdrawalAutoTransfer) },
@@ -133,6 +136,7 @@ const PaymentSettings: React.FC = () => {
                 withdrawalMinAmount: formData.withdrawalMinAmount,
                 rewardWithdrawalMinAmount: formData.rewardWithdrawalMinAmount,
                 autopoolWithdrawalMinAmount: formData.autopoolWithdrawalMinAmount,
+                autopool20DirectIncome: formData.autopool20DirectIncome,
                 withdrawalStepAmount: formData.withdrawalStepAmount,
                 withdrawalCommissionPercent: formData.withdrawalCommissionPercent,
                 withdrawalAutoTransfer: formData.withdrawalAutoTransfer,
@@ -415,6 +419,24 @@ const PaymentSettings: React.FC = () => {
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 placeholder="10"
                             />
+                        </div>
+                        <div>
+                            <label htmlFor="autopool20DirectIncome" className="block text-sm font-medium text-gray-700 mb-2">
+                                AutoPool Direct Parent Income (USDT)
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max="20"
+                                id="autopool20DirectIncome"
+                                name="autopool20DirectIncome"
+                                value={formData.autopool20DirectIncome}
+                                onChange={handleNumberChange}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="2"
+                            />
+                            <p className="text-xs text-gray-500 mt-2">Credited to the eligible parent’s working wallet for each completed 20 USDT purchase. Maximum 20 USDT.</p>
                         </div>
 
                         <div>

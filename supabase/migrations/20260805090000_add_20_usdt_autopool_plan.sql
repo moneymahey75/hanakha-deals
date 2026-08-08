@@ -28,8 +28,8 @@ BEGIN
       tsp_plan_phase,
       tsp_product_code
     ) VALUES (
-      '20 USDT AutoPool Matrix',
-      'Standalone add-on plan with a separate 4-by-4 matrix and eight placement levels.',
+      'AutoPool Matrix',
+      '',
       20.00,
       36500,
       '["One-time 20 USDT subscription", "Separate top-to-bottom, left-to-right matrix", "Eight matrix levels", "Milestone rewards are subject to available funds and applicable laws"]'::jsonb,

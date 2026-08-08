@@ -76,6 +76,7 @@ const PUBLIC_SYSTEM_SETTING_KEYS = [
   'withdrawal_min_amount',
   'reward_withdrawal_min_amount',
   'autopool_withdrawal_min_amount',
+  'autopool_20_direct_income',
   'withdrawal_step_amount',
   'withdrawal_commission_percent',
   'withdrawal_auto_transfer',
@@ -142,6 +143,7 @@ interface GeneralSettings {
   withdrawalMinAmount: number;
   rewardWithdrawalMinAmount: number;
   autopoolWithdrawalMinAmount: number;
+  autopool20DirectIncome: number;
   withdrawalStepAmount: number;
   withdrawalCommissionPercent: number;
   withdrawalAutoTransfer: boolean;
@@ -303,6 +305,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     withdrawalMinAmount: 10,
     rewardWithdrawalMinAmount: 10,
     autopoolWithdrawalMinAmount: 10,
+    autopool20DirectIncome: 2,
     withdrawalStepAmount: 10,
     withdrawalCommissionPercent: 0.5,
     withdrawalAutoTransfer: false,
@@ -618,6 +621,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               case 'autopool_withdrawal_min_amount':
                 loadedSettings.autopoolWithdrawalMinAmount = Number(value);
                 break;
+              case 'autopool_20_direct_income':
+                loadedSettings.autopool20DirectIncome = Number(value);
+                break;
               case 'withdrawal_step_amount':
                 loadedSettings.withdrawalStepAmount = Number(value);
                 break;
@@ -782,6 +788,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           autopoolWithdrawalMinAmount: Number.isFinite(loadedSettings.autopoolWithdrawalMinAmount as number)
             ? (loadedSettings.autopoolWithdrawalMinAmount as number)
             : defaultSettings.autopoolWithdrawalMinAmount,
+          autopool20DirectIncome: Number.isFinite(loadedSettings.autopool20DirectIncome as number)
+            ? (loadedSettings.autopool20DirectIncome as number)
+            : defaultSettings.autopool20DirectIncome,
           withdrawalStepAmount: Number.isFinite(loadedSettings.withdrawalStepAmount as number)
             ? (loadedSettings.withdrawalStepAmount as number)
             : defaultSettings.withdrawalStepAmount,

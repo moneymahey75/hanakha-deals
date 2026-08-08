@@ -37,13 +37,14 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (membershipError) throw membershipError;
       if (!membership) return json({ success: true, data: { user: null } });
-      const [userResult, profileResult, rewardsResult, descendantsResult] = await Promise.all([
+      const [userResult, profileResult, rewardsResult, directResult, descendantsResult] = await Promise.all([
         supabase.from('tbl_users').select('tu_id, tu_email, tu_is_active, tu_created_at').eq('tu_id', requestedUserId).maybeSingle(),
         supabase.from('tbl_user_profiles').select('tup_username, tup_sponsorship_number').eq('tup_user_id', requestedUserId).maybeSingle(),
         supabase.from('tbl_autopool_20_milestone_rewards').select('ta20mr_membership_id, ta20mr_level, ta20mr_required_members, ta20mr_amount, ta20mr_created_at, ta20mr_wallet_transaction_id').eq('ta20mr_membership_id', membership.ta20_id),
+        supabase.from('tbl_autopool_20_direct_income').select('ta20di_amount').eq('ta20di_parent_user_id', requestedUserId).eq('ta20di_status', 'credited'),
         supabase.from('tbl_autopool_20_memberships').select('ta20_level, ta20_ancestor_ids').contains('ta20_ancestor_ids', [membership.ta20_id]),
       ]);
-      if (userResult.error || profileResult.error || rewardsResult.error || descendantsResult.error) throw userResult.error || profileResult.error || rewardsResult.error || descendantsResult.error;
+      if (userResult.error || profileResult.error || rewardsResult.error || directResult.error || descendantsResult.error) throw userResult.error || profileResult.error || rewardsResult.error || directResult.error || descendantsResult.error;
       const detailRewards = rewardsResult.data || [];
       const descendants = descendantsResult.data || [];
       const levels = Array.from({ length: 8 }, (_, index) => {
@@ -58,6 +59,7 @@ Deno.serve(async (req) => {
         levels,
         rewards: detailRewards,
         total_earned: sum(detailRewards, 'ta20mr_amount'),
+        direct_earned: sum(directResult.data || [], 'ta20di_amount'),
       }});
     }
 
@@ -71,7 +73,7 @@ Deno.serve(async (req) => {
     const membershipIds = allMemberships.map((row: any) => row.ta20_id);
     const userIds = Array.from(new Set(allMemberships.map((row: any) => row.ta20_user_id).filter(Boolean)));
 
-    const [rewardsResult, usersResult, profilesResult, plansResult] = await Promise.all([
+    const [rewardsResult, usersResult, profilesResult, directResult, plansResult] = await Promise.all([
       membershipIds.length
         ? supabase.from('tbl_autopool_20_milestone_rewards').select('ta20mr_membership_id, ta20mr_level, ta20mr_required_members, ta20mr_amount, ta20mr_created_at, ta20mr_wallet_transaction_id').in('ta20mr_membership_id', membershipIds)
         : Promise.resolve({ data: [], error: null }),
@@ -81,17 +83,21 @@ Deno.serve(async (req) => {
       userIds.length
         ? supabase.from('tbl_user_profiles').select('tup_user_id, tup_username, tup_sponsorship_number').in('tup_user_id', userIds)
         : Promise.resolve({ data: [], error: null }),
+      supabase.from('tbl_autopool_20_direct_income').select('ta20di_parent_user_id, ta20di_amount').eq('ta20di_status', 'credited'),
       supabase.from('tbl_subscription_plans').select('tsp_id').eq('tsp_product_code', 'autopool_20').limit(1),
     ]);
     if (rewardsResult.error) throw rewardsResult.error;
     if (usersResult.error) throw usersResult.error;
     if (profilesResult.error) throw profilesResult.error;
+    if (directResult.error) throw directResult.error;
     if (plansResult.error) throw plansResult.error;
 
     const rewards = rewardsResult.data || [];
     const users = usersResult.data || [];
     const userById = new Map(users.map((user: any) => [user.tu_id, user]));
     const profileById = new Map((profilesResult.data || []).map((profile: any) => [profile.tup_user_id, profile]));
+    const directByUser = new Map<string, number>();
+    for (const income of directResult.data || []) directByUser.set(income.ta20di_parent_user_id, (directByUser.get(income.ta20di_parent_user_id) || 0) + Number(income.ta20di_amount || 0));
     const membershipById = new Map(allMemberships.map((row: any) => [row.ta20_id, row]));
     const rewardsByMembership = new Map<string, any[]>();
     for (const reward of rewards) {
@@ -136,6 +142,8 @@ Deno.serve(async (req) => {
 
     const userRows = allMemberships.map((membership: any) => {
       const userRewards = rewardsByMembership.get(membership.ta20_id) || [];
+      const matrixEarned = sum(userRewards, 'ta20mr_amount');
+      const directEarned = directByUser.get(membership.ta20_user_id) || 0;
       return {
         user_id: membership.ta20_user_id,
         email: userById.get(membership.ta20_user_id)?.tu_email || '',
@@ -145,7 +153,9 @@ Deno.serve(async (req) => {
         position: Number(membership.ta20_position) + 1,
         matrix_level: membership.ta20_level,
         joined_at: membership.ta20_created_at,
-        earned: sum(userRewards, 'ta20mr_amount'),
+        earned: matrixEarned + directEarned,
+        matrix_earned: matrixEarned,
+        direct_earned: directEarned,
         levels_earned: userRewards.length,
       };
     });
@@ -161,13 +171,16 @@ Deno.serve(async (req) => {
     });
     const grossCollected = sum(payments.data || [], 'tp_amount');
     const userRewardsCredited = sum(rewards, 'ta20mr_amount');
+    const directIncomeCredited = sum(directResult.data || [], 'ta20di_amount');
     return json({ success: true, data: {
       summary: {
         members: allMemberships.length,
         active_members: userRows.filter((row) => row.is_active === true).length,
         gross_collected: grossCollected,
         user_rewards_credited: userRewardsCredited,
-        admin_retained_before_costs: grossCollected - userRewardsCredited,
+        direct_income_credited: directIncomeCredited,
+        total_user_income: userRewardsCredited + directIncomeCredited,
+        admin_retained_before_costs: grossCollected - userRewardsCredited - directIncomeCredited,
         reward_events: rewards.length,
         matrix_capacity: 87380,
       },

@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Check, Star, Zap, DollarSign, ArrowRight, CheckCircle, Package, Calendar, Users, Shield, CreditCard } from 'lucide-react';
+import { Check, Star, Zap, DollarSign, ArrowRight, CheckCircle, Package, Calendar, Users, Shield, CreditCard, X } from 'lucide-react';
 
 interface SubscriptionPlan {
   tsp_id: string;
@@ -56,6 +56,7 @@ const SubscriptionPlans: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkingPlanId, setCheckingPlanId] = useState<string | null>(null);
+  const [featuresPlan, setFeaturesPlan] = useState<SubscriptionPlan | null>(null);
 
   useEffect(() => {
     loadPlans();
@@ -399,7 +400,7 @@ const SubscriptionPlans: React.FC = () => {
             </div>
           </div>
         ) : plans.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 max-w-[1600px] mx-auto items-stretch">
             {plans.map((plan, index) => {
               const isAutopool20 = isAutopool20Plan(plan);
               const alreadyActive = hasActiveSamePackage(plan);
@@ -408,7 +409,7 @@ const SubscriptionPlans: React.FC = () => {
               return (
               <div
                 key={plan.tsp_id}
-                className={`bg-white rounded-2xl shadow-xl border-2 p-8 relative transform transition-all duration-300 ${
+                className={`bg-white rounded-2xl shadow-xl border-2 p-6 relative transform transition-all duration-300 ${
                   alreadyActive || blockedByHigherPackage
                     ? 'border-emerald-300 opacity-75'
                     : index === 1
@@ -466,7 +467,7 @@ const SubscriptionPlans: React.FC = () => {
                     <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
                     Included Features:
                   </h4>
-                  {plan.tsp_features.map((feature, featureIndex) => (
+                  {plan.tsp_features.slice(0, 2).map((feature, featureIndex) => (
                     <div key={featureIndex} className="flex items-center space-x-3 bg-gray-50 rounded-lg p-3">
                       <div className="bg-green-100 rounded-full p-1 flex-shrink-0">
                         <Check className="h-4 w-4 text-green-600" />
@@ -474,6 +475,15 @@ const SubscriptionPlans: React.FC = () => {
                       <span className="text-gray-700 font-medium">{feature}</span>
                     </div>
                   ))}
+                  {plan.tsp_features.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => setFeaturesPlan(plan)}
+                      className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
+                    >
+                      View all features ({plan.tsp_features.length})
+                    </button>
+                  )}
                 </div>
 
                 {/* Plan Stats */}
@@ -554,6 +564,32 @@ const SubscriptionPlans: React.FC = () => {
                 </Link>
               </div>
             )}
+          </div>
+        )}
+
+        {featuresPlan && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="features-modal-title">
+            <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+              <button
+                type="button"
+                onClick={() => setFeaturesPlan(null)}
+                className="absolute right-4 top-4 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                aria-label="Close features"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <h2 id="features-modal-title" className="pr-10 text-2xl font-bold text-gray-900">{featuresPlan.tsp_name}</h2>
+              <p className="mt-1 text-lg font-semibold text-indigo-600">{featuresPlan.tsp_price} USDT plan features</p>
+              <div className="mt-6 space-y-3">
+                {featuresPlan.tsp_features.map((feature, featureIndex) => (
+                  <div key={featureIndex} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">
+                    <span className="mt-0.5 rounded-full bg-green-100 p-1"><Check className="h-4 w-4 text-green-600" /></span>
+                    <span className="font-medium text-gray-700">{feature}</span>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setFeaturesPlan(null)} className="mt-6 w-full rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white hover:bg-black">Close</button>
+            </div>
           </div>
         )}
 
