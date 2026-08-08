@@ -22,6 +22,7 @@ const GeneralSettings: React.FC = () => {
         maintenanceWindowEndAt: settings.maintenanceWindowEndAt,
         maintenanceAllowedIps: (settings.maintenanceAllowedIps || []).join('\n'),
         homeAutopoolPopupEnabled: settings.homeAutopoolPopupEnabled,
+        autopoolUserCountsEnabled: settings.autopoolUserCountsEnabled,
     });
     const [saving, setSaving] = useState(false);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -44,6 +45,7 @@ const GeneralSettings: React.FC = () => {
             maintenanceWindowEndAt: settings.maintenanceWindowEndAt,
             maintenanceAllowedIps: (settings.maintenanceAllowedIps || []).join('\n'),
             homeAutopoolPopupEnabled: settings.homeAutopoolPopupEnabled,
+            autopoolUserCountsEnabled: settings.autopoolUserCountsEnabled,
         });
     }, [settings]);
 
@@ -68,6 +70,7 @@ const GeneralSettings: React.FC = () => {
                 { key: 'maintenance_notice_enabled', value: Boolean(formData.maintenanceNoticeEnabled) },
                 { key: 'maintenance_notice_message', value: String(formData.maintenanceNoticeMessage || '') },
                 { key: 'home_autopool_popup_enabled', value: Boolean(formData.homeAutopoolPopupEnabled) },
+                { key: 'autopool_user_counts_enabled', value: Boolean(formData.autopoolUserCountsEnabled) },
                 { key: 'maintenance_window_start_at', value: formData.maintenanceWindowStartAt ? String(formData.maintenanceWindowStartAt) : '' },
                 { key: 'maintenance_window_end_at', value: formData.maintenanceWindowEndAt ? String(formData.maintenanceWindowEndAt) : '' },
                 {
@@ -107,6 +110,7 @@ const GeneralSettings: React.FC = () => {
                     .map((ip) => ip.trim())
                     .filter(Boolean),
                 homeAutopoolPopupEnabled: formData.homeAutopoolPopupEnabled,
+                autopoolUserCountsEnabled: formData.autopoolUserCountsEnabled,
             });
 
             // Refresh settings from database to ensure sync
@@ -134,7 +138,7 @@ const GeneralSettings: React.FC = () => {
         }));
     };
 
-    const handleToggle = (name: 'maintenanceMode' | 'maintenanceNoticeEnabled' | 'captchaVerificationEnabled' | 'homeAutopoolPopupEnabled') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleToggle = (name: 'maintenanceMode' | 'maintenanceNoticeEnabled' | 'captchaVerificationEnabled' | 'homeAutopoolPopupEnabled' | 'autopoolUserCountsEnabled') => (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({
             ...prev,
             [name]: e.target.checked
@@ -425,6 +429,22 @@ const GeneralSettings: React.FC = () => {
                                 <option value="live">Live</option>
                                 <option value="development">Development</option>
                             </select>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-900">AutoPool Matrix Details</h4>
+                                <p className="text-xs text-gray-600 mt-1">Show customers their eight-level AutoPool progress table.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={formData.autopoolUserCountsEnabled}
+                                    onChange={handleToggle('autopoolUserCountsEnabled')}
+                                />
+                                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-indigo-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            </label>
                         </div>
 
                         <div className="flex items-center justify-between gap-4">

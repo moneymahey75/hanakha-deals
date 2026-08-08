@@ -110,6 +110,7 @@ interface GeneralSettings {
   socialWhatsappUrl: string;
   afterLaunchPlanConfig?: any;
   homeAutopoolPopupEnabled: boolean;
+  autopoolUserCountsEnabled: boolean;
   launchPhase?: 'prelaunch' | 'launched';
   siteMode?: 'live' | 'development';
   captchaVerificationEnabled: boolean;
@@ -276,6 +277,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     socialWhatsappUrl: '',
     afterLaunchPlanConfig: null,
     homeAutopoolPopupEnabled: true,
+    autopoolUserCountsEnabled: true,
     launchPhase: 'prelaunch',
     siteMode: 'live',
     captchaVerificationEnabled: true,
@@ -532,6 +534,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'home_autopool_popup_enabled':
                 loadedSettings.homeAutopoolPopupEnabled = toBooleanSetting(value, true);
+                break;
+              case 'autopool_user_counts_enabled':
+                loadedSettings.autopoolUserCountsEnabled = toBooleanSetting(value, true);
                 break;
               case 'launch_phase': {
                 const phase = String(value || '').trim().toLowerCase();

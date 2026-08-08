@@ -1,15 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Network, RefreshCw } from 'lucide-react';
+import { CheckCircle, Lock, Network, RefreshCw, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface AutopoolLevelProgress {
+  level: number;
+  user_count: number;
+  required_count: number;
+  progress_percent: number;
+  reward_amount: number;
   earned: boolean;
+  earned_amount: number;
+  earned_at?: string | null;
 }
 
 interface AutopoolProgressResponse {
   is_member: boolean;
   membership_position?: number;
   total_earned: number;
+  enabled?: boolean;
   levels: AutopoolLevelProgress[];
 }
 
@@ -73,6 +81,50 @@ const AutopoolMatrixProgress: React.FC = () => {
           <p className="mt-1 text-2xl font-bold text-amber-800">{Number(progress.total_earned || 0).toFixed(2)} USDT</p>
         </div>
       </div>
+
+      {progress.enabled !== false && (
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left">
+              <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-5 py-4">Level</th>
+                  <th className="px-5 py-4">Users</th>
+                  <th className="px-5 py-4 min-w-64">Progress</th>
+                  <th className="px-5 py-4">Reward</th>
+                  <th className="px-5 py-4">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(progress.levels || []).map((level) => (
+                  <tr key={level.level} className={level.earned ? 'bg-emerald-50/60' : ''}>
+                    <td className="whitespace-nowrap px-5 py-5 font-semibold text-gray-900">Level {level.level}</td>
+                    <td className="whitespace-nowrap px-5 py-5 text-gray-700">
+                      <span className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-indigo-500" /> {level.user_count.toLocaleString()} / {level.required_count.toLocaleString()}</span>
+                    </td>
+                    <td className="px-5 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="h-2 flex-1 rounded-full bg-gray-200">
+                          <div className="h-2 rounded-full bg-indigo-500" style={{ width: `${Math.min(100, Math.max(0, level.progress_percent))}%` }} />
+                        </div>
+                        <span className="w-16 text-right text-sm text-gray-600">{Number(level.progress_percent || 0).toFixed(2)}%</span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-5 font-semibold text-amber-700">{Number(level.reward_amount || 0).toLocaleString()} USDT</td>
+                    <td className="whitespace-nowrap px-5 py-5">
+                      {level.earned ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700"><CheckCircle className="h-4 w-4" /> Earned</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-600"><Lock className="h-4 w-4" /> Not earned</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">
         Detailed level-by-level counts, progress, and reward schedules are currently available to administrators only.
