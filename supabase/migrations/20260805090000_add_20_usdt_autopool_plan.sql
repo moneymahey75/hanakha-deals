@@ -31,7 +31,7 @@ BEGIN
       'AutoPool Matrix',
       '',
       20.00,
-      36500,
+      0,
       '["One-time 20 USDT subscription", "Separate top-to-bottom, left-to-right matrix", "Eight matrix levels", "Milestone rewards are subject to available funds and applicable laws"]'::jsonb,
       true,
       'upgrade',

@@ -34,6 +34,36 @@ const WalletList: React.FC<WalletListProps> = ({ userId }) => {
     const { settings } = useAdmin();
     const [walletService] = useState(() => WalletService.getInstance());
 
+    const enabledWallets = settings?.paymentWalletsEnabled ?? {
+        trust_wallet: true,
+        metamask: true,
+        safepal: true,
+        tokenpocket: false,
+        bitget: false,
+    };
+
+    const isWalletEnabled = (wallet: WalletInfo): boolean => {
+        switch (wallet.name) {
+            case 'Trust Wallet':
+                return enabledWallets.trust_wallet;
+            case 'MetaMask':
+                return enabledWallets.metamask;
+            case 'SafePal':
+                return enabledWallets.safepal;
+            case 'TokenPocket':
+                return enabledWallets.tokenpocket;
+            case 'Bitget Wallet':
+                return enabledWallets.bitget;
+            default:
+                return false;
+        }
+    };
+
+    const getEnabledDetectedWallets = (): WalletInfo[] =>
+        walletService.detectWallets().filter(isWalletEnabled);
+
+    const enabledAvailableWallets = availableWallets.filter(isWalletEnabled);
+
     useEffect(() => {
         if (userId) {
             loadUserWallets();
@@ -53,7 +83,7 @@ const WalletList: React.FC<WalletListProps> = ({ userId }) => {
 
     useEffect(() => {
         const refreshDetectedWallets = () => {
-            setAvailableWallets(walletService.detectWallets());
+            setAvailableWallets(getEnabledDetectedWallets());
         };
 
         refreshDetectedWallets();
@@ -180,7 +210,7 @@ const WalletList: React.FC<WalletListProps> = ({ userId }) => {
     };
 
     const handleConnectWallet = async () => {
-        const wallets = walletService.detectWallets();
+        const wallets = getEnabledDetectedWallets();
         setAvailableWallets(wallets);
 
         if (wallets.length === 0) {
@@ -296,9 +326,9 @@ const WalletList: React.FC<WalletListProps> = ({ userId }) => {
                 >
                     {isConnecting ? 'Connecting...' : 'Connect Wallet'}
                 </button>
-                {showWalletChoices && availableWallets.length > 1 && (
+                {showWalletChoices && enabledAvailableWallets.length > 1 && (
                     <div className="mt-4 flex flex-wrap justify-center gap-2">
-                        {availableWallets.map((wallet) => (
+                        {enabledAvailableWallets.map((wallet) => (
                             <button
                                 key={wallet.name}
                                 onClick={() => connectSelectedWallet(wallet)}

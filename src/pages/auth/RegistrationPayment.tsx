@@ -9,7 +9,7 @@ import { getSponsorStatusBySponsorshipNumber } from '../../lib/supabase';
 import { WalletInfo as WalletInfoType, WalletState, TransactionState } from '../../types/wallet';
 import { WalletInfo as WalletInfoCard } from '../../components/payment/WalletInfo';
 import { CheckCircle, Wallet, Shield, CreditCard, Loader, XCircle, ExternalLink, Copy, PlusCircle } from 'lucide-react';
-import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../../utils/edgeFunctionError';
+import { extractEdgeFunctionErrorMessage, getEdgeFunctionErrorStatus, isRetryableEdgeFunctionError } from '../../utils/edgeFunctionError';
 import { getBscExplorerBaseUrl, getPaymentNetworkName, isLivePaymentModeValue } from '../../utils/paymentMode';
 
 interface RegistrationPlan {
@@ -479,13 +479,15 @@ const RegistrationPayment: React.FC = () => {
       trust_wallet: true,
       metamask: true,
       safepal: true,
-      tokenpocket: true,
-      bitget: true,
+      tokenpocket: false,
+      bitget: false,
       ...settings?.paymentWalletsEnabled
     };
   }, [settings]);
 
   const filteredWallets = useMemo(() => {
+    if (settingsLoading) return [];
+
     return availableWallets.filter((wallet) => {
       if (wallet.name === 'Trust Wallet') return enabledWallets.trust_wallet;
       if (wallet.name === 'MetaMask') return enabledWallets.metamask;
@@ -494,7 +496,7 @@ const RegistrationPayment: React.FC = () => {
       if (wallet.name === 'Bitget Wallet') return enabledWallets.bitget;
       return false;
     });
-  }, [availableWallets, enabledWallets]);
+  }, [availableWallets, enabledWallets, settingsLoading]);
 
   const adminReceivingWallet = useMemo(() => {
     return String(settings?.adminPaymentWallet || '').trim();
@@ -591,6 +593,12 @@ const RegistrationPayment: React.FC = () => {
 	        });
 
 	        if (error) {
+	          if (getEdgeFunctionErrorStatus(error) === 401 && attempt < maxAttempts) {
+	            const { error: refreshError } = await supabase.auth.refreshSession();
+	            if (!refreshError) {
+	              continue;
+	            }
+	          }
 	          if (isRetryableEdgeFunctionError(error) && attempt < maxAttempts) {
 	            await sleep(500 * attempt);
 	            continue;

@@ -8,8 +8,8 @@ const defaultPaymentWalletsEnabled = {
     trust_wallet: true,
     metamask: true,
     safepal: true,
-    tokenpocket: true,
-    bitget: true
+    tokenpocket: false,
+    bitget: false
 };
 
 const PaymentSettings: React.FC = () => {

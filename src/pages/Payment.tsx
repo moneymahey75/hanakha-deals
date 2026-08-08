@@ -9,7 +9,7 @@ import { WalletInfo, WalletState, TransactionState } from '../types/wallet';
 import { WalletSelector } from '../components/payment/WalletSelector';
 import { WalletInfo as WalletInfoComponent } from '../components/payment/WalletInfo';
 import { CheckCircle, CreditCard, Shield, ArrowLeft, Wallet, AlertTriangle, Loader, XCircle, ExternalLink, Copy } from 'lucide-react';
-import { extractEdgeFunctionErrorMessage, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
+import { extractEdgeFunctionErrorMessage, getEdgeFunctionErrorStatus, isRetryableEdgeFunctionError } from '../utils/edgeFunctionError';
 import { sendAccountEmail } from '../utils/accountEmails';
 import { getBscExplorerBaseUrl, getPaymentNetworkName, isLivePaymentModeValue } from '../utils/paymentMode';
 
@@ -208,21 +208,23 @@ const Payment: React.FC = () => {
     trust_wallet: true,
     metamask: true,
     safepal: true,
-    tokenpocket: true,
-    bitget: true,
+    tokenpocket: false,
+    bitget: false,
     ...settings?.paymentWalletsEnabled,
   }), [settings?.paymentWalletsEnabled]);
 
   const filteredWallets = useMemo(() => {
+    if (settingsLoading) return [];
+
     return availableWallets.filter((wallet) => {
       if (wallet.name === 'Trust Wallet') return enabledWallets.trust_wallet;
       if (wallet.name === 'MetaMask') return enabledWallets.metamask;
       if (wallet.name === 'SafePal') return enabledWallets.safepal;
       if (wallet.name === 'TokenPocket') return enabledWallets.tokenpocket;
       if (wallet.name === 'Bitget Wallet') return enabledWallets.bitget;
-      return true;
+      return false;
     });
-  }, [availableWallets, enabledWallets]);
+  }, [availableWallets, enabledWallets, settingsLoading]);
 
   // The admin-selected payment mode is the single source of truth. Launch phase
   // controls site availability only; it must never silently change the chain.
@@ -697,8 +699,14 @@ const Payment: React.FC = () => {
 		          }
 		        });
 
-		        if (error) {
-		          if (isRetryableEdgeFunctionError(error) && attempt < maxAttempts) {
+                if (error) {
+                  if (getEdgeFunctionErrorStatus(error) === 401 && attempt < maxAttempts) {
+                    const { error: refreshError } = await supabase.auth.refreshSession();
+                    if (!refreshError) {
+                      continue;
+                    }
+                  }
+                  if (isRetryableEdgeFunctionError(error) && attempt < maxAttempts) {
 		            await sleep(500 * attempt);
 		            continue;
 		          }
@@ -1591,7 +1599,7 @@ const Payment: React.FC = () => {
                         <AlertTriangle className="h-4 w-4" />
                         No compatible wallet detected
                       </div>
-                      Please install MetaMask, Trust Wallet, SafePal, TokenPocket, or Bitget Wallet.
+                      Please install one of the wallets enabled by the administrator.
                     </div>
                   ) : (
                     <WalletSelector
