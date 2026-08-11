@@ -576,7 +576,11 @@ Deno.serve(async (req: Request) => {
 
           const isEnabled = u.tu_is_active === true;
           const verificationComplete = meetsVerificationRules(u);
-          const isMemberActive = isEnabled && (u.tu_registration_paid === true) && verificationComplete;
+          const hasAutopoolMembership = autopoolUserIds.has(String(u.tu_id || '').trim());
+          const isMemberActive = isEnabled && (
+            hasAutopoolMembership ||
+            (u.tu_registration_paid === true && verificationComplete)
+          );
           const isPending = isEnabled && !isMemberActive;
           const isDisabled = !isEnabled;
 
@@ -598,7 +602,7 @@ Deno.serve(async (req: Request) => {
             tu_is_dummy: !!u.tu_is_dummy,
             tu_current_plan_phase: u.tu_current_plan_phase || null,
             tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
-            has_autopool_membership: autopoolUserIds.has(String(u.tu_id || '').trim()),
+            has_autopool_membership: hasAutopoolMembership,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {
@@ -774,7 +778,11 @@ Deno.serve(async (req: Request) => {
 
           const isEnabled = u.tu_is_active === true;
           const verificationComplete = meetsVerificationRules(u);
-          const isMemberActive = isEnabled && (u.tu_registration_paid === true) && verificationComplete;
+          const hasAutopoolMembership = autopoolUserIds.has(String(u.tu_id || '').trim());
+          const isMemberActive = isEnabled && (
+            hasAutopoolMembership ||
+            (u.tu_registration_paid === true && verificationComplete)
+          );
           const isPending = isEnabled && !isMemberActive;
           const isDisabled = !isEnabled;
 
@@ -796,7 +804,7 @@ Deno.serve(async (req: Request) => {
             tu_is_dummy: !!u.tu_is_dummy,
             tu_current_plan_phase: u.tu_current_plan_phase || null,
             tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
-            has_autopool_membership: autopoolUserIds.has(String(u.tu_id || '').trim()),
+            has_autopool_membership: hasAutopoolMembership,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {

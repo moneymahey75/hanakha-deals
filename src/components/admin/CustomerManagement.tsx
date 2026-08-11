@@ -276,6 +276,8 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                     tu_mobile_verified: row.tu_mobile_verified,
                     tu_registration_paid: row.tu_registration_paid ?? false,
                     tu_is_active: row.tu_is_active,
+                    is_active_member: row.is_active_member ?? false,
+                    verification_complete: row.verification_complete ?? false,
                     tu_is_dummy: row.tu_is_dummy ?? false,
                     has_launch_subscription: row.has_launch_subscription ?? false,
                     has_autopool_membership: row.has_autopool_membership ?? false,
