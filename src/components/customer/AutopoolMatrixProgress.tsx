@@ -24,11 +24,19 @@ interface AutopoolProgressResponse {
 const AutopoolMatrixProgress: React.FC = () => {
   const [progress, setProgress] = useState<AutopoolProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadProgress = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const { data, error } = await supabase.rpc('get_my_autopool_20_progress');
-    if (!error) setProgress(data as AutopoolProgressResponse);
+    if (error) {
+      console.error('Failed to load AutoPool Matrix progress:', error);
+      setProgress(null);
+      setLoadError(error.message || 'The AutoPool Matrix status could not be loaded.');
+    } else {
+      setProgress(data as AutopoolProgressResponse);
+    }
     setLoading(false);
   }, []);
 
@@ -38,6 +46,19 @@ const AutopoolMatrixProgress: React.FC = () => {
 
   if (loading) {
     return <div className="flex min-h-64 items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-indigo-600" /></div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+        <Network className="mx-auto h-12 w-12 text-red-600" />
+        <h2 className="mt-4 text-xl font-bold text-gray-900">AutoPool Matrix unavailable</h2>
+        <p className="mt-2 text-gray-600">{loadError}</p>
+        <button onClick={() => void loadProgress()} className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+          <RefreshCw className="h-4 w-4" /> Try again
+        </button>
+      </div>
+    );
   }
 
   if (!progress?.is_member) {

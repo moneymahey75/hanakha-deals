@@ -433,8 +433,8 @@ const GeneralSettings: React.FC = () => {
 
                         <div className="flex items-center justify-between gap-4">
                             <div>
-                                <h4 className="text-sm font-semibold text-gray-900">AutoPool Matrix Details</h4>
-                                <p className="text-xs text-gray-600 mt-1">Show customers their eight-level AutoPool progress table.</p>
+                                <h4 className="text-sm font-semibold text-gray-900">AutoPool Progress Table</h4>
+                                <p className="text-xs text-gray-600 mt-1">Show or hide the eight-level AutoPool progress table. Member summaries always remain visible.</p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
                                 <input

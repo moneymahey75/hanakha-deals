@@ -553,9 +553,10 @@ Deno.serve(async (req: Request) => {
         supabase,
         (users || []).map((u: any) => u.tu_id)
       );
-      const autopoolUserIds = planFilter === 'autopool'
-        ? await getAutopoolUserIds(supabase, (users || []).map((u: any) => u.tu_id))
-        : new Set<string>();
+      const autopoolUserIds = await getAutopoolUserIds(
+        supabase,
+        (users || []).map((u: any) => u.tu_id)
+      );
 
       const combined = (users || [])
         .map((u: any) => {
@@ -597,6 +598,7 @@ Deno.serve(async (req: Request) => {
             tu_is_dummy: !!u.tu_is_dummy,
             tu_current_plan_phase: u.tu_current_plan_phase || null,
             tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
+            has_autopool_membership: autopoolUserIds.has(String(u.tu_id || '').trim()),
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {
@@ -750,9 +752,10 @@ Deno.serve(async (req: Request) => {
         supabase,
         (users || []).map((u: any) => u.tu_id)
       );
-      const autopoolUserIds = planFilter === 'autopool'
-        ? await getAutopoolUserIds(supabase, (users || []).map((u: any) => u.tu_id))
-        : new Set<string>();
+      const autopoolUserIds = await getAutopoolUserIds(
+        supabase,
+        (users || []).map((u: any) => u.tu_id)
+      );
 
       const combined = (users || [])
         .map((u: any) => {
@@ -793,6 +796,7 @@ Deno.serve(async (req: Request) => {
             tu_is_dummy: !!u.tu_is_dummy,
             tu_current_plan_phase: u.tu_current_plan_phase || null,
             tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
+            has_autopool_membership: autopoolUserIds.has(String(u.tu_id || '').trim()),
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {

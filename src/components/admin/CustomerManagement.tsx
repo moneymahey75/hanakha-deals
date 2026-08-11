@@ -28,6 +28,7 @@ interface Customer {
     verification_complete?: boolean;
     tu_is_dummy?: boolean;
     has_launch_subscription?: boolean;
+    has_autopool_membership?: boolean;
     launch_subscription_status?: string | null;
     launch_subscription_start_date?: string | null;
     launch_subscription_end_date?: string | null;
@@ -277,6 +278,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                     tu_is_active: row.tu_is_active,
                     tu_is_dummy: row.tu_is_dummy ?? false,
                     has_launch_subscription: row.has_launch_subscription ?? false,
+                    has_autopool_membership: row.has_autopool_membership ?? false,
                     launch_subscription_status: row.launch_subscription_status ?? null,
                     launch_subscription_start_date: row.launch_subscription_start_date ?? null,
                     launch_subscription_end_date: row.launch_subscription_end_date ?? null,
@@ -674,7 +676,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account Status</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -774,21 +776,31 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                           return (
                                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                                               <Activity className="h-3 w-3 mr-1" />
-                                              Pending
+                                              {customer.has_autopool_membership ? 'Pending Registration' : 'Pending'}
                                             </span>
                                           );
                                         })()}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    {customer.has_launch_subscription ? (
+                                    {customer.has_launch_subscription || customer.has_autopool_membership ? (
                                         <div>
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                                <CreditCard className="h-3 w-3 mr-1" />
-                                                Launch
-                                            </span>
-                                            <div className="mt-1 text-xs text-gray-500 max-w-[140px] truncate" title={customer.launch_plan_name || undefined}>
-                                                {customer.launch_plan_name || 'Launch Plan'}
-                                            </div>
+                                            {customer.has_launch_subscription && (
+                                                <>
+                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                        <CreditCard className="h-3 w-3 mr-1" />
+                                                        Launch
+                                                    </span>
+                                                    <div className="mt-1 text-xs text-gray-500 max-w-[140px] truncate" title={customer.launch_plan_name || undefined}>
+                                                        {customer.launch_plan_name || 'Launch Plan'}
+                                                    </div>
+                                                </>
+                                            )}
+                                            {customer.has_autopool_membership && (
+                                                <span className="mt-1 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                                    <CreditCard className="h-3 w-3 mr-1" />
+                                                    AutoPool Matrix
+                                                </span>
+                                            )}
                                         </div>
                                     ) : (
                                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">

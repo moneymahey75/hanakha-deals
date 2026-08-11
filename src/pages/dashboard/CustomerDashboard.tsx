@@ -749,7 +749,6 @@ const CustomerDashboard: React.FC = () => {
                         title="Customer has an active AutoPool Matrix subscription"
                       >
                         <CheckCircle className="h-4 w-4" />
-                        <span>AutoPool Active</span>
                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold shadow-sm ${badge.className}`}>
                           <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${badge.iconClassName}`}>
                             <PackageIcon className="h-3.5 w-3.5" />
