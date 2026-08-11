@@ -1502,7 +1502,7 @@ const Payment: React.FC = () => {
           </div>
         </div>
 
-        {transaction.status !== 'idle' && (
+        {transaction.status !== 'idle' && transaction.status !== 'success' && (
           <div className={`rounded-2xl border p-4 sm:p-5 shadow-sm ${
             transaction.status === 'success'
               ? 'bg-green-50 border-green-200'

@@ -134,6 +134,14 @@ const getPackageBadgeConfig = (packageName: string) => {
     };
   }
 
+  if (normalized.includes('autopool')) {
+    return {
+      Icon: Network,
+      className: 'border-indigo-200 bg-indigo-50 text-indigo-800 shadow-indigo-100',
+      iconClassName: 'bg-indigo-100 text-indigo-700',
+    };
+  }
+
   return {
     Icon: Award,
     className: 'border-emerald-200 bg-emerald-50 text-emerald-800 shadow-emerald-100',
@@ -162,6 +170,8 @@ const CustomerDashboard: React.FC = () => {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [hasLaunchUpgrade, setHasLaunchUpgrade] = useState(false);
   const [launchPackageName, setLaunchPackageName] = useState<string | null>(null);
+  const [hasAutopoolMembership, setHasAutopoolMembership] = useState(false);
+  const [autopoolPackageName, setAutopoolPackageName] = useState<string | null>(null);
   const [upgradeStatusLoading, setUpgradeStatusLoading] = useState(true);
   const [spinWheelVisible, setSpinWheelVisible] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
@@ -194,6 +204,8 @@ const CustomerDashboard: React.FC = () => {
         if (mounted) {
           setHasLaunchUpgrade(false);
           setLaunchPackageName(null);
+          setHasAutopoolMembership(false);
+          setAutopoolPackageName(null);
           setUpgradeStatusLoading(false);
         }
         return;
@@ -209,7 +221,7 @@ const CustomerDashboard: React.FC = () => {
               }),
           supabase
             .from('tbl_user_subscriptions')
-            .select('tus_payment_amount, tus_start_date, tus_plan_phase, plan:tus_plan_id(tsp_name, tsp_price, tsp_plan_phase)')
+            .select('tus_payment_amount, tus_start_date, tus_plan_phase, plan:tus_plan_id(tsp_name, tsp_price, tsp_plan_phase, tsp_product_code)')
             .eq('tus_user_id', user.id)
             .in('tus_status', ['active', 'upgraded'])
             .is('tus_exhausted_at', null)
@@ -231,16 +243,24 @@ const CustomerDashboard: React.FC = () => {
             .map((row) => String(row?.plan?.tsp_name || '').trim())
             .filter(Boolean)
         ));
+        const autopoolPackages = ((packageResult.data || []) as any[])
+          .filter((row) => String(row?.plan?.tsp_product_code || '').toLowerCase() === 'autopool_20')
+          .map((row) => String(row?.plan?.tsp_name || 'AutoPool Matrix').trim())
+          .filter(Boolean);
 
         if (mounted) {
           setHasLaunchUpgrade(Boolean(upgradeResult.data) || launchPackages.length > 0);
           setLaunchPackageName(packageNames.length > 0 ? packageNames.join(', ') : null);
+          setHasAutopoolMembership(autopoolPackages.length > 0);
+          setAutopoolPackageName(autopoolPackages[0] || null);
         }
       } catch {
         console.warn('Failed to load launch upgrade status');
         if (mounted) {
           setHasLaunchUpgrade(false);
           setLaunchPackageName(null);
+          setHasAutopoolMembership(false);
+          setAutopoolPackageName(null);
         }
       } finally {
         if (mounted) setUpgradeStatusLoading(false);
@@ -718,6 +738,27 @@ const CustomerDashboard: React.FC = () => {
                           )
                         : 'Not Upgraded Yet'}
                   </span>
+                  {!upgradeStatusLoading && hasAutopoolMembership && (() => {
+                    const packageName = autopoolPackageName || 'AutoPool Matrix';
+                    const badge = getPackageBadgeConfig(packageName);
+                    const PackageIcon = badge.Icon;
+
+                    return (
+                      <span
+                        className={`mt-2 inline-flex max-w-full flex-wrap items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold ${badge.className}`}
+                        title="Customer has an active AutoPool Matrix subscription"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        <span>AutoPool Active</span>
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold shadow-sm ${badge.className}`}>
+                          <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${badge.iconClassName}`}>
+                            <PackageIcon className="h-3.5 w-3.5" />
+                          </span>
+                          {packageName}
+                        </span>
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
 
