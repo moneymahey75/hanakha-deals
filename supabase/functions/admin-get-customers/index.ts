@@ -171,7 +171,7 @@ const getLaunchSubscriptionMap = async (
   for (const planChunk of chunk(planIds, 500)) {
     const { data, error } = await supabase
       .from('tbl_subscription_plans')
-      .select('tsp_id, tsp_name, tsp_price, tsp_plan_phase')
+      .select('tsp_id, tsp_name, tsp_price, tsp_plan_phase, tsp_product_code')
       .in('tsp_id', planChunk);
     if (error) throw error;
     for (const plan of data || []) {
@@ -185,6 +185,8 @@ const getLaunchSubscriptionMap = async (
     if (!userId) continue;
 
     const plan = planById.get(String(subscription?.tus_plan_id || '').trim()) || null;
+    // AutoPool is a standalone add-on, never the customer's Launch package.
+    if (String(plan?.tsp_product_code || '').toLowerCase() === 'autopool_20') continue;
     const planPhase = String(subscription?.tus_plan_phase || plan?.tsp_plan_phase || 'prelaunch').toLowerCase();
     if (planPhase !== 'launch' && userLaunchPhaseById.get(userId) !== true) continue;
 

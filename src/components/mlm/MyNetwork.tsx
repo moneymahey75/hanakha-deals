@@ -40,6 +40,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [maxLevels, setMaxLevels] = useState(100);
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
+  const [memberFilter, setMemberFilter] = useState<'all' | 'autopool_only' | 'launch_active' | 'pending'>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [networkSummary, setNetworkSummary] = useState({
@@ -130,9 +131,18 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
     }
   };
 
+  const filteredRows = useMemo(() => rows.filter((node) => {
+    if (memberFilter === 'autopool_only') return node.is_autopool_only_member === true;
+    if (memberFilter === 'launch_active') return node.is_active_member === true && node.is_autopool_only_member !== true;
+    if (memberFilter === 'pending') {
+      return node.is_autopool_only_member !== true && node.is_active_member !== true;
+    }
+    return true;
+  }), [memberFilter, rows]);
+
   const sortedTreeData = useMemo(() => {
-    return [...rows].sort((a, b) => Number(a.level || 0) - Number(b.level || 0));
-  }, [rows]);
+    return [...filteredRows].sort((a, b) => Number(a.level || 0) - Number(b.level || 0));
+  }, [filteredRows]);
 
   const listByLevel = useMemo(() => {
     const map = new Map<number, ReferralRow[]>();
@@ -142,7 +152,7 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
       map.set(node.level, list);
     }
     return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  }, [rows]);
+  }, [filteredRows]);
 
 
   const renderStatus = (node: ReferralRow) => {
@@ -267,6 +277,22 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           </div>
           <div className="flex items-center gap-2">
             <select
+              value={memberFilter}
+              onChange={(e) => {
+                setMemberFilter(e.target.value as typeof memberFilter);
+                setPage(1);
+              }}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
+              title="Filter members by AutoPool or Launch status"
+            >
+              <option value="all">All members</option>
+              <option value="autopool_only">AutoPool Only</option>
+              <option value="launch_active">Launch Active</option>
+              <option value="pending">Pending Launch</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
               value={levelFilter ?? ''}
               onChange={(e) => {
                 setLevelFilter(e.target.value ? Number(e.target.value) : null);
@@ -378,10 +404,10 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
                     {error}
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
-                    No referrals yet.
+                    No members match this filter.
                   </td>
                 </tr>
               ) : (
@@ -413,15 +439,15 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
           {!loading && error && (
             <div className="text-center text-sm text-red-600 py-6">{error}</div>
           )}
-          {!loading && !error && rows.length === 0 && (
-            <div className="text-center text-sm text-gray-500 py-6">No referrals yet.</div>
+          {!loading && !error && filteredRows.length === 0 && (
+            <div className="text-center text-sm text-gray-500 py-6">No members match this filter.</div>
           )}
-          {!loading && !error && rows.length > 0 && levelFilter === null && (
+          {!loading && !error && filteredRows.length > 0 && levelFilter === null && (
             <div className="border border-blue-200 bg-blue-50 text-blue-800 rounded-lg px-4 py-3 text-sm">
               Showing paginated results across all levels. For a cleaner view, filter by a specific level.
             </div>
           )}
-          {!loading && !error && rows.length > 0 && listByLevel.map(([level, nodes]) => (
+          {!loading && !error && filteredRows.length > 0 && listByLevel.map(([level, nodes]) => (
             <div key={level} className="border border-gray-200 rounded-lg">
               <div className="px-4 py-2 bg-gray-50 text-sm font-medium text-gray-700">
                 Level {level} • {nodes.length} member{nodes.length === 1 ? '' : 's'}
