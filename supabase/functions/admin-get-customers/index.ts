@@ -100,12 +100,15 @@ const getAutopoolUserIds = async (
 
   for (const idChunk of chunk(uniqueUserIds, 500)) {
     const { data, error } = await supabase
-      .from('tbl_autopool_20_memberships')
-      .select('ta20_user_id')
-      .in('ta20_user_id', idChunk);
+      .from('tbl_user_subscriptions')
+      .select('tus_user_id, tus_end_date, plan:tus_plan_id(tsp_product_code)')
+      .in('tus_user_id', idChunk)
+      .in('tus_status', ['active', 'upgraded'])
+      .or(`tus_end_date.is.null,tus_end_date.gt.${new Date().toISOString()}`);
     if (error) throw error;
     for (const row of data || []) {
-      const userId = String((row as any)?.ta20_user_id || '').trim();
+      if (String((row as any)?.plan?.tsp_product_code || '').toLowerCase() !== 'autopool_20') continue;
+      const userId = String((row as any)?.tus_user_id || '').trim();
       if (userId) result.add(userId);
     }
   }
@@ -209,6 +212,27 @@ const getLaunchSubscriptionMap = async (
   }
 
   return launchByUserId;
+};
+
+const computeMemberStatusFields = (
+  row: any,
+  autopoolUserIds: Set<string>,
+  registrationPaid?: boolean
+) => {
+  const verificationComplete = meetsVerificationRules(row);
+  const isEnabled = row?.tu_is_active === true;
+  const hasAutopoolMembership = autopoolUserIds.has(String(row?.tu_id || '').trim());
+  const isRegistrationPaid = registrationPaid ?? row?.tu_registration_paid === true;
+  const isMemberActive = isEnabled && (
+    hasAutopoolMembership ||
+    (isRegistrationPaid && verificationComplete)
+  );
+
+  return {
+    verification_complete: verificationComplete,
+    has_autopool_membership: hasAutopoolMembership,
+    is_active_member: isMemberActive,
+  };
 };
 
 const applyLaunchSubscriptionFields = (row: any, launchMap: Map<string, any>) => {
@@ -574,13 +598,9 @@ Deno.serve(async (req: Request) => {
 
           if (!matchesCustomerSearch(searchBlob, pSponsorship, searchTerm)) return null;
 
+          const memberStatus = computeMemberStatusFields(u, autopoolUserIds);
           const isEnabled = u.tu_is_active === true;
-          const verificationComplete = meetsVerificationRules(u);
-          const hasAutopoolMembership = autopoolUserIds.has(String(u.tu_id || '').trim());
-          const isMemberActive = isEnabled && (
-            hasAutopoolMembership ||
-            (u.tu_registration_paid === true && verificationComplete)
-          );
+          const isMemberActive = memberStatus.is_active_member;
           const isPending = isEnabled && !isMemberActive;
           const isDisabled = !isEnabled;
 
@@ -597,12 +617,10 @@ Deno.serve(async (req: Request) => {
             tu_mobile_verified: u.tu_mobile_verified,
             tu_registration_paid: u.tu_registration_paid ?? false,
             tu_is_active: u.tu_is_active,
-            is_active_member: isMemberActive,
-            verification_complete: verificationComplete,
+            ...memberStatus,
             tu_is_dummy: !!u.tu_is_dummy,
             tu_current_plan_phase: u.tu_current_plan_phase || null,
             tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
-            has_autopool_membership: hasAutopoolMembership,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {
@@ -776,13 +794,9 @@ Deno.serve(async (req: Request) => {
 
           if (!matchesCustomerSearch(searchBlob, p?.tup_sponsorship_number, searchTerm)) return null;
 
+          const memberStatus = computeMemberStatusFields(u, autopoolUserIds);
           const isEnabled = u.tu_is_active === true;
-          const verificationComplete = meetsVerificationRules(u);
-          const hasAutopoolMembership = autopoolUserIds.has(String(u.tu_id || '').trim());
-          const isMemberActive = isEnabled && (
-            hasAutopoolMembership ||
-            (u.tu_registration_paid === true && verificationComplete)
-          );
+          const isMemberActive = memberStatus.is_active_member;
           const isPending = isEnabled && !isMemberActive;
           const isDisabled = !isEnabled;
 
@@ -799,12 +813,10 @@ Deno.serve(async (req: Request) => {
             tu_mobile_verified: u.tu_mobile_verified,
             tu_registration_paid: u.tu_registration_paid ?? false,
             tu_is_active: u.tu_is_active,
-            is_active_member: isMemberActive,
-            verification_complete: verificationComplete,
+            ...memberStatus,
             tu_is_dummy: !!u.tu_is_dummy,
             tu_current_plan_phase: u.tu_current_plan_phase || null,
             tu_launch_plan_activated_at: u.tu_launch_plan_activated_at || null,
-            has_autopool_membership: hasAutopoolMembership,
             tu_created_at: u.tu_created_at,
             tu_updated_at: u.tu_updated_at,
             profile_data: p ? {
@@ -872,6 +884,10 @@ Deno.serve(async (req: Request) => {
       rowsWithUserLaunchPhase.map((row: any) => row?.tu_id)
     );
     const rowsWithLaunch = rowsWithUserLaunchPhase.map((row: any) => applyLaunchSubscriptionFields(row, launchSubscriptionByUserId));
+    const autopoolUserIds = await getAutopoolUserIds(
+      supabase,
+      rowsWithLaunch.map((row: any) => row?.tu_id)
+    );
     const missingRegFlag = rowsWithUserLaunchPhase.length > 0 && rowsWithUserLaunchPhase.some((row: any) => row?.tu_registration_paid === undefined);
     if (missingRegFlag) {
       const ids = Array.from(
@@ -895,15 +911,14 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const merged = rowsWithLaunch.map((row: any) => ({
-        ...row,
-        tu_registration_paid: row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false),
-        verification_complete: meetsVerificationRules(row),
-        is_active_member:
-          row?.tu_is_active === true &&
-          (row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false)) === true &&
-          meetsVerificationRules(row),
-      }));
+      const merged = rowsWithLaunch.map((row: any) => {
+        const registrationPaid = row?.tu_registration_paid ?? (regMap.get(String(row?.tu_id || '').trim()) ?? false);
+        return {
+          ...row,
+          tu_registration_paid: registrationPaid,
+          ...computeMemberStatusFields(row, autopoolUserIds, registrationPaid),
+        };
+      });
 
       return new Response(JSON.stringify({ success: true, data: merged }), {
         status: 200,
@@ -911,17 +926,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const normalizedRows = rowsWithLaunch.map((row: any) => {
-      const verificationComplete = meetsVerificationRules(row);
-      return {
-        ...row,
-        verification_complete: verificationComplete,
-        is_active_member:
-          row?.tu_is_active === true &&
-          row?.tu_registration_paid === true &&
-          verificationComplete,
-      };
-    });
+    const normalizedRows = rowsWithLaunch.map((row: any) => ({
+      ...row,
+      ...computeMemberStatusFields(row, autopoolUserIds),
+    }));
 
     return new Response(JSON.stringify({ success: true, data: normalizedRows }), {
       status: 200,

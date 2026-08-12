@@ -19,6 +19,8 @@ type ReferralRow = {
   email_verified?: boolean;
   mobile_verified?: boolean;
   is_active_member?: boolean;
+  has_autopool_membership?: boolean;
+  is_autopool_only_member?: boolean;
   email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -144,6 +146,14 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
 
 
   const renderStatus = (node: ReferralRow) => {
+    if (node.is_autopool_only_member) {
+      return (
+        <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">
+          AutoPool Only
+        </span>
+      );
+    }
+
     const activeMember =
       node.is_active_member ??
       (
@@ -178,6 +188,18 @@ const MyNetwork: React.FC<MyNetworkProps> = ({ userId }) => {
   const renderPackage = (node: ReferralRow) => {
     const packageName = String(node.subscribed_package_name || '').trim();
     const packageAmount = node.subscribed_package_amount == null ? null : Number(node.subscribed_package_amount);
+
+    if (node.is_autopool_only_member) {
+      return (
+        <div className="min-w-0">
+          <div className="max-w-[180px] truncate text-sm font-medium text-emerald-800" title="AutoPool Matrix">
+            AutoPool Matrix
+          </div>
+          <div className="text-xs text-gray-500">20 USDT</div>
+          <div className="text-[11px] text-emerald-700">Not counted for launch plan benefits</div>
+        </div>
+      );
+    }
 
     if (!packageName) {
       return <span className="text-xs text-gray-400">No Launch Package</span>;

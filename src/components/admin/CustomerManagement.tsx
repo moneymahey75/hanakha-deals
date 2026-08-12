@@ -758,7 +758,10 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ initialSearchTe
                                             (customer.tu_email_verified === true || customer.tu_mobile_verified === true);
                                           const isMemberActive =
                                             customer.is_active_member ??
-                                            (isEnabled && customer.tu_registration_paid === true && verificationComplete);
+                                            (isEnabled && (
+                                              customer.has_autopool_membership ||
+                                              (customer.tu_registration_paid === true && verificationComplete)
+                                            ));
                                           if (!isEnabled) {
                                             return (
                                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
