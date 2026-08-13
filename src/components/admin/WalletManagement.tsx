@@ -20,6 +20,7 @@ import {
   RefreshCw,
   CreditCard,
   AlertTriangle,
+  Award,
   CheckCircle,
   X,
   ChevronDown,
@@ -30,7 +31,7 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 
-type WalletTransactionType = 'credit' | 'debit' | 'recover_reserved';
+type WalletTransactionType = 'credit' | 'debit' | 'recover_reserved' | 'autopool_milestone';
 
 let inFlightWalletsRequest: { key: string; promise: Promise<WalletData[]> } | null = null;
 let inFlightWalletTransactionsRequest: {
@@ -193,6 +194,7 @@ const WalletManagement: React.FC = () => {
   const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState('');
   const [transactionType, setTransactionType] = useState<WalletTransactionType>('credit');
+  const [autopoolMilestoneLevel, setAutopoolMilestoneLevel] = useState(1);
   const [walletTransactionSubmitting, setWalletTransactionSubmitting] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [users, setUsers] = useState<User[]>([]);
@@ -385,11 +387,13 @@ const WalletManagement: React.FC = () => {
 
   const getWalletActionLabel = (type: WalletTransactionType) => {
     if (type === 'recover_reserved') return 'Recover Reserved';
+    if (type === 'autopool_milestone') return 'Award AutoPool Milestone';
     return type === 'credit' ? 'Credit' : 'Debit';
   };
 
   const getWalletActionPastLabel = (type: WalletTransactionType) => {
     if (type === 'recover_reserved') return 'recovered expired reserved balance';
+    if (type === 'autopool_milestone') return 'awarded an AutoPool milestone to';
     return type === 'credit' ? 'credited' : 'debited';
   };
 
@@ -401,6 +405,7 @@ const WalletManagement: React.FC = () => {
     setAmount(0);
     setDescription('');
     setTransactionType('credit');
+    setAutopoolMilestoneLevel(1);
     setWalletTransactionSubmitting(false);
     setPackageStatsSubmitting(false);
     setPackageStatsLoading(false);
@@ -558,23 +563,34 @@ const WalletManagement: React.FC = () => {
 
     // Rest of your function remains the same...
     try {
-      await ensureWalletExists(selectedUserId);
-      const result = await adminApi.post<{ newBalance: number; newReservedBalance?: number }>('admin-wallet-transaction', {
-        userId: selectedUserId,
-        amount,
-        transactionType,
-        description: description.trim() || (
-          transactionType === 'recover_reserved'
-            ? 'Admin recovered expired reserved balance'
-            : description
-        )
-      });
+      const result = transactionType === 'autopool_milestone'
+        ? await adminApi.post<{ newBalance: number; requiredMembers: number }>('admin-award-autopool-milestone', {
+            userId: selectedUserId,
+            level: autopoolMilestoneLevel,
+            amount,
+            description: description.trim(),
+          })
+        : await (async () => {
+            await ensureWalletExists(selectedUserId);
+            return adminApi.post<{ newBalance: number; newReservedBalance?: number }>('admin-wallet-transaction', {
+              userId: selectedUserId,
+              amount,
+              transactionType,
+              description: description.trim() || (
+                transactionType === 'recover_reserved'
+                  ? 'Admin recovered expired reserved balance'
+                  : description
+              )
+            });
+          })();
       const newBalance = result.newBalance;
 
       notification.showSuccess(
           'Wallet Updated',
           transactionType === 'recover_reserved'
             ? `Successfully recovered ${amount} USDT reserved balance. New reserved balance: ${(result.newReservedBalance || 0).toFixed(2)} USDT`
+            : transactionType === 'autopool_milestone'
+              ? `Awarded ${amount} USDT for AutoPool level ${autopoolMilestoneLevel}. New AutoPool balance: ${newBalance.toFixed(2)} USDT`
             : `Successfully ${getWalletActionPastLabel(transactionType)} ${amount} USDT. New balance: ${newBalance.toFixed(2)} USDT`
       );
 
@@ -1255,7 +1271,7 @@ const WalletManagement: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Transaction Type *
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       <button
                           type="button"
                           onClick={() => setTransactionType('credit')}
@@ -1295,13 +1311,49 @@ const WalletManagement: React.FC = () => {
                         <RefreshCw className="h-4 w-4 inline mr-2" />
                         Recover Reserved
                       </button>
+                      <button
+                          type="button"
+                          onClick={() => setTransactionType('autopool_milestone')}
+                          disabled={walletTransactionSubmitting}
+                          className={`px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
+                              transactionType === 'autopool_milestone'
+                                  ? 'border-violet-500 bg-violet-50 text-violet-700'
+                                  : 'border-gray-300 text-gray-700 hover:border-violet-300'
+                          } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <Award className="h-4 w-4 inline mr-2" />
+                        AutoPool Milestone
+                      </button>
                     </div>
                     {transactionType === 'recover_reserved' && (
                         <p className="mt-2 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                           Adds the amount back to both wallet balance and reserved balance for an admin-approved expired reserve recovery.
                         </p>
                     )}
+                    {transactionType === 'autopool_milestone' && (
+                        <p className="mt-2 text-sm text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                          Credits the user’s isolated AutoPool wallet and records a linked milestone reward. Each AutoPool level can only be awarded once.
+                        </p>
+                    )}
                   </div>
+
+                  {transactionType === 'autopool_milestone' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          AutoPool Milestone Level *
+                        </label>
+                        <select
+                            value={autopoolMilestoneLevel}
+                            onChange={(e) => setAutopoolMilestoneLevel(Number(e.target.value))}
+                            disabled={walletTransactionSubmitting}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                        >
+                          {Array.from({ length: 8 }, (_, index) => index + 1).map((level) => (
+                              <option key={level} value={level}>Level {level} ({Math.pow(4, level).toLocaleString()} required members)</option>
+                          ))}
+                        </select>
+                      </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1322,11 +1374,11 @@ const WalletManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description *
+                      Description {transactionType === 'autopool_milestone' ? '(optional)' : '*'}
                     </label>
                     <input
                         type="text"
-                        required
+                        required={transactionType !== 'autopool_milestone'}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         disabled={walletTransactionSubmitting}
@@ -1334,6 +1386,8 @@ const WalletManagement: React.FC = () => {
                         placeholder={
                           transactionType === 'recover_reserved'
                               ? 'Reason for reserved balance recovery'
+                              : transactionType === 'autopool_milestone'
+                                  ? 'Reason for manual milestone award (optional)'
                               : `Reason for ${transactionType}`
                         }
                     />
@@ -1456,6 +1510,8 @@ const WalletManagement: React.FC = () => {
                                 ? 'bg-green-600 hover:bg-green-700'
                                 : transactionType === 'recover_reserved'
                                     ? 'bg-blue-600 hover:bg-blue-700'
+                                    : transactionType === 'autopool_milestone'
+                                        ? 'bg-violet-600 hover:bg-violet-700'
                                 : 'bg-red-600 hover:bg-red-700'
                         } ${walletTransactionSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
@@ -1463,6 +1519,8 @@ const WalletManagement: React.FC = () => {
                           <Plus className="h-4 w-4" />
                       ) : transactionType === 'recover_reserved' ? (
                           <RefreshCw className="h-4 w-4" />
+                      ) : transactionType === 'autopool_milestone' ? (
+                          <Award className="h-4 w-4" />
                       ) : (
                           <Minus className="h-4 w-4" />
                       )}

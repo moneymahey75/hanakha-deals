@@ -75,8 +75,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (chainId !== null && !Number.isFinite(chainId)) {
-      return new Response(JSON.stringify({ success: false, error: 'Invalid chain ID' }), {
+    if (chainId === null || !Number.isSafeInteger(chainId) || chainId <= 0) {
+      return new Response(JSON.stringify({ success: false, error: 'A positive whole-number chain ID is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

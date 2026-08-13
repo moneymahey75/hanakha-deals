@@ -1074,7 +1074,10 @@ const CustomerDetails: React.FC<{
             walletAddress: wallet?.tuwc_wallet_address || '',
             walletName: wallet?.tuwc_wallet_name || 'Admin Updated Wallet',
             walletType: wallet?.tuwc_wallet_type || 'web3',
-            chainId: wallet?.tuwc_chain_id != null ? String(wallet.tuwc_chain_id) : '',
+            // New wallets in this admin flow target BSC Mainnet by default. This
+            // must be a value, rather than just the input placeholder, because
+            // the database requires tuwc_chain_id.
+            chainId: wallet?.tuwc_chain_id != null ? String(wallet.tuwc_chain_id) : '56',
             isDefault: wallet?.tuwc_is_default ?? true,
             isActive: wallet?.tuwc_is_active ?? true,
         });
@@ -1093,8 +1096,9 @@ const CustomerDetails: React.FC<{
             return;
         }
 
-        if (walletEditForm.chainId.trim() && !Number.isFinite(Number(walletEditForm.chainId))) {
-            notification.showError('Invalid Chain ID', 'Chain ID must be a number.');
+        const chainId = Number(walletEditForm.chainId.trim());
+        if (!walletEditForm.chainId.trim() || !Number.isSafeInteger(chainId) || chainId <= 0) {
+            notification.showError('Invalid Chain ID', 'Enter a positive whole-number Chain ID.');
             return;
         }
 
@@ -1106,7 +1110,7 @@ const CustomerDetails: React.FC<{
                 walletAddress: trimmedAddress,
                 walletName: walletEditForm.walletName.trim() || 'Admin Updated Wallet',
                 walletType: walletEditForm.walletType.trim() || 'web3',
-                chainId: walletEditForm.chainId.trim() ? Number(walletEditForm.chainId) : null,
+                chainId,
                 isDefault: walletEditForm.isDefault,
                 isActive: walletEditForm.isActive,
             });
