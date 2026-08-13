@@ -88,11 +88,7 @@ const AutopoolMatrixProgress: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <p className="text-sm text-gray-500">Matrix Position</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">#{Number(progress.membership_position ?? 0) + 1}</p>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm text-emerald-700">Levels Earned</p>
           <p className="mt-1 text-2xl font-bold text-emerald-800">{earnedLevels} / 8</p>
