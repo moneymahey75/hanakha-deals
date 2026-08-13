@@ -412,6 +412,15 @@ const UpcomingPlan: React.FC = () => {
                   <p className="mt-2 text-sm leading-relaxed text-emerald-50/90">
                     Existing active users may buy it as an add-on. New users may buy it alone or together with an eligible 50, 100, or 200 USDT plan.
                   </p>
+                  <p className="mt-3 text-sm leading-relaxed text-emerald-50/90">
+                    An active AutoPool member may also be used as a Parent A/C for new customer registrations, subject to the account verification requirements.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 p-5">
+                  <div className="text-sm font-bold uppercase tracking-wide text-sky-200">Working-income benefits</div>
+                  <p className="mt-2 text-sm leading-relaxed text-emerald-50/90">
+                    Direct income and ROI-to-ROI income are credited as working income and are capped at 5× the plan amount: up to <span className="font-bold text-white">100 USDT</span> for this 20 USDT plan.
+                  </p>
                 </div>
               </div>
 
@@ -434,6 +443,23 @@ const UpcomingPlan: React.FC = () => {
                     <div className="mt-1 text-xs text-emerald-50/75">USDT one-time subscription</div>
                   </div>
                 </div>
+                <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="rounded-xl border border-sky-300/20 bg-sky-400/10 p-4">
+                    <h4 className="font-bold text-sky-100">ROI-to-ROI income — 5 levels</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-emerald-50/85">
+                      When a downline member opens a coupon, earn a percentage of that coupon reward: Level 1 <span className="font-bold text-white">10%</span>, Level 2 <span className="font-bold text-white">5%</span>, Level 3 <span className="font-bold text-white">3%</span>, Level 4 <span className="font-bold text-white">2%</span>, and Level 5 <span className="font-bold text-white">1%</span>.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-violet-300/20 bg-violet-400/10 p-4">
+                    <h4 className="font-bold text-violet-100">Direct income on Launch plans</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-emerald-50/85">
+                      Earn Level 1 <span className="font-bold text-white">7%</span>; Level 2 <span className="font-bold text-white">1.5%</span> after 3 direct Launch users; and Level 3 <span className="font-bold text-white">1%</span> after 9 direct Launch users.
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs leading-relaxed text-emerald-100/75">
+                  If you also have an active Launch plan, its existing ROI-to-ROI income continues separately. The AutoPool ROI-to-ROI income above is an additional five-level earning track.
+                </p>
                 <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
                   The following is a potential milestone illustration based on completing each level.
                 </div>
