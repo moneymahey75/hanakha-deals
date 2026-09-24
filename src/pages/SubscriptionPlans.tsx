@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import WithdrawalJoiningNotice from '../components/customer/WithdrawalJoiningNotice';
 import { Check, Star, Zap, DollarSign, ArrowRight, CheckCircle, Package, Calendar, Users, Shield, CreditCard, X } from 'lucide-react';
 
 interface SubscriptionPlan {
@@ -369,6 +370,8 @@ const SubscriptionPlans: React.FC = () => {
             </p>
           </div>
         </div>
+
+        <WithdrawalJoiningNotice />
 
         {/* Error State */}
         {error && (
