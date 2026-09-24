@@ -308,6 +308,16 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const { data: joiningStatus, error: joiningError } = await supabase.rpc('get_withdrawal_joining_status', {
+      p_user_id: userId, p_wallet_type: walletType,
+    });
+    if (joiningError) throw joiningError;
+    if (!joiningStatus?.eligible) {
+      return new Response(JSON.stringify({ success: false, error: joiningStatus?.message || 'New joining requirement not met', joining_status: joiningStatus }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const userEmail = authData.user.email || '';
 
     const { data: profile } = await supabase

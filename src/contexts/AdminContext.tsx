@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { adminApi } from '../lib/adminApi';
 import { supabase } from '../lib/supabase';
+import { defaultWithdrawalJoiningRules, WithdrawalJoiningRules } from '../utils/withdrawalJoiningRules';
 import { isLivePaymentModeValue } from '../utils/paymentMode';
 
 let inFlightAdminSettingsRequest: Promise<any[]> | null = null;
@@ -76,6 +77,7 @@ const PUBLIC_SYSTEM_SETTING_KEYS = [
   'withdrawal_min_amount',
   'reward_withdrawal_min_amount',
   'autopool_withdrawal_min_amount',
+  'withdrawal_joining_rules',
   'autopool_20_direct_income',
   'withdrawal_step_amount',
   'withdrawal_commission_percent',
@@ -143,6 +145,7 @@ interface GeneralSettings {
   };
   withdrawalMinAmount: number;
   rewardWithdrawalMinAmount: number;
+  withdrawalJoiningRules: WithdrawalJoiningRules;
   autopoolWithdrawalMinAmount: number;
   autopool20DirectIncome: number;
   withdrawalStepAmount: number;
@@ -306,6 +309,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     },
     withdrawalMinAmount: 10,
     rewardWithdrawalMinAmount: 10,
+    withdrawalJoiningRules: defaultWithdrawalJoiningRules,
     autopoolWithdrawalMinAmount: 10,
     autopool20DirectIncome: 2,
     withdrawalStepAmount: 10,
@@ -622,6 +626,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'reward_withdrawal_min_amount':
                 loadedSettings.rewardWithdrawalMinAmount = Number(value);
+                break;
+              case 'withdrawal_joining_rules':
+                loadedSettings.withdrawalJoiningRules = value;
                 break;
               case 'autopool_withdrawal_min_amount':
                 loadedSettings.autopoolWithdrawalMinAmount = Number(value);

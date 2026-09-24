@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
 import { adminApi } from '../../lib/adminApi';
 import { Settings, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import WithdrawalJoiningSettings from './WithdrawalJoiningSettings';
 import { isLivePaymentModeValue } from '../../utils/paymentMode';
 
 const defaultPaymentWalletsEnabled = {
@@ -27,6 +28,7 @@ const PaymentSettings: React.FC = () => {
         withdrawalMinAmount: settings.withdrawalMinAmount,
         rewardWithdrawalMinAmount: settings.rewardWithdrawalMinAmount,
         autopoolWithdrawalMinAmount: settings.autopoolWithdrawalMinAmount,
+        withdrawalJoiningRules: settings.withdrawalJoiningRules,
         autopool20DirectIncome: settings.autopool20DirectIncome,
         withdrawalStepAmount: settings.withdrawalStepAmount,
         withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
@@ -56,6 +58,7 @@ const PaymentSettings: React.FC = () => {
             withdrawalMinAmount: settings.withdrawalMinAmount,
             rewardWithdrawalMinAmount: settings.rewardWithdrawalMinAmount,
             autopoolWithdrawalMinAmount: settings.autopoolWithdrawalMinAmount,
+            withdrawalJoiningRules: settings.withdrawalJoiningRules,
             autopool20DirectIncome: settings.autopool20DirectIncome,
             withdrawalStepAmount: settings.withdrawalStepAmount,
             withdrawalCommissionPercent: settings.withdrawalCommissionPercent,
@@ -81,6 +84,11 @@ const PaymentSettings: React.FC = () => {
         setSaveResult(null);
 
         try {
+            if (Object.values(formData.withdrawalJoiningRules).some((rule) =>
+                !rule.from_date || !Number.isInteger(rule.required_count) || rule.required_count < 1 ||
+                rule.required_count > 100000 || rule.plan_amounts.length === 0)) {
+                throw new Error('Choose a cutoff date, at least one plan, and a whole joining count between 1 and 100000 for each rule.');
+            }
             const isLivePaymentMode = isLivePaymentModeValue(formData.paymentMode);
 
             // Update settings in database
@@ -101,6 +109,7 @@ const PaymentSettings: React.FC = () => {
                 { key: 'payment_wallets_enabled', value: JSON.stringify(formData.paymentWalletsEnabled) },
                 { key: 'withdrawal_min_amount', value: JSON.stringify(formData.withdrawalMinAmount) },
                 { key: 'reward_withdrawal_min_amount', value: JSON.stringify(formData.rewardWithdrawalMinAmount) },
+                { key: 'withdrawal_joining_rules', value: JSON.stringify(formData.withdrawalJoiningRules) },
                 { key: 'autopool_withdrawal_min_amount', value: JSON.stringify(formData.autopoolWithdrawalMinAmount) },
                 { key: 'autopool_20_direct_income', value: JSON.stringify(formData.autopool20DirectIncome) },
                 { key: 'withdrawal_step_amount', value: JSON.stringify(formData.withdrawalStepAmount) },
@@ -136,6 +145,7 @@ const PaymentSettings: React.FC = () => {
                 withdrawalMinAmount: formData.withdrawalMinAmount,
                 rewardWithdrawalMinAmount: formData.rewardWithdrawalMinAmount,
                 autopoolWithdrawalMinAmount: formData.autopoolWithdrawalMinAmount,
+                withdrawalJoiningRules: formData.withdrawalJoiningRules,
                 autopool20DirectIncome: formData.autopool20DirectIncome,
                 withdrawalStepAmount: formData.withdrawalStepAmount,
                 withdrawalCommissionPercent: formData.withdrawalCommissionPercent,
@@ -157,7 +167,7 @@ const PaymentSettings: React.FC = () => {
             console.error('Failed to save settings:', error);
             setSaveResult({
                 success: false,
-                message: 'Failed to save settings. Please try again.'
+                message: error instanceof Error ? error.message : 'Failed to save settings. Please try again.'
             });
         } finally {
             setSaving(false);
@@ -532,6 +542,9 @@ const PaymentSettings: React.FC = () => {
                             />
                             <p className="text-xs text-gray-500 mt-2">Applies only to the separate AutoPool income wallet.</p>
                         </div>
+                        <WithdrawalJoiningSettings value={formData.withdrawalJoiningRules}
+                            onChange={(withdrawalJoiningRules) => setFormData((previous) => ({ ...previous, withdrawalJoiningRules }))} />
+
                         {!formData.withdrawalEnabled && (
                             <div className="md:col-span-2">
                                 <label htmlFor="withdrawalDisabledMessage" className="block text-sm font-medium text-gray-700 mb-2">

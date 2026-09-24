@@ -5,6 +5,7 @@ import { useNotification } from '../ui/NotificationProvider';
 import { processingIndicator } from '../../lib/processingIndicator';
 import { ArrowUpRight, RefreshCw } from 'lucide-react';
 import { getCustomerFriendlyWithdrawalMessage } from '../../utils/withdrawalMessages';
+import { WithdrawalJoiningStatus } from '../../utils/withdrawalJoiningRules';
 import { useScrollToTopOnChange } from '../../hooks/useScrollToTopOnChange';
 
 interface WithdrawalRequest {
@@ -57,6 +58,9 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
   const [rewardWithdrawalStatus, setRewardWithdrawalStatus] = useState<RewardWithdrawalStatus | null>(null);
   const [selectedWalletType, setSelectedWalletType] = useState<WithdrawalWalletType>('working');
   const walletType: WithdrawalWalletType = walletTypeProp === 'autopool' ? 'autopool' : selectedWalletType;
+  const [joiningStatus, setJoiningStatus] = useState<WithdrawalJoiningStatus | null>(null);
+  const [joiningError, setJoiningError] = useState('');
+  const [joiningRefresh, setJoiningRefresh] = useState(0);
   const [reservedBalance, setReservedBalance] = useState(0);
   const [defaultWallet, setDefaultWallet] = useState<DefaultWalletConnection | null>(null);
 
@@ -96,6 +100,21 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
     loadWithdrawalHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, currentPage, pageSize, walletType]);
+
+  useEffect(() => {
+    let current = true;
+    setJoiningStatus(null);
+    setJoiningError('');
+    if (user?.id) {
+      supabase.rpc('get_withdrawal_joining_status', { p_user_id: user.id, p_wallet_type: walletType })
+        .then(({ data, error }) => {
+          if (!current) return;
+          if (error) setJoiningError('Unable to check joining requirements. Please refresh and try again.');
+          else setJoiningStatus(data as WithdrawalJoiningStatus);
+        });
+    }
+    return () => { current = false; };
+  }, [user?.id, walletType, joiningRefresh]);
 
   const withdrawableBalance = useMemo(() => {
     if (walletType === 'reward') return Math.max(0, Number(rewardWalletBalance || 0) - Number(reservedBalance || 0));
@@ -326,6 +345,10 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
       return;
     }
 
+    if (!joiningStatus?.eligible) {
+      notification.showError('Joining Requirement', joiningStatus?.message || joiningError || 'Checking joining requirements.');
+      return;
+    }
     setWithdrawalSubmitting(true);
     try {
       const session = await supabase.auth.getSession();
@@ -368,6 +391,7 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
     } catch (error: any) {
       notification.showError('Withdrawal Failed', error.message || 'Unable to submit withdrawal');
     } finally {
+      setJoiningRefresh((value) => value + 1);
       setWithdrawalSubmitting(false);
     }
   };
@@ -440,6 +464,7 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
         </h3>
         <button
           onClick={() => {
+            setJoiningRefresh((value) => value + 1);
             loadWithdrawalHistory();
             loadWalletBalance();
             loadReservedBalance();
@@ -486,6 +511,12 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
             </button>
           ))}
         </div>}
+
+        <div role="status" className={`rounded-xl border p-4 text-sm ${joiningStatus?.eligible ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+          <p className="font-semibold">New joining requirement</p>
+          <p className="mt-1">{joiningError || joiningStatus?.message || 'Checking joining requirements...'}</p>
+          {joiningStatus?.enabled && <p className="mt-1">Only new direct referrals with a qualifying paid joining plan count. Earlier members, upgrades, renewals and matrix spillover do not count.</p>}
+        </div>
 
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -625,7 +656,7 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
         <div className="flex justify-stretch sm:justify-end">
           <button
             onClick={handleWithdrawalSubmit}
-            disabled={withdrawalSubmitting || !isWithdrawalAmountValid}
+            disabled={withdrawalSubmitting || !isWithdrawalAmountValid || !joiningStatus?.eligible}
             className="w-full sm:w-auto bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
           >
             <ArrowUpRight className="h-4 w-4" />
