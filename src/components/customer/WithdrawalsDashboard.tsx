@@ -121,6 +121,14 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
     return Math.max(0, Number(walletBalance || 0) - Number(walletReservedBalance || 0) - Number(reservedBalance || 0));
   }, [rewardWalletBalance, reservedBalance, walletBalance, walletReservedBalance, walletType]);
 
+  const joiningRequirementMessage = joiningError || (!joiningStatus
+    ? 'Checking how many new members you need...'
+    : !joiningStatus.enabled
+      ? 'No new joining requirement for this wallet.'
+      : joiningStatus.eligible
+        ? 'Joining requirement met. You can request a withdrawal subject to the other withdrawal conditions.'
+        : `Refer ${joiningStatus.remaining_count} more new ${joiningStatus.remaining_count === 1 ? 'member' : 'members'} on a qualifying plan to unlock withdrawals.`);
+
   const activeMinAmount = walletType === 'reward'
     ? withdrawalSettings.rewardMinAmount
     : walletType === 'autopool' ? withdrawalSettings.autopoolMinAmount : withdrawalSettings.minAmount;
@@ -513,9 +521,27 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
         </div>}
 
         <div role="status" className={`rounded-xl border p-4 text-sm ${joiningStatus?.eligible ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-          <p className="font-semibold">New joining requirement</p>
-          <p className="mt-1">{joiningError || joiningStatus?.message || 'Checking joining requirements...'}</p>
-          {joiningStatus?.enabled && <p className="mt-1">Only new direct referrals with a qualifying paid joining plan count. Earlier members, upgrades, renewals and matrix spillover do not count.</p>}
+          <p className="text-lg font-bold">{joiningRequirementMessage}</p>
+          {joiningStatus?.enabled && <>
+            <dl className="mt-4 grid grid-cols-3 gap-3">
+              {[
+                { label: 'Required members', count: joiningStatus.required_count },
+                { label: 'Qualified members', count: joiningStatus.qualified_count },
+                { label: 'Still needed', count: joiningStatus.remaining_count },
+              ].map(({ label, count }) => <div key={label} className="rounded-lg bg-white/70 p-3">
+                <dt className="text-xs font-medium">{label}</dt>
+                <dd className="mt-1 text-2xl font-bold">{count}</dd>
+              </div>)}
+            </dl>
+            <p className="mt-3">
+              Counted from <strong>{new Date(`${joiningStatus.from_date}T00:00:00+05:30`).toLocaleDateString('en-IN', {
+                day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata',
+              })}</strong> (India time). Qualifying {joiningStatus.category === 'autopool' ? 'AutoPool' : 'Launch'} plans:{' '}
+              <strong>{joiningStatus.plan_amounts.map((amount) => `${amount} USDT`).join(' or ')}</strong>.
+            </p>
+            <p className="mt-1">Only new direct referrals with a qualifying paid joining plan count. Earlier members, upgrades, renewals and matrix spillover do not count.</p>
+          </>}
+          {joiningError && <button type="button" onClick={() => setJoiningRefresh((value) => value + 1)} className="mt-2 font-semibold underline">Retry eligibility check</button>}
         </div>
 
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
@@ -653,8 +679,15 @@ const WithdrawalsDashboard: React.FC<{ walletType?: WithdrawalWalletType }> = ({
           </div>
         </div> */}
 
-        <div className="flex justify-stretch sm:justify-end">
+        <div className="flex flex-col gap-3 sm:items-end">
+          <p id="withdrawal-submit-eligibility" role="status" className={`text-sm font-semibold sm:text-right ${joiningStatus?.eligible ? 'text-green-700' : 'text-amber-800'}`}>
+            {joiningRequirementMessage}
+            {joiningStatus?.enabled && !joiningStatus.eligible && <span className="mt-1 block font-normal">
+              {joiningStatus.qualified_count} of {joiningStatus.required_count} required members qualified. Submit Withdrawal will be available once the joining requirement is met and a valid amount is entered.
+            </span>}
+          </p>
           <button
+            aria-describedby="withdrawal-submit-eligibility"
             onClick={handleWithdrawalSubmit}
             disabled={withdrawalSubmitting || !isWithdrawalAmountValid || !joiningStatus?.eligible}
             className="w-full sm:w-auto bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
